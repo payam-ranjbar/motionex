@@ -1,0 +1,294 @@
+{
+  "name": "timeline.layout",
+  "version": "1.0.0",
+  "title": "Timeline layout",
+  "summary": "Lay scenes out from voice-over lines: cue times, scene lengths, optional beat snapping, music markers and named times. Writes timeline.json and dialogue-clips.json.",
+  "description": "A pure layout helper. Each scene is as long as its lines plus the lead, gaps and tail you ask for (all zero by default, nothing snapped), or a fixed duration_s. Audio lines are measured at their speech end (Piper leaves trailing silence), not their file length. Optional beat snapping, markers that align the music grid to a scene (the music_offset_s / beatOffset), named times, and a per-frame voice envelope are available when you want them. It never renders or mixes anything; it only computes numbers.",
+  "kind": "node",
+  "handler": "handler.mjs",
+  "deterministic": true,
+  "cache_default": "auto",
+  "resources": { "class": "light", "slots": 0 },
+  "timeout_s": 300,
+  "presets": "timeline",
+  "requires": { "binaries": ["ffmpeg"] },
+  "input_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["scenes"],
+    "properties": {
+      "defaults": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Layout defaults for every scene. All neutral (0, no snapping) unless set.",
+        "properties": {
+          "lead_s": {
+            "type": "number",
+            "default": 0,
+            "description": "Seconds from the scene start to the first line (default 0)."
+          },
+          "gap_s": {
+            "type": "number",
+            "default": 0,
+            "description": "Seconds between two lines when a line sets no pause_s (default 0)."
+          },
+          "tail_s": {
+            "type": "number",
+            "default": 0,
+            "description": "Seconds after the last line before the scene ends (default 0)."
+          },
+          "min_s": {
+            "type": "number",
+            "default": 0,
+            "description": "Minimum scene length in seconds (default 0)."
+          },
+          "snap_beats": {
+            "type": ["number", "null"],
+            "default": null,
+            "description": "Round every scene length up to a multiple of this many beats (needs grid). null = no snapping (default)."
+          }
+        }
+      },
+      "grid": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Musical grid. Required for snap_beats, for markers and for bar:/beat: times.",
+        "required": ["bpm"],
+        "properties": {
+          "bpm": { "type": "number", "exclusiveMinimum": 0, "description": "Beats per minute." },
+          "beats_per_bar": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "default": 4,
+            "description": "Beats in a bar (default 4)."
+          },
+          "offset_s": { "type": "number", "default": 0, "description": "Seconds from 0 to bar 0 (default 0)." }
+        }
+      },
+      "preset": {
+        "type": "string",
+        "description": "Named layout preset from presets/timeline/ (for example voice-driven-classic), merged under this request."
+      },
+      "scenes": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 500,
+        "description": "Scenes in playback order; each starts where the previous one ends.",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id"],
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[\\w-]+$",
+              "description": "Scene id (letters, digits, _ or -), used by times and markers."
+            },
+            "duration_s": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Fixed scene length in seconds. Overrides the line-driven length and is used exactly (not snapped)."
+            },
+            "lead_s": { "type": "number", "description": "Overrides defaults.lead_s for this scene." },
+            "gap_s": { "type": "number", "description": "Overrides defaults.gap_s for this scene." },
+            "tail_s": { "type": "number", "description": "Overrides defaults.tail_s for this scene." },
+            "min_s": { "type": "number", "description": "Overrides defaults.min_s for this scene." },
+            "snap_beats": {
+              "type": ["number", "null"],
+              "description": "Overrides defaults.snap_beats for this scene (null = do not snap this scene)."
+            },
+            "lines": {
+              "type": "array",
+              "description": "Voice-over lines in order. Omit for an empty scene or a fixed duration_s scene.",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "anyOf": [{ "required": ["audio"] }, { "required": ["dur_s"] }, { "required": ["text"] }],
+                "properties": {
+                  "audio": {
+                    "type": "string",
+                    "x-mx-ref": true,
+                    "description": "Audio for the line: a workspace path, job:<id>/<output> or pin:<name>. Its speech end (threshold speech_end_threshold_db) sets the cue length."
+                  },
+                  "dur_s": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "Cue length in seconds when there is no audio."
+                  },
+                  "text": { "type": "string", "description": "Caption text, kept in the cue." },
+                  "who": {
+                    "type": "string",
+                    "description": "Speaker name, used to group the per-speaker voice envelope."
+                  },
+                  "pause_s": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "Seconds before this line; overrides gap_s for this line (ignored on the first line)."
+                  },
+                  "tempo": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "default": 1,
+                    "description": "Playback speed of the line (default 1). The cue lasts speech_end / tempo seconds."
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "speech_end_threshold_db": {
+        "type": "number",
+        "default": -40,
+        "description": "dBFS threshold that marks the end of speech in an audio line (default -40)."
+      },
+      "markers": {
+        "type": "object",
+        "description": "Named markers: each names the scene it sits on and what the music grid should align to there.",
+        "additionalProperties": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["scene"],
+          "properties": {
+            "scene": { "type": "string", "description": "Id of the scene this marker sits on." },
+            "align": {
+              "enum": ["bar", "beat", "none"],
+              "default": "bar",
+              "description": "What a marker aligns to when it is named by align_to: a bar line (bar), a beat (beat) or nothing (none). Default bar."
+            }
+          }
+        }
+      },
+      "align_to": {
+        "type": "string",
+        "description": "Name of the marker whose alignment sets the global music_offset_s (beatOffset). Other markers report their bar index with that offset."
+      },
+      "times": {
+        "type": "object",
+        "description": "Named times resolved against the computed timeline, e.g. {\"hit\": \"b#0.end-0.1\"}.",
+        "additionalProperties": {
+          "type": ["number", "string"],
+          "description": "A time: seconds, \"<scene>\", \"<scene>#<cue>[.end][+-s]\", \"bar:<n>\" or \"beat:<n>\"."
+        }
+      },
+      "envelope": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Optional per-frame voice loudness for the picture to react to. Only audio lines contribute.",
+        "required": ["fps"],
+        "properties": {
+          "fps": { "type": "number", "exclusiveMinimum": 0, "description": "Frames per second of the envelope." },
+          "normalize": {
+            "enum": ["peak", "none"],
+            "default": "peak",
+            "description": "peak = scale so the loudest frame is gain; none = raw RMS. Default peak."
+          },
+          "gain": {
+            "type": "number",
+            "default": 1.25,
+            "description": "Multiplier applied before clamping to 0..1 (default 1.25)."
+          },
+          "per_speaker": {
+            "type": "boolean",
+            "default": true,
+            "description": "true = voices keyed by who; false = a single voice array. Default true."
+          }
+        }
+      },
+      "extra": {
+        "type": "object",
+        "additionalProperties": true,
+        "description": "Fields copied verbatim into the root of timeline.json (name, size, fps, fonts, poster...)."
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["total", "scenes", "markers", "music_offset_s"],
+    "properties": {
+      "total": { "type": "number" },
+      "music_offset_s": { "type": "number" },
+      "scenes": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "start", "dur"],
+          "properties": {
+            "id": { "type": "string" },
+            "start": { "type": "number" },
+            "dur": { "type": "number" }
+          }
+        }
+      },
+      "markers": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["scene", "bar", "cycle", "music_offset_s"],
+          "properties": {
+            "scene": { "type": "string" },
+            "bar": { "type": "number" },
+            "cycle": { "type": "number" },
+            "music_offset_s": { "type": "number" }
+          }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "title": "Two scenes from explicit line durations, all defaults neutral",
+      "input": {
+        "scenes": [
+          { "id": "intro", "lines": [{ "dur_s": 1, "text": "One" }, { "dur_s": 2, "text": "Two" }] },
+          { "id": "outro", "lines": [{ "dur_s": 1.5, "text": "Three" }] }
+        ]
+      }
+    },
+    {
+      "title": "Snap a 3 s scene up to a 2 s bar (4 beats at 120 bpm)",
+      "input": {
+        "grid": { "bpm": 120, "beats_per_bar": 4 },
+        "defaults": { "snap_beats": 4 },
+        "scenes": [{ "id": "scene", "lines": [{ "dur_s": 3 }] }]
+      }
+    },
+    {
+      "title": "A drop marker aligns the music grid and a named time points at a cue end",
+      "input": {
+        "grid": { "bpm": 120 },
+        "scenes": [{ "id": "a", "lines": [{ "dur_s": 3 }] }, { "id": "b", "lines": [{ "dur_s": 2 }] }],
+        "markers": { "drop": { "scene": "b", "align": "bar" } },
+        "align_to": "drop",
+        "times": { "hit": "b#0.end-0.1" }
+      }
+    },
+    {
+      "title": "The voice-driven-classic preset",
+      "input": {
+        "preset": "voice-driven-classic",
+        "grid": { "bpm": 120 },
+        "scenes": [{ "id": "a", "lines": [{ "dur_s": 1, "text": "Hello" }] }]
+      }
+    },
+    {
+      "title": "A cue measured from a WAV's speech end, with a per-speaker voice envelope",
+      "input": {
+        "scenes": [{ "id": "s", "lines": [{ "audio": "line.wav", "text": "hi", "who": "narrator" }] }],
+        "envelope": { "fps": 10 }
+      },
+      "fixtures": {
+        "line.wav": {
+          "concat": [
+            { "sine": { "freq": 440, "seconds": 1, "amplitude_db": -20, "channels": 1, "sample_rate": 48000 } },
+            { "silence": { "seconds": 0.4, "channels": 1, "sample_rate": 48000 } }
+          ]
+        }
+      }
+    }
+  ]
+}
