@@ -1,0 +1,107 @@
+{
+  "name": "voice.elevenlabs",
+  "version": "1.0.0",
+  "title": "Voice (ElevenLabs)",
+  "summary": "Synthesize one line of speech with ElevenLabs and write take.mp3 plus take.wav. Optional provider: it needs an elevenlabs_api_key secret file and network access.",
+  "description": "Performs a scripted line with an ElevenLabs voice, supporting v3 audio tags such as [whispers] or [excited] inside the text. It writes the raw MP3 response as take.mp3 and always also decodes it to take.wav. The API key is read from the elevenlabs_api_key secret file and never appears in results or logs. Requests are retried on 429, 5xx and network errors.",
+  "kind": "node",
+  "handler": "handler.mjs",
+  "deterministic": false,
+  "cache_default": "reuse",
+  "resources": { "class": "elevenlabs", "slots": 0 },
+  "timeout_s": 300,
+  "requires": { "binaries": ["ffmpeg"], "secrets": ["elevenlabs_api_key"] },
+  "input_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["voice_id", "text"],
+    "properties": {
+      "voice_id": {
+        "type": "string",
+        "description": "ElevenLabs voice id (for example 21m00Tcm4TlvDq8ikWAM). Use voice.elevenlabs-voices to list ids."
+      },
+      "text": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 5000,
+        "description": "The line to speak. May contain v3 audio tags such as [whispers], [excited] or [laughs], which the eleven_v3 model performs."
+      },
+      "model": {
+        "type": "string",
+        "default": "eleven_v3",
+        "description": "ElevenLabs model id; eleven_v3 acts the tags in the text."
+      },
+      "stability": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "description": "Voice stability; eleven_v3 likes 0 (creative), 0.5 (natural) or 1 (robust)."
+      },
+      "similarity": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "description": "Similarity boost to the original voice (maps to similarity_boost)."
+      },
+      "style": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "description": "Style exaggeration (maps to style)."
+      },
+      "speed": {
+        "type": "number",
+        "minimum": 0.7,
+        "maximum": 1.2,
+        "description": "Speaking rate (maps to voice_settings.speed)."
+      },
+      "seed": {
+        "type": "integer",
+        "description": "Seed for deterministic generation when the model supports it; omit for varied takes."
+      },
+      "language": {
+        "type": "string",
+        "description": "Optional ISO language code (maps to language_code), for example en."
+      },
+      "output_format": {
+        "type": "string",
+        "default": "mp3_44100_128",
+        "description": "Requested output format; mp3_44100_128 is the best the ElevenLabs Free tier allows."
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["chars", "seconds", "request_id", "model", "voice_id"],
+    "properties": {
+      "chars": { "type": "integer", "description": "Number of characters billed (length of the text)." },
+      "seconds": { "type": "number", "description": "Duration of the decoded take in seconds." },
+      "request_id": {
+        "type": ["string", "null"],
+        "description": "ElevenLabs request-id response header, or null when absent."
+      },
+      "model": { "type": "string", "description": "The model id that was used." },
+      "voice_id": { "type": "string", "description": "The voice id that was used." }
+    }
+  },
+  "examples": [
+    {
+      "title": "One line with the eleven_v3 model",
+      "run": false,
+      "input": { "voice_id": "21m00Tcm4TlvDq8ikWAM", "text": "Hello from motionex." }
+    },
+    {
+      "title": "Acted line with an audio tag",
+      "run": false,
+      "input": {
+        "voice_id": "21m00Tcm4TlvDq8ikWAM",
+        "text": "[whispers] Meet me at midnight.",
+        "model": "eleven_v3",
+        "stability": 0.5,
+        "seed": 7
+      }
+    }
+  ]
+}
