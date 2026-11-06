@@ -1,0 +1,131 @@
+{
+  "name": "audio.levels",
+  "version": "1.0.0",
+  "title": "Levels by time window",
+  "summary": "RMS, sample peak and ungated LUFS per time window of an audio or video file, using explicit windows, a fixed step, or a musical bar/beat grid.",
+  "description": "Analysis only. Windows come from an explicit list, a step in seconds or a bar/beat grid. String times (scene ids, cues, bar:n, beat:n) resolve against a timeline JSON using the same grammar as timeline.layout. Silence is reported as null, never -Infinity.",
+  "kind": "node",
+  "handler": "handler.mjs",
+  "deterministic": true,
+  "cache_default": "auto",
+  "resources": { "class": "audio", "slots": 1 },
+  "timeout_s": 600,
+  "requires": { "binaries": ["ffmpeg"] },
+  "input_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["input"],
+    "oneOf": [{ "required": ["windows"] }, { "required": ["step_s"] }, { "required": ["grid"] }],
+    "properties": {
+      "input": {
+        "type": "string",
+        "x-mx-ref": true,
+        "description": "Audio or video file to measure: a workspace path, job:<id>/<output> or pin:<name>."
+      },
+      "timeline": {
+        "type": "string",
+        "x-mx-ref": true,
+        "description": "Optional timeline JSON (timeline.layout output) used to resolve string times such as scene ids, cues, bar:n and beat:n."
+      },
+      "windows": {
+        "type": "array",
+        "description": "Explicit windows. Each is measured over [from, to).",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["from", "to"],
+          "properties": {
+            "name": { "type": "string", "description": "Optional label copied into the result row." },
+            "from": {
+              "type": ["number", "string"],
+              "description": "Window start: seconds or a timespec (scene id, cue, bar:n, beat:n)."
+            },
+            "to": {
+              "type": ["number", "string"],
+              "description": "Window end: seconds or a timespec (scene id, cue, bar:n, beat:n)."
+            }
+          }
+        }
+      },
+      "step_s": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "description": "Window length in seconds: [0,s), [s,2s), ... The last window is cut at the duration."
+      },
+      "grid": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Musical windows starting at offset_s, one per bar (default) or beat.",
+        "required": ["bpm"],
+        "properties": {
+          "bpm": { "type": "number", "exclusiveMinimum": 0, "description": "Tempo in beats per minute." },
+          "beats_per_bar": { "type": "integer", "minimum": 1, "default": 4, "description": "Beats in a bar." },
+          "offset_s": { "type": "number", "default": 0, "description": "Seconds before the first window starts." },
+          "per": {
+            "enum": ["bar", "beat"],
+            "default": "bar",
+            "description": "Window length: one bar or one beat."
+          }
+        }
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["rows"],
+    "properties": {
+      "rows": {
+        "type": "array",
+        "description": "One row per window, in order.",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["from", "to", "rms_db", "peak_db", "lufs"],
+          "properties": {
+            "name": { "type": "string", "description": "Window label, when one was given." },
+            "from": { "type": "number", "description": "Window start in seconds." },
+            "to": { "type": "number", "description": "Window end in seconds." },
+            "rms_db": {
+              "type": ["number", "null"],
+              "description": "RMS over all channels in dBFS, or null for silence."
+            },
+            "peak_db": {
+              "type": ["number", "null"],
+              "description": "Sample peak over all channels in dBFS, or null for silence."
+            },
+            "lufs": {
+              "type": ["number", "null"],
+              "description": "Ungated K-weighted loudness of the window in LUFS, or null for silence."
+            }
+          }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "title": "One-second windows of a 3 s tone",
+      "input": { "input": "tone.wav", "step_s": 1 },
+      "fixtures": { "tone.wav": { "sine": { "freq": 1000, "seconds": 3, "amplitude_db": -20 } } }
+    },
+    {
+      "title": "Windows on a beat grid",
+      "input": { "input": "tone.wav", "grid": { "bpm": 120, "per": "beat" } },
+      "fixtures": { "tone.wav": { "sine": { "freq": 1000, "seconds": 3, "amplitude_db": -20 } } }
+    },
+    {
+      "title": "Named window from a timeline",
+      "input": {
+        "input": "tone.wav",
+        "timeline": "timeline.json",
+        "windows": [{ "name": "scene-a", "from": "a", "to": "a+1" }]
+      },
+      "fixtures": {
+        "tone.wav": { "sine": { "freq": 1000, "seconds": 3, "amplitude_db": -20 } },
+        "timeline.json": { "json": { "scenes": [{ "id": "a", "start": 0.5, "dur": 1, "cues": [] }] } }
+      }
+    }
+  ]
+}
