@@ -54,6 +54,19 @@ function slotsOf(manifest, input) {
   return manifest.resources?.class === 'light' ? 0 : 1;
 }
 
+/**
+ * One line per validation error (`<field> <message>`), at most `limit`, with a trailing count of the rest.
+ * @param {{field: string, message: string}[]} [errors]
+ * @param {number} [limit]
+ * @returns {string}
+ */
+function describeErrors(errors = [], limit = 3) {
+  const shown = errors.slice(0, limit).map((e) => `${e.field} ${e.message}`);
+  if (shown.length === 0) return '';
+  const more = errors.length - shown.length;
+  return more > 0 ? `${shown.join('; ')} (+${more} more)` : shown.join('; ');
+}
+
 /** True when two resolved-ref lists describe the same files (pointer + digest + size). */
 function sameRefs(a = [], b = []) {
   if (a.length !== b.length) return false;
@@ -161,10 +174,7 @@ export function createJobService({ config, registry, store, pins, executor, sche
       try {
         const v = registry.validate(initial.tool, initial.input);
         if (!v.ok) {
-          throw new ToolError(
-            'invalid-input',
-            v.errors.map((e) => `${e.field} ${e.message}`).join('; ') || 'input does not match the tool schema',
-          );
+          throw new ToolError('invalid-input', describeErrors(v.errors) || 'input does not match the tool schema');
         }
         validated = v.input;
         const resolved = await resolveRefs(v.input, v.refPointers);
@@ -409,7 +419,16 @@ export function createJobService({ config, registry, store, pins, executor, sche
       }
 
       const v = registry.validate(tool, input);
-      if (!v.ok) throw problem('invalid-input', `input does not match ${tool}`, { errors: v.errors });
+      if (!v.ok) {
+        const described = describeErrors(v.errors);
+        throw problem(
+          'invalid-input',
+          described ? `input does not match ${tool}: ${described}` : `input does not match ${tool}`,
+          {
+            errors: v.errors,
+          },
+        );
+      }
 
       // Problems (unknown ref, file not found, path outside the workspace) propagate unchanged.
       const resolved = await resolveRefs(v.input, v.refPointers);

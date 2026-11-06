@@ -297,6 +297,42 @@ test('submit rejects unknown tools, invalid input and unavailable tools', async 
   }
 });
 
+test('invalid input detail names the wrong fields and counts any beyond the first three', async () => {
+  const s = await setup();
+  try {
+    await assert.rejects(
+      () => s.service.submit({ tool: 'fake.echo', input: { bogus: 1 } }),
+      (err) => {
+        isProblem('invalid-input', 422)(err);
+        assert.match(String(err.detail), /^input does not match fake\.echo: /);
+        assert.match(String(err.detail), /\/message must have required property 'message'/);
+        assert.match(String(err.detail), /\/bogus is not a known field/);
+        // the structured errors array is unchanged
+        assert.ok(Array.isArray(err.extras.errors));
+        assert.deepEqual(err.extras.errors.map((e) => e.field).sort(), ['/bogus', '/message']);
+        return true;
+      },
+    );
+
+    // more than three errors: the detail names three and appends a count of the rest
+    await assert.rejects(
+      () => s.service.submit({ tool: 'fake.echo', input: { bogus: 1, message: 42, delay_ms: 'x', file: 5 } }),
+      (err) => {
+        isProblem('invalid-input', 422)(err);
+        assert.ok(err.extras.errors.length > 3, JSON.stringify(err.extras.errors));
+        const shown = err.extras.errors
+          .slice(0, 3)
+          .map((e) => `${e.field} ${e.message}`)
+          .join('; ');
+        assert.equal(err.detail, `input does not match fake.echo: ${shown} (+${err.extras.errors.length - 3} more)`);
+        return true;
+      },
+    );
+  } finally {
+    await s.cleanup();
+  }
+});
+
 test('idempotency: replay, fingerprint mismatch and invalid keys', async () => {
   const s = await setup({ hold: true });
   try {
