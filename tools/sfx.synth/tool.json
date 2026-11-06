@@ -12,9 +12,11 @@
     "class": "audio",
     "slots": 1
   },
-  "timeout_s": 1800,
+  "timeout_s": 600,
   "requires": {
-    "binaries": ["ffmpeg"]
+    "binaries": [
+      "ffmpeg"
+    ]
   },
   "input_schema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -22,10 +24,14 @@
     "additionalProperties": false,
     "oneOf": [
       {
-        "required": ["recipe"]
+        "required": [
+          "recipe"
+        ]
       },
       {
-        "required": ["builtin"]
+        "required": [
+          "builtin"
+        ]
       }
     ],
     "properties": {
@@ -35,7 +41,9 @@
         "description": "Workspace path/ref to a .mjs or .js recipe module exporting `sounds` (and optionally `describe`/`finish`). Exactly one of `recipe` or `builtin` is required."
       },
       "builtin": {
-        "enum": ["generic"],
+        "enum": [
+          "generic"
+        ],
         "description": "Use the built-in generic recipes instead of a workspace module. Exactly one of `recipe` or `builtin` is required."
       },
       "sounds": {
@@ -103,7 +111,11 @@
         }
       },
       "format": {
-        "enum": ["wav", "wav24", "wav32f"],
+        "enum": [
+          "wav",
+          "wav24",
+          "wav32f"
+        ],
         "default": "wav24",
         "description": "WAV bit depth: wav = 16-bit, wav24 = 24-bit, wav32f = 32-bit float."
       },
@@ -117,7 +129,9 @@
   "output_schema": {
     "type": "object",
     "additionalProperties": false,
-    "required": ["sounds"],
+    "required": [
+      "sounds"
+    ],
     "properties": {
       "sounds": {
         "type": "array",
@@ -161,11 +175,17 @@
               "description": "Time of the sample peak in seconds from the start."
             },
             "momentary_max_lufs": {
-              "type": ["number", "null"],
+              "type": [
+                "number",
+                "null"
+              ],
               "description": "Maximum 400 ms momentary loudness in LUFS, or null when the sound is shorter than the window."
             },
             "integrated_lufs": {
-              "type": ["number", "null"],
+              "type": [
+                "number",
+                "null"
+              ],
               "description": "Integrated (EBU R128) loudness in LUFS, or null when the sound is too short."
             },
             "description": {
@@ -189,7 +209,9 @@
       "title": "Built-in thump",
       "input": {
         "builtin": "generic",
-        "sounds": ["thump"]
+        "sounds": [
+          "thump"
+        ]
       },
       "fixtures": {}
     },
