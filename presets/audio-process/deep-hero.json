@@ -1,0 +1,4 @@
+{
+  "description": "Deeper, warmer hero voice (SHAPUR): pitch down about 2.6 semitones, low shelf, warmth, softer top",
+  "steps": [{ "pitch_semitones": -2.6111 }, { "filter": "bass=g=5:f=110,aecho=0.8:0.35:60|110:0.16|0.08,volume=6dB" }]
+}
