@@ -52,12 +52,16 @@ export function createKit({ palette = {}, seed = 1 } = {}) {
     return [m.map((x) => x * l), m.map((x) => x * r)];
   };
 
-  /** Mono -> stereo with a time-varying pan(t) in -1..1. */
-  function stPan(m, panFn) {
+  /**
+   * Mono -> stereo with a constant-power pan in -1..1. `pan` is a number (constant pan for the
+   * whole buffer) or a function pan(t) of time in seconds (time-varying pan).
+   */
+  function stPan(m, pan) {
+    const pf = typeof pan === 'function' ? pan : () => pan;
     const L = new Float32Array(m.length);
     const R = new Float32Array(m.length);
     for (let i = 0; i < m.length; i++) {
-      const p = ((Math.max(-1, Math.min(1, panFn(i / SR))) + 1) * Math.PI) / 4;
+      const p = ((Math.max(-1, Math.min(1, pf(i / SR))) + 1) * Math.PI) / 4;
       L[i] = m[i] * Math.cos(p);
       R[i] = m[i] * Math.sin(p);
     }
@@ -88,9 +92,13 @@ export function createKit({ palette = {}, seed = 1 } = {}) {
     return b;
   }
 
-  /** Multiply every sample by fn(t) (in place). */
-  function envApply(b, fn) {
-    for (const ch of Array.isArray(b) ? b : [b]) for (let i = 0; i < ch.length; i++) ch[i] *= fn(i / SR);
+  /**
+   * Multiply every sample by an envelope (in place). `env` is a number (constant gain for the whole
+   * buffer) or a function env(t) of time in seconds (time-varying gain envelope).
+   */
+  function envApply(b, env) {
+    const ef = typeof env === 'function' ? env : () => env;
+    for (const ch of Array.isArray(b) ? b : [b]) for (let i = 0; i < ch.length; i++) ch[i] *= ef(i / SR);
     return b;
   }
 
@@ -396,8 +404,12 @@ export function createKit({ palette = {}, seed = 1 } = {}) {
   /** Pitch-shift a stereo buffer by `s` semitones. */
   const pitch = (b, s) => [resample(b[0], semis(s)), resample(b[1], semis(s))];
 
-  /** Variable-rate playback (rate fn of output time, e.g. doppler / tape stop). */
-  function vari(x, rateFn, sec) {
+  /**
+   * Variable-rate playback. `rate` is a number (constant playback rate) or a function rate(t) of
+   * output time in seconds (e.g. doppler / tape stop).
+   */
+  function vari(x, rate, sec) {
+    const rf = typeof rate === 'function' ? rate : () => rate;
     const n = Math.ceil(sec * SR);
     const y = new Float32Array(n);
     let p = 0;
@@ -406,7 +418,7 @@ export function createKit({ palette = {}, seed = 1 } = {}) {
       const f = p - k;
       if (k + 1 >= x.length) break;
       y[i] = x[k] * (1 - f) + x[k + 1] * f;
-      p += rateFn(i / SR);
+      p += rf(i / SR);
     }
     return y;
   }
