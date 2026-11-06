@@ -1,0 +1,143 @@
+{
+  "name": "audio.speech-ratio",
+  "version": "1.0.0",
+  "title": "Speech-to-background ratio",
+  "summary": "How far a voice sits above its background inside the speech band (default 300-3400 Hz), per line or per given window, with the minimum and median ratio.",
+  "description": "Both signals are downmixed to mono at 48 kHz and band-limited with one RBJ high-pass and one RBJ low-pass. 100 ms frames whose band-limited voice power is below -45 dBFS are dropped, then voice, background and their ratio are averaged over the same frames. Analysis only; it changes nothing.",
+  "kind": "node",
+  "handler": "handler.mjs",
+  "deterministic": true,
+  "cache_default": "auto",
+  "resources": { "class": "audio", "slots": 1 },
+  "timeout_s": 600,
+  "requires": { "binaries": ["ffmpeg"] },
+  "input_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["voice", "background"],
+    "properties": {
+      "voice": {
+        "type": "string",
+        "x-mx-ref": true,
+        "description": "Voice (dialogue) file: a workspace path, job:<id>/<output> or pin:<name>."
+      },
+      "background": {
+        "type": "string",
+        "x-mx-ref": true,
+        "description": "Background (music, ambience) file, on the same timeline as the voice."
+      },
+      "timeline": {
+        "type": "string",
+        "x-mx-ref": true,
+        "description": "Optional timeline JSON (timeline.layout output) used to resolve string times in windows."
+      },
+      "windows": {
+        "type": "array",
+        "description": "Explicit windows. Omit to find lines automatically from voice activity.",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["from", "to"],
+          "properties": {
+            "name": { "type": "string", "description": "Optional label copied into the result row." },
+            "from": {
+              "type": ["number", "string"],
+              "description": "Window start: seconds or a timespec (scene id, cue, bar:n, beat:n)."
+            },
+            "to": {
+              "type": ["number", "string"],
+              "description": "Window end: seconds or a timespec (scene id, cue, bar:n, beat:n)."
+            }
+          }
+        }
+      },
+      "band_hz": {
+        "type": "array",
+        "items": { "type": "number", "exclusiveMinimum": 0 },
+        "minItems": 2,
+        "maxItems": 2,
+        "default": [300, 3400],
+        "description": "Speech band as [high-pass, low-pass] corner frequencies in Hz."
+      },
+      "activity_threshold_db": {
+        "type": "number",
+        "maximum": 0,
+        "default": -40,
+        "description": "Automatic windows: a 100 ms unfiltered-voice frame is active when its RMS is above this dBFS level."
+      },
+      "min_gap_s": {
+        "type": "number",
+        "minimum": 0,
+        "default": 0.25,
+        "description": "Automatic windows: merge active runs separated by a gap shorter than this many seconds."
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["rows", "summary"],
+    "properties": {
+      "rows": {
+        "type": "array",
+        "description": "One row per window, in order.",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "from", "to", "voice_db", "background_db", "ratio_db"],
+          "properties": {
+            "name": { "type": "string", "description": "Window label (line-1, line-2, ... for automatic windows)." },
+            "from": { "type": "number", "description": "Window start in seconds." },
+            "to": { "type": "number", "description": "Window end in seconds." },
+            "voice_db": {
+              "type": ["number", "null"],
+              "description": "Mean band-limited voice power in dBFS, or null when no frame was kept."
+            },
+            "background_db": {
+              "type": ["number", "null"],
+              "description": "Mean band-limited background power over the same frames in dBFS, or null when no frame was kept."
+            },
+            "ratio_db": {
+              "type": ["number", "null"],
+              "description": "voice_db - background_db, or null when no frame was kept."
+            }
+          }
+        }
+      },
+      "summary": {
+        "type": ["object", "null"],
+        "additionalProperties": false,
+        "description": "Minimum and median ratio over the non-null rows, or null when there are none.",
+        "properties": {
+          "min_db": { "type": "number", "description": "Smallest non-null ratio in dB." },
+          "median_db": { "type": "number", "description": "Median non-null ratio in dB." }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "title": "Voice over a bass bed",
+      "input": { "voice": "voice.wav", "background": "bed.wav", "windows": [{ "name": "line-1", "from": 0, "to": 2 }] },
+      "fixtures": {
+        "voice.wav": { "sine": { "freq": 1000, "seconds": 2, "amplitude_db": -20, "channels": 1 } },
+        "bed.wav": { "sine": { "freq": 100, "seconds": 2, "amplitude_db": -20, "channels": 1 } }
+      }
+    },
+    {
+      "title": "Lines found automatically",
+      "input": { "voice": "lines.wav", "background": "bed.wav" },
+      "fixtures": {
+        "lines.wav": {
+          "concat": [
+            { "sine": { "freq": 1000, "seconds": 1, "amplitude_db": -20, "channels": 1 } },
+            { "silence": { "seconds": 0.5, "channels": 1 } },
+            { "sine": { "freq": 1000, "seconds": 1, "amplitude_db": -20, "channels": 1 } }
+          ]
+        },
+        "bed.wav": { "sine": { "freq": 100, "seconds": 2.5, "amplitude_db": -20, "channels": 1 } }
+      }
+    }
+  ]
+}
