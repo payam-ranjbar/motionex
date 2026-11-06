@@ -4,12 +4,25 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { browserAvailable } from '../lib/browser.mjs';
+import { APP_ROOT } from '../lib/config.mjs';
 import { ffmpegPath, ffprobePath } from '../lib/ffmpeg.mjs';
-import { sha256Dir } from '../lib/hash.mjs';
+import { sha256, sha256Dir } from '../lib/hash.mjs';
 import { deepMerge, listPresets, loadPreset } from '../lib/presets.mjs';
 import { createAjv, formatErrors, validateCollecting } from './ajv.mjs';
 
 const MANIFEST_SCHEMA = JSON.parse(readFileSync(new URL('./manifest.schema.json', import.meta.url), 'utf8'));
+
+// Shared code that tools run on. Its hash is folded into every tool's hash, so a fix in a shared library (the mix
+// master, the Strudel engine, SFX recipes) invalidates cached results instead of serving the old output.
+const RUNTIME_DIRS = ['src/lib', 'lib', 'vendor/mucavex/src'];
+async function runtimeHash() {
+  const parts = [];
+  for (const rel of RUNTIME_DIRS) {
+    const abs = path.join(APP_ROOT, rel);
+    parts.push(`${rel}:${existsSync(abs) ? await sha256Dir(abs) : '-'}`);
+  }
+  return sha256(parts.join('\n'));
+}
 
 const binCache = new Map();
 function binaryOk(bin, config) {
@@ -53,13 +66,14 @@ export class Registry {
     const tools = new Map();
     const invalid = [];
     this.ajv = createAjv();
+    const runtime = await runtimeHash();
     for (const { path: root, origin } of this.dirs) {
       if (!existsSync(root)) continue;
       for (const d of readdirSync(root, { withFileTypes: true })) {
         if (!d.isDirectory() || !existsSync(path.join(root, d.name, 'tool.json'))) continue;
         const dir = path.join(root, d.name);
         try {
-          const entry = await this.#load(dir, origin);
+          const entry = await this.#load(dir, origin, runtime);
           const prev = tools.get(entry.name);
           if (prev && !(origin === 'extension' && this.config.allowOverride)) {
             invalid.push({
@@ -81,7 +95,7 @@ export class Registry {
     return { loaded: tools.size, invalid };
   }
 
-  async #load(dir, origin) {
+  async #load(dir, origin, runtime) {
     const fail = (errors) => Object.assign(new Error(errors.join('; ')), { errors });
     let manifest;
     try {
@@ -141,7 +155,7 @@ export class Registry {
       dir,
       origin,
       manifest,
-      toolHash: await sha256Dir(dir),
+      toolHash: sha256(`${await sha256Dir(dir)}:${runtime}`),
       available: missing.length === 0,
       unavailableReason: missing.length ? missing.join('; ') : null,
       validateInput,
