@@ -23,7 +23,8 @@ function send(msg) {
 async function finish(msg, code = 0) {
   if (finished) return;
   finished = true;
-  await send(msg);
+  // Never hang after the final message: exit even if the IPC send callback does not fire within 2 s.
+  await Promise.race([send(msg), new Promise((resolve) => setTimeout(resolve, 2000))]);
   process.exit(code);
 }
 

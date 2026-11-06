@@ -1,0 +1,14 @@
+{
+  "name": "fake.linger",
+  "version": "1.0.0",
+  "title": "fake.linger",
+  "summary": "Test tool: returns a result but leaves a grandchild holding its stdout/stderr open.",
+  "kind": "node",
+  "handler": "handler.mjs",
+  "deterministic": false,
+  "cache_default": "off",
+  "resources": { "class": "light", "slots": 0 },
+  "timeout_s": 60,
+  "input_schema": { "type": "object", "additionalProperties": false, "properties": {} },
+  "examples": [{ "title": "linger", "input": {}, "run": false }]
+}

@@ -108,7 +108,7 @@ test('registry: fakes load, defaults applied, refs collected, bad manifests list
     });
     assert.deepEqual(
       reg.list().map((t) => t.name),
-      ['fake.cmd', 'fake.echo', 'fake.fail', 'fake.sleep'],
+      ['fake.cmd', 'fake.echo', 'fake.fail', 'fake.linger', 'fake.sleep'],
     );
     assert.equal(reg.invalid().length, 1);
     const v = reg.validate('fake.echo', { message: 'x', file: 'a/b.wav' });

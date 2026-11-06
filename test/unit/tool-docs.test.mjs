@@ -143,15 +143,15 @@ test('renderToolDocs: title, refs intro, index and every tool sorted by name', a
   assert.match(md, /`pin:<name>#<output-path>`/);
   assert.deepEqual(
     infos.map((t) => t.name),
-    ['fake.cmd', 'fake.echo', 'fake.fail', 'fake.sleep'],
+    ['fake.cmd', 'fake.echo', 'fake.fail', 'fake.linger', 'fake.sleep'],
   );
-  for (const name of ['fake.cmd', 'fake.echo', 'fake.fail', 'fake.sleep']) {
+  for (const name of ['fake.cmd', 'fake.echo', 'fake.fail', 'fake.linger', 'fake.sleep']) {
     assert.match(md, new RegExp(`^## ${name.replace(/\./g, '\\.')}$`, 'm'));
     assert.ok(md.includes(`- **${name}** — `), `index lists ${name}`);
   }
   assert.deepEqual(
     [...md.matchAll(/^## (.+)$/gm)].map((m) => m[1]),
-    ['Index', 'fake.cmd', 'fake.echo', 'fake.fail', 'fake.sleep'],
+    ['Index', 'fake.cmd', 'fake.echo', 'fake.fail', 'fake.linger', 'fake.sleep'],
   );
   assert.match(renderToolDocs(infos, { title: 'custom title' }), /^# custom title$/m);
 });

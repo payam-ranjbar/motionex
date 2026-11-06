@@ -115,7 +115,31 @@ export function createExecutor({ config }) {
           };
           child.once('close', (code, sig) => done({ code, signal: sig }));
           child.once('error', (err) => done({ code: null, signal: null, error: err }));
+          // 'close' waits for the child's stdio to close. A leftover grandchild can hold those pipes open forever
+          // after the child itself exited (seen once: a job stayed "running" for 30 min after its handler
+          // finished). Settle a few seconds after 'exit' regardless, and kill the child's process group.
+          child.once('exit', (code, sig) => {
+            const t = setTimeout(() => {
+              if (!exitResolved) killTree(child.pid, 'SIGKILL');
+              done({ code, signal: sig });
+            }, 3000);
+            t.unref?.();
+          });
         });
+
+        // A node child that delivered its final message but does not exit within 10 s is stuck (e.g. its IPC send
+        // callback never fired): kill it; the delivered result still counts.
+        let lingerTimer = null;
+        if (entry.manifest.kind === 'node') {
+          child.on('message', (msg) => {
+            if ((msg?.type === 'result' || msg?.type === 'error') && !lingerTimer) {
+              lingerTimer = setTimeout(() => {
+                if (!exitResolved) killTree(child.pid, 'SIGKILL');
+              }, 10_000);
+              lingerTimer.unref?.();
+            }
+          });
+        }
 
         const terminate = (why) => {
           if (terminated) return;

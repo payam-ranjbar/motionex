@@ -181,3 +181,38 @@ test('killTree kills a spawned process', async () => {
     } catch {}
   }
 });
+
+// Seen live: a job stayed "running" for 30 min after its handler finished. A leftover process that holds the
+// child's pipes must not keep the job open: it settles a few seconds after the child exits.
+test('a result is delivered even when a leftover grandchild holds the pipes open', async () => {
+  const ws = await mkTmp();
+  try {
+    const config = {
+      ...loadConfig({ ...process.env, MX_WORKSPACE: ws, MX_TOOLS_DIRS: FAKES, MX_EXTENSIONS_DIR: '' }),
+      killGraceMs: 500,
+    };
+    const registry = await loadRegistry({ config });
+    const entry = registry.get('fake.linger');
+    const executor = createExecutor({ config });
+    const outDir = path.join(ws, 'out');
+    const scratchDir = path.join(ws, 'scratch');
+    await mkdir(outDir, { recursive: true });
+    await mkdir(scratchDir, { recursive: true });
+    const t0 = Date.now();
+    const r = await executor.run({
+      job: { id: 'job_linger', tool: 'fake.linger', tool_version: '1.0.0' },
+      entry,
+      input: {},
+      rawInput: {},
+      outDir,
+      scratchDir,
+      timeoutMs: 60_000,
+      onEvent: () => {},
+      logFile: path.join(ws, 'log.txt'),
+    });
+    assert.deepEqual(r.result, { ok: true });
+    assert.ok(Date.now() - t0 < 15_000, `took ${Date.now() - t0} ms`);
+  } finally {
+    await rmTmp(ws);
+  }
+});
