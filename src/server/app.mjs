@@ -10,7 +10,7 @@ import { createRouter, sendProblem } from './router.mjs';
 const REQUEST_ID = /^[A-Za-z0-9._-]{1,64}$/;
 
 /** Paths that work without a token: liveness probes must not need credentials. */
-const AUTH_FREE = new Set(['/livez', '/readyz']);
+const AUTH_FREE = new Set(['/livez', '/readyz', '/health']);
 
 /**
  * Route modules registered on the one router. `jobs.mjs` and `listen.mjs` are written by other pieces and

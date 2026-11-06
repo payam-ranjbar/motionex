@@ -87,10 +87,20 @@ export default async function run(input, ctx) {
 
   // 4. Render, finish, write and measure every sound.
   const results = [];
+  const warnings = [];
   for (let i = 0; i < names.length; i++) {
     const name = names[i];
     ctx.progress(names.length ? i / names.length : 1, name);
     const params = input.params?.[name] ?? {};
+    const accepted = mod.params?.[name];
+    if (accepted) {
+      const unknown = Object.keys(params).filter((k) => !Object.hasOwn(accepted, k));
+      if (unknown.length) {
+        warnings.push(
+          `${name}: unknown params ${unknown.join(', ')} were ignored (accepted: ${Object.keys(accepted).join(', ') || 'none'})`,
+        );
+      }
+    }
     const buffer = await sounds[name](kit, params);
     if (
       !Array.isArray(buffer) ||
@@ -139,5 +149,5 @@ export default async function run(input, ctx) {
   // 5. A manifest of everything that was rendered.
   await writeFile(path.join(ctx.outDir, 'sounds.json'), JSON.stringify(results, null, 2), 'utf8');
   ctx.progress(1, 'done');
-  return { result: { sounds: results } };
+  return { result: { sounds: results, warnings } };
 }

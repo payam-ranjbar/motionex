@@ -7,7 +7,7 @@ Base URL: `MX=${MX_URL:-http://127.0.0.1:8095}`. JSON in and out. Errors are RFC
 ## Discover
 | Call | Gives |
 |---|---|
-| `GET /readyz` | 200 when ready (503 with reasons otherwise) |
+| `GET /readyz` | 200 when ready (503 with reasons otherwise); `/livez` and `/health` just say the process is up |
 | `GET /v1` | name, version, links |
 | `GET /v1/capabilities` | ffmpeg version, browser, python, **voices**, **presets** per kind, limits, offline flag |
 | `GET /v1/tools?brief=1` | every tool: name, title, summary, available, unavailable_reason |
@@ -83,7 +83,7 @@ curl -s -X DELETE $MX/v1/pins/teaser/voice/intro
 ## Preview in a browser
 - `GET /w/{path}` serves workspace files over http, so a human can open `http://127.0.0.1:8095/w/films/a/scene.html`.
 - `GET /_mx/lib/motion/runtime.js`, `/_mx/lib/motion/adapters.js` and `/_mx/lib/gsap/gsap.min.js` are the optional libraries. GSAP's plugins are under `/_mx/lib/gsap/`.
-- `GET /listen` is the listening room for the human.
+- `GET /listen` is the listening room for the human: `?ref=<ref>` (one file), `?compare=<ref>,<ref>` (A/B), `?page=<path>&audio=<ref>&timeline=<ref>` (live preview).
 
 ## mx CLI
 ```

@@ -53,8 +53,11 @@ export function parseRef(s) {
 }
 
 /** @param {string} rel @param {string} detail */
-const notFound = (rel, detail) =>
-  new Problem(422, 'file-not-found', 'File not found', detail ?? `"${rel}" does not exist`);
+const notFound = (rel, detail) => {
+  // A common slip: a job output written without its "job:" prefix ("job_0193…/mix.wav").
+  const hint = /^job_[0-9a-f]{32}\//.test(String(rel)) ? ` (did you mean "job:${rel}"?)` : '';
+  return new Problem(422, 'file-not-found', 'File not found', detail ?? `"${rel}" does not exist${hint}`);
+};
 
 /** Stat a resolved file and describe it. */
 async function describeFile(abs, workspace, display) {

@@ -11,6 +11,7 @@ export function register(router, deps) {
   const ready = () => deps?.ready?.() ?? { ready: true, reasons: [] };
 
   router.add('GET', '/livez', () => ({ ok: true }));
+  router.add('GET', '/health', () => ({ ok: true })); // alias: agents often guess /health first
 
   router.add('GET', '/readyz', () => {
     const state = ready();

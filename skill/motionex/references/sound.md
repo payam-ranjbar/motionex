@@ -42,6 +42,7 @@ The accepted balance is the preset `dialogue-anchored`. `ducked-bed` (classic du
 - **−16 LUFS**: calmer, and good for narrative pieces. It was chosen after "too loud" at −14.
 - **Telegram** does not normalise, so your master is what people hear.
 - **True peak**: keep it at −1 to −1.5 dBTP for lossy encodes.
+- **`gain+limiter`** iterates until the limited mix lands on the target (±0.3 LU). If the material is too peaky to get there under the ceiling, the result says so in `warnings`; lower the target, or tame the transients (a gentle compressor on the drums or the bus) first. Pushing a master louder costs transient snap: check the drop with `audio.levels` afterwards.
 
 ## Sound effects (`sfx.synth`)
 - **Built-in generic recipes**, pure synthesis and seeded: `rain_bed`, `glitch_cut`, `glitch_micro`, `whoosh_by`, `swish`, `thump`, `burst`, `ui_blip`. Each takes `params`.

@@ -25,6 +25,7 @@ export default async function run(input, ctx) {
 
   ctx.progress(0.7, 'master');
   const { mix: mastered, report: masterReport } = await applyMasterStage(summed, plan.master, { signal: ctx.signal });
+  if (masterReport?.warning) warnings.push(`master: ${masterReport.warning}`);
   const mix = fitLength(mastered, n);
 
   ctx.progress(0.85, 'writing outputs');

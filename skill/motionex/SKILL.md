@@ -27,7 +27,7 @@ cat > jobs/voice.json <<'EOF'
 EOF
 curl -s -X POST "$MX/v1/jobs?wait=120" -H 'content-type: application/json' --data @jobs/voice.json
 ```
-- **The response is a Job**: `{id, status, result, outputs: [{name, ref, path, bytes}], error}`.
+- **The response is a Job**: `{id, status, result, outputs: [{name, ref, path, bytes}], error}`. Output file names are fixed by each tool (`music.wav`, `mix.wav`, `line1.wav`…); only a few tools take a `name` field, so check the schema rather than guessing. A request that fails validation returns a problem body (no `id`), so check `status`/`type` before reading `id` in your scripts.
   - `status` is `queued`, `running`, `succeeded`, `failed` or `canceled`.
   - `?wait=N` holds the request up to N seconds (at most 300). If the job is still running you get 202; poll with `curl -s "$MX/v1/jobs/<id>?wait=300"`. Never sleep-loop.
 - **Outputs are files** at `outputs[].path`, for example `.mx/jobs/<id>/out/intro.wav`. Read them directly in the workspace, or with `GET $MX/v1/jobs/<id>/outputs/<name>`.
@@ -59,7 +59,7 @@ You measure; the human listens. After each audio change:
 3. ask ONE specific question ("Is the music too loud under the last line?");
 4. make one or two changes per round.
 
-Your "ears" are `audio.loudness`, `audio.levels`, `audio.speech-ratio`, `audio.stats` and `audio.silence`. The human is at `$MX/listen`, the listening room: recent jobs with players, A/B with `?compare=<ref>,<ref>`, and a scrubbable live preview of a page with its audio. When the numbers and the human disagree, the human wins.
+Your "ears" are `audio.loudness`, `audio.levels`, `audio.speech-ratio`, `audio.stats` and `audio.silence`. The human is at `$MX/listen`, the listening room: recent jobs with players, one file with `?ref=<ref>`, A/B with `?compare=<ref>,<ref>`, and a scrubbable live preview with `?page=<workspace .html>&audio=<ref>&timeline=<ref>`. Any workspace file also opens directly at `$MX/w/<path>`. When the numbers and the human disagree, the human wins.
 
 ## One way to make a film (an example path, not a rule)
 1. **Brief**: the story, the length, the platform (16:9 or 9:16, any size cap) and the look. Ask at most 2–3 questions, then sketch.
@@ -76,7 +76,7 @@ Your "ears" are `audio.loudness`, `audio.levels`, `audio.speech-ratio`, `audio.s
 Every step is replaceable. A music-only piece, a silent loop, a title card or a pure SFX job are all fine.
 
 ## Time and cost (rough)
-- **Picture**: about 1–2 s of render per second of 1080p30 with 4 workers. Heavy CSS blur, filters and WebGL are slower; there is no GPU in the container.
+- **Picture**: the container has no GPU. A 22 s 1080p30 canvas-heavy page took about 2 minutes with 6 workers (≈5 s of render per second of video); simple DOM/SVG pages are faster, heavy blur, filters and WebGL slower. Iterate with stills, a 960×540 draft or a `from_s`/`to_s` section, and render the full 1080p once.
 - **Music**: a 60–90 s score takes 3–12 minutes to render. Run it while you work on picture.
 - **Piper**: seconds per line.
 - **Mix and encode**: seconds to a minute; a two-pass delivery encode takes 1–2 minutes.

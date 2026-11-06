@@ -8,14 +8,26 @@
   "handler": "handler.mjs",
   "deterministic": false,
   "cache_default": "off",
-  "resources": { "class": "audio", "slots": 1 },
+  "resources": {
+    "class": "audio",
+    "slots": 1
+  },
   "timeout_s": 1800,
-  "requires": { "binaries": ["ffmpeg"] },
+  "requires": {
+    "binaries": ["ffmpeg"]
+  },
   "input_schema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
     "additionalProperties": false,
-    "oneOf": [{ "required": ["recipe"] }, { "required": ["builtin"] }],
+    "oneOf": [
+      {
+        "required": ["recipe"]
+      },
+      {
+        "required": ["builtin"]
+      }
+    ],
     "properties": {
       "recipe": {
         "type": "string",
@@ -28,12 +40,15 @@
       },
       "sounds": {
         "type": "array",
-        "items": { "type": "string", "description": "A sound name exported by the recipe's `sounds` object." },
+        "items": {
+          "type": "string",
+          "description": "A sound name exported by the recipe's `sounds` object."
+        },
         "description": "Sound names to render, in order. Omit to render every sound the recipe exports."
       },
       "params": {
         "type": "object",
-        "description": "Recipe parameters keyed by sound name. Each value is passed to the recipe as its second argument.",
+        "description": "Recipe parameters keyed by sound name. Each value is passed to the recipe as its second argument. Built-in params (defaults): rain_bed {seconds 8, density 1, tone 0.5}, glitch_cut {seconds 0.25}, glitch_micro {seconds 0.08}, whoosh_by {seconds 0.9, pitch 1}, swish {seconds 0.35}, thump {seconds 0.6, pitch 1}, burst {seconds 1.2}, ui_blip {pitch 1}. A recipe may export `params` (name -> defaults); unknown keys are then reported in warnings.",
         "additionalProperties": {
           "type": "object",
           "description": "Parameters for one sound; arbitrary keys, read by the recipe."
@@ -121,12 +136,30 @@
             "integrated_lufs"
           ],
           "properties": {
-            "name": { "type": "string", "description": "Sound name from the recipe." },
-            "file": { "type": "string", "description": "Output WAV path (POSIX, relative to the job's out folder)." },
-            "seconds": { "type": "number", "description": "Finished duration in seconds." },
-            "peak_db": { "type": "number", "description": "Sample peak in dBFS after finishing." },
-            "rms_db": { "type": "number", "description": "RMS level in dBFS over the whole sound." },
-            "peak_at_s": { "type": "number", "description": "Time of the sample peak in seconds from the start." },
+            "name": {
+              "type": "string",
+              "description": "Sound name from the recipe."
+            },
+            "file": {
+              "type": "string",
+              "description": "Output WAV path (POSIX, relative to the job's out folder)."
+            },
+            "seconds": {
+              "type": "number",
+              "description": "Finished duration in seconds."
+            },
+            "peak_db": {
+              "type": "number",
+              "description": "Sample peak in dBFS after finishing."
+            },
+            "rms_db": {
+              "type": "number",
+              "description": "RMS level in dBFS over the whole sound."
+            },
+            "peak_at_s": {
+              "type": "number",
+              "description": "Time of the sample peak in seconds from the start."
+            },
             "momentary_max_lufs": {
               "type": ["number", "null"],
               "description": "Maximum 400 ms momentary loudness in LUFS, or null when the sound is shorter than the window."
@@ -141,18 +174,30 @@
             }
           }
         }
+      },
+      "warnings": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Things worth knowing, e.g. params a recipe does not accept (they were ignored)."
       }
     }
   },
   "examples": [
     {
       "title": "Built-in thump",
-      "input": { "builtin": "generic", "sounds": ["thump"] },
+      "input": {
+        "builtin": "generic",
+        "sounds": ["thump"]
+      },
       "fixtures": {}
     },
     {
       "title": "Inline recipe with two sounds",
-      "input": { "recipe": "sfx/my.mjs" },
+      "input": {
+        "recipe": "sfx/my.mjs"
+      },
       "fixtures": {
         "sfx/my.mjs": {
           "text": "export const sounds = {\n  blip: (kit) => kit.st(kit.osc(0.1, 880)),\n  ping: (kit) => kit.st(kit.osc(0.2, 1320)),\n};\nexport const describe = { blip: 'short blip', ping: 'long ping' };\n"

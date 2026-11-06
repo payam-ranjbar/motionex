@@ -19,7 +19,8 @@ const BASE = `http://127.0.0.1:${PORT}`;
 let ws;
 let secrets;
 
-const docker = (...args) => spawnSync(DOCKER, args, { encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' } });
+const docker = (...args) =>
+  spawnSync(DOCKER, args, { encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' } });
 const sh = (cmd) => docker('exec', NAME, 'sh', '-c', cmd);
 const opts = { skip: ON ? false : 'set MX_DOCKER_TESTS=1 (node scripts/test.mjs docker)', timeout: 600_000 };
 
@@ -34,7 +35,11 @@ async function waitHealthy(ms = 90_000) {
   throw new Error(`container not ready:\n${docker('logs', NAME).stdout.slice(-3000)}`);
 }
 async function job(tool, input, wait = 300) {
-  const r = await fetch(`${BASE}/v1/jobs?wait=${wait}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tool, input }) });
+  const r = await fetch(`${BASE}/v1/jobs?wait=${wait}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ tool, input }),
+  });
   return r.json();
 }
 
@@ -45,10 +50,33 @@ before(async () => {
   writeFileSync(path.join(secrets, 'elevenlabs_api_key'), CANARY);
   mkdirSync(path.join(ws, 'films'), { recursive: true });
   docker('rm', '-f', NAME);
-  const r = docker('run', '-d', '--name', NAME, '--read-only', '--tmpfs', '/tmp:size=1g,mode=1777', '--shm-size=1g',
-    '--cap-drop=ALL', '--security-opt', 'no-new-privileges', '--user', '10001:10001', '--init',
-    '-p', `127.0.0.1:${PORT}:8095`, '-e', `MX_ALLOWED_HOSTS=127.0.0.1:${PORT},localhost:${PORT}`,
-    '-v', `${ws}:/workspace`, '-v', `${secrets}:/run/secrets:ro`, '-v', 'motionex-test-cache:/cache', IMAGE);
+  const r = docker(
+    'run',
+    '-d',
+    '--name',
+    NAME,
+    '--read-only',
+    '--tmpfs',
+    '/tmp:size=1g,mode=1777',
+    '--shm-size=1g',
+    '--cap-drop=ALL',
+    '--security-opt',
+    'no-new-privileges',
+    '--user',
+    '10001:10001',
+    '--init',
+    '-p',
+    `127.0.0.1:${PORT}:8095`,
+    '-e',
+    `MX_ALLOWED_HOSTS=127.0.0.1:${PORT},localhost:${PORT}`,
+    '-v',
+    `${ws}:/workspace`,
+    '-v',
+    `${secrets}:/run/secrets:ro`,
+    '-v',
+    'motionex-test-cache:/cache',
+    IMAGE,
+  );
   assert.equal(r.status, 0, r.stderr);
   await waitHealthy();
 });
@@ -77,7 +105,11 @@ test('in-image smoke: ffmpeg filters, piper, mucavex, chromium webgl', opts, asy
 test('guards: path traversal, evil origin, unknown host', opts, async () => {
   const trav = await fetch(`${BASE}/v1/files/..%2F..%2Fetc%2Fpasswd`, { method: 'PUT', body: 'x' });
   assert.ok([404, 422].includes(trav.status), `traversal ${trav.status}`);
-  const evil = await fetch(`${BASE}/v1/jobs`, { method: 'POST', headers: { origin: 'http://evil.example', 'content-type': 'application/json' }, body: '{"tool":"media.probe","input":{}}' });
+  const evil = await fetch(`${BASE}/v1/jobs`, {
+    method: 'POST',
+    headers: { origin: 'http://evil.example', 'content-type': 'application/json' },
+    body: '{"tool":"media.probe","input":{}}',
+  });
   assert.equal(evil.status, 403);
 });
 
@@ -93,16 +125,23 @@ test('secrets: elevenlabs available from the secret FILE, canary never in logs o
 });
 
 test('cancel kills the browser', opts, async () => {
-  writeFileSync(path.join(ws, 'films', 'slow.html'), `<!doctype html><body><canvas id=c width=1280 height=720></canvas><script>
+  writeFileSync(
+    path.join(ws, 'films', 'slow.html'),
+    `<!doctype html><body><canvas id=c width=1280 height=720></canvas><script>
 const x = document.getElementById('c').getContext('2d');
 window.__motion = { ready: true, duration: 120, size: { width: 1280, height: 720 },
   seek(t) { for (let i = 0; i < 400; i++) { x.fillStyle = 'hsl(' + (i + t * 90) % 360 + ',70%,50%)'; x.fillRect((i * 37) % 1280, (i * 53) % 720, 200, 120); } } };
-</script></body>`);
+</script></body>`,
+  );
   const j = await job('picture.render', { page: 'films/slow.html', workers: 2 }, 0);
   await sleep(8000);
   // count processes whose command starts with the Playwright browser folder (a plain grep would match itself)
   const browsers = () =>
-    Number(sh("for p in /proc/[0-9]*; do tr '\\0' ' ' < $p/cmdline 2>/dev/null | grep -q '^/opt/ms-playwright/' && echo x; done | wc -l").stdout.trim());
+    Number(
+      sh(
+        "for p in /proc/[0-9]*; do tr '\\0' ' ' < $p/cmdline 2>/dev/null | grep -q '^/opt/ms-playwright/' && echo x; done | wc -l",
+      ).stdout.trim(),
+    );
   assert.ok(browsers() > 0, 'expected a running headless shell');
   await fetch(`${BASE}/v1/jobs/${j.id}/cancel`, { method: 'POST' });
   const done = await (await fetch(`${BASE}/v1/jobs/${j.id}?wait=30`)).json();
@@ -112,7 +151,11 @@ window.__motion = { ready: true, duration: 120, size: { width: 1280, height: 720
 });
 
 test('restart: a running job becomes interrupted', opts, async () => {
-  const j = await job('music.render', { code: `note("c2*8").s("sawtooth").lpf(${400 + (Date.now() % 97)})`, seconds: 600, offline: true }, 0);
+  const j = await job(
+    'music.render',
+    { code: `note("c2*8").s("sawtooth").lpf(${400 + (Date.now() % 97)})`, seconds: 600, offline: true },
+    0,
+  );
   await sleep(3000);
   assert.equal(docker('restart', NAME).status, 0);
   await waitHealthy();

@@ -209,3 +209,19 @@ test('a recipe returning NaN samples is tool-failed', needs('ffmpeg'), async () 
     await rmTmp(ws);
   }
 });
+
+// Found by the headful agent test: `thump: {freq: 52, decay_s: 0.75}` was silently ignored (thump takes seconds, pitch).
+test('sfx.synth warns about params a built-in sound does not accept', needs('ffmpeg'), async () => {
+  const ws = await mkTmp();
+  try {
+    const { result } = await runTool(
+      'sfx.synth',
+      { builtin: 'generic', sounds: ['thump'], params: { thump: { freq: 52, pitch: 0.8 } } },
+      { workspace: ws },
+    );
+    assert.equal(result.warnings.length, 1);
+    assert.match(result.warnings[0], /thump: unknown params freq .*accepted: seconds, pitch/);
+  } finally {
+    await rmTmp(ws);
+  }
+});

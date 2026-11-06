@@ -42,12 +42,28 @@ export async function applyMaster(audio, master = {}, { signal } = {}) {
       preLoudnessI = i;
       audio = fitLength(await loudnorm(audio, { target_lufs, true_peak_db, lra, signal }), n);
     } else {
-      // gain + limiter: one measured gain, then a true-peak-safe limiter.
-      const g = target_lufs - i;
-      audio = applyGainDb(audio, g);
+      // gain + limiter, iterated: the limiter removes loudness from transient-heavy material (a kick-driven drop
+      // lost 1.2 LU), so measure the limited result and correct the gain until it lands on the target
+      // (±0.3 LU, at most 5 passes). Each pass limits the ORIGINAL audio with the new gain, never twice.
       const limit = Math.min(1, Math.max(0.0625, 10 ** ((true_peak_db - 0.5) / 20)));
       const chain = `alimiter=limit=${limit.toFixed(6)}:attack=4:release=60:level=disabled:latency=1`;
-      audio = fitLength(await filterAudio(audio, chain, { signal }), n);
+      // Secant steps: once the limiter works hard, 1 dB more gain buys less than 1 LU, so use the measured slope.
+      const source = audio;
+      let g = target_lufs - i;
+      let prev = null;
+      let got = null;
+      for (let pass = 1; pass <= 8; pass++) {
+        audio = fitLength(await filterAudio(applyGainDb(source, g), chain, { signal }), n);
+        got = integratedLufs(audio);
+        if (got == null || Math.abs(target_lufs - got) <= 0.3) break;
+        const slope = prev ? Math.min(1, Math.max(0.1, (got - prev.got) / (g - prev.g || 1e-9))) : 1;
+        prev = { g, got };
+        g += Math.max(-12, Math.min(12, (target_lufs - got) / slope));
+        if (g > 48) break;
+      }
+      if (got != null && Math.abs(target_lufs - got) > 0.5) {
+        warning = `loudness target ${target_lufs} LUFS not reached with a ${true_peak_db} dBTP ceiling (got ${got.toFixed(1)}); the material is too peaky for this target: lower the target or tame the transients first`;
+      }
       loudnessGainDb = g;
     }
   }
@@ -112,6 +128,16 @@ async function loudnormMeasure(audio, { target_lufs, true_peak_db, lra, signal }
     '-',
   ];
   const { stderr } = await runFfmpeg(args, { input: encodeWav(audio, { format: 'f32' }), signal });
+  return parseLoudnormJson(stderr);
+}
+
+/**
+ * The measurement JSON that `loudnorm=...:print_format=json` prints to stderr (ffmpeg 6 and 7).
+ * @param {string} stderr
+ * @returns {{input_i: string, input_tp: string, input_lra: string, input_thresh: string, target_offset: string}}
+ * @throws {ToolError} tool-failed when it is missing or incomplete
+ */
+export function parseLoudnormJson(stderr) {
   const text = String(stderr ?? '');
   let at = -1;
   for (let i = text.length - 1; i >= 0; i--) {
@@ -121,9 +147,13 @@ async function loudnormMeasure(audio, { target_lufs, true_peak_db, lra, signal }
     }
   }
   if (at < 0) throw new ToolError('tool-failed', 'loudnorm pass 1 printed no measurement JSON');
+  // ffmpeg 7 prints more lines after the JSON ("[out#0/null @ …] video:0KiB …", "size=N/A …"): cut at the
+  // first line that is exactly "}" after the opening brace (ffmpeg 6 ended stderr with it).
+  const close = text.slice(at).search(/\n\}\s*(\n|$)/);
+  const json = close < 0 ? text.slice(at) : text.slice(at, at + close + 2);
   let measured;
   try {
-    measured = JSON.parse(text.slice(at));
+    measured = JSON.parse(json);
   } catch (e) {
     throw new ToolError('tool-failed', `loudnorm pass 1 measurement JSON is invalid: ${e.message}`);
   }

@@ -122,3 +122,46 @@ test('silence plus a loudness target does not crash and reports a warning', need
   assert.equal(audio.channels[0].length, SR * 2);
   assert.ok(report.warning, 'report.warning is set');
 });
+
+// Found by the headful agent test in Docker: ffmpeg 7.1 prints "[out#0/null …]" and "size=…" lines after the
+// loudnorm JSON, which broke pass 1 there while ffmpeg 6.0 on the host passed.
+test('loudnorm pass 1 parses ffmpeg 7 output with trailing summary lines', async () => {
+  const { parseLoudnormJson } = await import('../../src/lib/mix/master.mjs');
+  const stderr = [
+    '[Parsed_loudnorm_0 @ 0x7033425e6cc0] ',
+    '{',
+    '\t"input_i" : "-21.75",',
+    '\t"input_tp" : "-18.06",',
+    '\t"input_lra" : "0.00",',
+    '\t"input_thresh" : "-31.75",',
+    '\t"target_offset" : "0.05"',
+    '}',
+    '[out#0/null @ 0x703344c46700] video:0KiB audio:750KiB subtitle:0KiB other streams:0KiB global headers:0KiB',
+    'size=N/A time=00:00:02.00 bitrate=N/A speed= 116x',
+  ].join('\n');
+  const m = parseLoudnormJson(stderr);
+  assert.equal(m.input_i, '-21.75');
+  assert.equal(m.target_offset, '0.05');
+});
+
+// Found by the headful agent test: on transient-heavy music, one measured gain followed by the limiter landed
+// 1.2 LU under the target (-14 asked, -15.2 got). The gain is now corrected until the limited result lands.
+test(
+  'gain+limiter converges on the target for transient-heavy material (kick-like pulses)',
+  needs('ffmpeg'),
+  async () => {
+    const sr = 48000;
+    const n = sr * 8;
+    const ch = new Float32Array(n);
+    const r = mulberry32(3);
+    for (let i = 0; i < n; i++) {
+      const tb = (i % (sr / 2)) / sr; // a kick every 0.5 s
+      const kick = Math.exp(-tb * 18) * Math.sin(2 * Math.PI * 55 * tb) * 0.9;
+      ch[i] = kick + (r() * 2 - 1) * 0.01;
+    }
+    const audio = { sampleRate: sr, channels: [ch, Float32Array.from(ch)] };
+    const { report } = await applyMaster(audio, { loudness: { target_lufs: -11, true_peak_db: -1 } });
+    assert.ok(Math.abs(report.after.integrated_lufs + 11) <= 0.5, `I ${report.after.integrated_lufs}`);
+    assert.ok(report.after.true_peak_dbtp <= -0.5, `TP ${report.after.true_peak_dbtp}`);
+  },
+);

@@ -63,6 +63,12 @@ function player(url, mediaType, name) {
   return `<a href="${esc(url)}" target="_blank">open</a>`;
 }
 
+async function viewOne(ref) {
+  app.innerHTML = `<div class="bar"><a href="/listen">← all jobs</a></div><div class="card" id="one"></div>`;
+  const url = await refUrl(ref).catch(() => null);
+  $('#one').innerHTML = `<h3>${esc(ref.split('/').pop())}</h3><div class="meta ref">${esc(ref)}</div>${url ? player(url, '', ref) : '<p class="status-failed">cannot resolve this ref</p>'}`;
+}
+
 async function viewCompare(refs) {
   app.innerHTML = `<div class="bar"><a href="/listen">← all jobs</a><span class="muted">A/B: listen to both, then tell the agent which one (and why).</span></div><div class="ab" id="ab"></div>`;
   const ab = $('#ab');
@@ -105,7 +111,7 @@ async function viewJobs() {
       <input id="label" placeholder="label or project">
       <button id="reload" class="primary">refresh</button>
       <span class="muted" id="count"></span></div>
-    <div class="note muted">Tip for agents: link the human to <code>/listen?compare=job:…/a.wav,job:…/b.wav</code> for A/B,
+    <div class="note muted">Tip for agents: link the human to <code>/listen?ref=job:…/video.mp4</code> for one file, <code>/listen?compare=job:…/a.wav,job:…/b.wav</code> for A/B,
       or <code>/listen?page=films/x/scene.html&amp;audio=job:…/mix.wav&amp;timeline=job:…/timeline.json</code> for a live preview.</div>
     <div class="grid" id="jobs"></div>`;
   const tools = await api('/v1/tools?brief=1').catch(() => ({ tools: [] }));
@@ -134,7 +140,8 @@ async function viewJobs() {
 
 (async () => {
   try {
-    if (q.get('compare')) await viewCompare(q.get('compare').split(',').map((s) => s.trim()).filter(Boolean));
+    if (q.get('ref')) await viewOne(q.get('ref'));
+    else if (q.get('compare')) await viewCompare(q.get('compare').split(',').map((s) => s.trim()).filter(Boolean));
     else if (q.get('page')) await viewPreview(q.get('page'), q.get('audio'), q.get('timeline'));
     else await viewJobs();
   } catch (e) {

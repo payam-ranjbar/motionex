@@ -15,7 +15,10 @@ before(async () => {
   if (base) return;
   ws = await mkTmp('mx-e2e-');
   const { serve } = await import('../../src/server/main.mjs');
-  server = await serve(loadConfig({ ...process.env, MX_WORKSPACE: ws, MX_PORT: '0', MX_ALLOWED_HOSTS: '*', MX_LOG_LEVEL: 'silent' }), { listen: true });
+  server = await serve(
+    loadConfig({ ...process.env, MX_WORKSPACE: ws, MX_PORT: '0', MX_ALLOWED_HOSTS: '*', MX_LOG_LEVEL: 'silent' }),
+    { listen: true },
+  );
   base = `http://127.0.0.1:${server.port}`;
 });
 after(async () => {
@@ -27,7 +30,8 @@ async function call(method, path, body, headers = {}) {
   const r = await fetch(base + path, {
     method,
     headers: body === undefined ? headers : { 'content-type': 'application/json', ...headers },
-    body: body === undefined ? undefined : typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body),
+    body:
+      body === undefined ? undefined : typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body),
   });
   const text = await r.text();
   let json = null;
@@ -101,7 +105,10 @@ test('a tiny film, end to end through the API', { timeout: 900_000 }, async () =
   await put('films/tiny/sfx.mjs', RECIPE);
 
   // voice, pinned
-  const voice = await run('voice.piper', { voice: 'en_US-norman-medium', lines: [{ name: 'line', text: 'This film was made by an agent.' }] });
+  const voice = await run('voice.piper', {
+    voice: 'en_US-norman-medium',
+    lines: [{ name: 'line', text: 'This film was made by an agent.' }],
+  });
   const take = out(voice, 'line.wav');
   const pin = await call('PUT', '/v1/pins/tiny/voice', { ref: take, note: 'e2e' });
   assert.equal(pin.status, 200, pin.text);
@@ -109,7 +116,9 @@ test('a tiny film, end to end through the API', { timeout: 900_000 }, async () =
   // layout: one scene, 1 s lead, grid at 120 bpm, music drop aligned to the scene
   const layout = await run('timeline.layout', {
     grid: { bpm: 120 },
-    scenes: [{ id: 'main', lead_s: 1, duration_s: 6, lines: [{ audio: 'pin:tiny/voice', who: 'narrator', text: 'line' }] }],
+    scenes: [
+      { id: 'main', lead_s: 1, duration_s: 6, lines: [{ audio: 'pin:tiny/voice', who: 'narrator', text: 'line' }] },
+    ],
     markers: { DROP: { scene: 'main' } },
   });
   const timeline = out(layout, 'timeline.json');
@@ -118,7 +127,13 @@ test('a tiny film, end to end through the API', { timeout: 900_000 }, async () =
   assert.ok(Array.isArray(dialogueClips) && dialogueClips.length === 1, clipsJob.text);
 
   // music (synth only, offline-safe), sfx
-  const music = await run('music.render', { file: 'films/tiny/song.strudel', bpm: 120, seconds: 7, markers: { DROP: 1 }, offline: true });
+  const music = await run('music.render', {
+    file: 'films/tiny/song.strudel',
+    bpm: 120,
+    seconds: 7,
+    markers: { DROP: 1 },
+    offline: true,
+  });
   const sfx = await run('sfx.synth', { recipe: 'films/tiny/sfx.mjs' });
 
   // mix: dialogue + music bed + one whoosh, exact 6 s, master -16 LUFS
@@ -156,7 +171,9 @@ test('a tiny film, end to end through the API', { timeout: 900_000 }, async () =
   assert.ok(Math.abs(loud.integrated_lufs + 16) <= 1, `I ${loud.integrated_lufs}`);
   assert.ok(loud.true_peak_dbtp <= -0.9, `TP ${loud.true_peak_dbtp}`);
 
-  const ratio = (await run('audio.speech-ratio', { voice: out(mix, 'stems/dialogue.wav'), background: out(mix, 'stems/music.wav') })).result;
+  const ratio = (
+    await run('audio.speech-ratio', { voice: out(mix, 'stems/dialogue.wav'), background: out(mix, 'stems/music.wav') })
+  ).result;
   assert.ok(ratio.summary && ratio.summary.min_db >= 6, `speech ratio ${JSON.stringify(ratio.summary)}`);
 
   const frames = await run('media.frames', { video, times: [3] });
@@ -166,12 +183,18 @@ test('a tiny film, end to end through the API', { timeout: 900_000 }, async () =
   assert.ok(delivery.result.size_bytes <= 1_000_000, `delivery ${delivery.result.size_bytes}`);
 
   // cache: the same music request is answered at once from the earlier job
-  const again = await call('POST', '/v1/jobs?wait=5', { tool: 'music.render', input: { file: 'films/tiny/song.strudel', bpm: 120, seconds: 7, markers: { DROP: 1 }, offline: true } });
+  const again = await call('POST', '/v1/jobs?wait=5', {
+    tool: 'music.render',
+    input: { file: 'films/tiny/song.strudel', bpm: 120, seconds: 7, markers: { DROP: 1 }, offline: true },
+  });
   assert.equal(again.status, 200, again.text);
   assert.equal(again.json.cached_from, music.id);
 
   // a new take never replaces the pinned one
-  const voice2 = await run('voice.piper', { voice: 'en_US-norman-medium', lines: [{ name: 'line', text: 'This film was made by an agent.' }] });
+  const voice2 = await run('voice.piper', {
+    voice: 'en_US-norman-medium',
+    lines: [{ name: 'line', text: 'This film was made by an agent.' }],
+  });
   assert.notEqual(voice2.id, voice.id);
   const resolved = await call('GET', `/v1/refs/resolve?ref=${encodeURIComponent('pin:tiny/voice')}`);
   assert.equal(resolved.json.sha256, voice.outputs.find((o) => o.name === 'line.wav').sha256);

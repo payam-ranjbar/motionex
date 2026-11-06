@@ -870,7 +870,7 @@ class: audio · deterministic: no · cache: off · version 1.0.0
 | builtin | enum |  |  | Use the built-in generic recipes instead of a workspace module. Exactly one of `recipe` or `builtin` is required. |
 | sounds | array |  |  | Sound names to render, in order. Omit to render every sound the recipe exports. |
 | sounds[] | string |  |  | A sound name exported by the recipe's `sounds` object. |
-| params | object |  |  | Recipe parameters keyed by sound name. Each value is passed to the recipe as its second argument. |
+| params | object |  |  | Recipe parameters keyed by sound name. Each value is passed to the recipe as its second argument. Built-in params (defaults): rain_bed {seconds 8, density 1, tone 0.5}, glitch_cut {seconds 0.25}, glitch_micro {seconds 0.08}, whoosh_by {seconds 0.9, pitch 1}, swish {seconds 0.35}, thump {seconds 0.6, pitch 1}, burst {seconds 1.2}, ui_blip {pitch 1}. A recipe may export `params` (name -> defaults); unknown keys are then reported in warnings. |
 | palette | object |  |  | Named palette audio files that recipes slice with kit.pal(name, k, slot); each is decoded to 48 kHz stereo before the recipe runs. |
 | finish | object |  |  | Finish options applied to every sound. These override a recipe's per-sound `finish` export. |
 | finish.head | boolean |  | true | Trim leading near-silence (below head_db) before normalising. |

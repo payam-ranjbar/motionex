@@ -25,9 +25,20 @@ await check('ffmpeg', async () => {
   const v = spawnSync(config.ffmpegPath ?? 'ffmpeg', ['-hide_banner', '-version'], { encoding: 'utf8' });
   const f = spawnSync(config.ffmpegPath ?? 'ffmpeg', ['-hide_banner', '-filters'], { encoding: 'utf8' });
   const e = spawnSync(config.ffmpegPath ?? 'ffmpeg', ['-hide_banner', '-encoders'], { encoding: 'utf8' });
-  const want = ['drawtext', 'loudnorm', 'alimiter', 'sidechaincompress', 'ebur128', 'xstack', 'afreqshift', 'acompressor'];
+  const want = [
+    'drawtext',
+    'loudnorm',
+    'alimiter',
+    'sidechaincompress',
+    'ebur128',
+    'xstack',
+    'afreqshift',
+    'acompressor',
+  ];
   const missing = want.filter((x) => !new RegExp(`\\s${x}\\s`).test(f.stdout));
-  const enc = ['libx264', 'libmp3lame', 'aac', 'flac', 'libopus'].filter((x) => !new RegExp(`\\s${x}\\s`).test(e.stdout));
+  const enc = ['libx264', 'libmp3lame', 'aac', 'flac', 'libopus'].filter(
+    (x) => !new RegExp(`\\s${x}\\s`).test(e.stdout),
+  );
   const version = /ffmpeg version (\S+)/.exec(v.stdout)?.[1];
   if (missing.length || enc.length) throw new Error(`missing filters ${missing} encoders ${enc}`);
   return { version, probe: spawnSync(config.ffprobePath ?? 'ffprobe', ['-version']).status === 0 };
@@ -44,7 +55,10 @@ await check('piper', async () => {
     '    v.synthesize_wav("My name is [[ʃˈɒpˌuːə.]]", w, syn_config=SynthesisConfig(length_scale=1.1))',
     'print(v.phonemize("Shapur"))',
   ].join('\n');
-  const r = spawnSync(config.python, ['-c', py, voice, out], { encoding: 'utf8', env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
+  const r = spawnSync(config.python, ['-c', py, voice, out], {
+    encoding: 'utf8',
+    env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
+  });
   if (r.status !== 0) throw new Error(r.stderr);
   return { bytes: statSync(out).size, phonemes: r.stdout.trim() };
 });
@@ -99,7 +113,11 @@ window.__motion = { ready: true, seek: () => {}, duration: 1 };
 await check('readonly', async () => {
   const w = spawnSync('sh', ['-c', 'touch /etc/motionex-x 2>&1; echo $?'], { encoding: 'utf8' });
   const home = spawnSync('sh', ['-c', 'mkdir -p "$HOME" && touch "$HOME/x" && echo ok'], { encoding: 'utf8' });
-  return { etc_write_blocked: w.stdout.trim().endsWith('1'), home_writable: home.stdout.trim() === 'ok', uid: os.userInfo().uid };
+  return {
+    etc_write_blocked: w.stdout.trim().endsWith('1'),
+    home_writable: home.stdout.trim() === 'ok',
+    uid: os.userInfo().uid,
+  };
 });
 
 report.fonts = readdirSync('/usr/share/fonts/truetype').join(',');
