@@ -1,0 +1,85 @@
+{
+  "name": "media.ffmpeg",
+  "version": "1.0.0",
+  "title": "FFmpeg command",
+  "summary": "Run an ffmpeg command on workspace files.",
+  "description": "The escape hatch: run any ffmpeg command with your own arguments. Inputs and outputs are workspace files; filters are checked for file-reading filters.",
+  "kind": "node",
+  "handler": "handler.mjs",
+  "deterministic": false,
+  "cache_default": "off",
+  "resources": { "class": "encode", "slots": 2 },
+  "timeout_s": 7200,
+  "requires": { "binaries": ["ffmpeg"] },
+  "input_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["args", "outputs"],
+    "properties": {
+      "args": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 500,
+        "description": "The ffmpeg arguments, without the program name. Use {in:NAME}, {out:FILE} and {script:NAME} placeholders.",
+        "items": { "type": "string" }
+      },
+      "inputs": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string",
+          "x-mx-ref": true,
+          "description": "A workspace file reference."
+        },
+        "default": {},
+        "description": "Map of input names to file references. The name is used in {in:NAME} placeholders."
+      },
+      "outputs": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 20,
+        "description": "File names to write into the job's output directory. Every name must exist after the run.",
+        "items": {
+          "type": "string",
+          "pattern": "^[\\w.-]{1,128}$"
+        }
+      },
+      "scripts": {
+        "type": "object",
+        "additionalProperties": { "type": "string" },
+        "default": {},
+        "description": "Map of script names to their contents. Each script is written to a file in the scratch directory and can be used with {script:NAME}."
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["outputs", "stderr_tail"],
+    "properties": {
+      "outputs": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "bytes"],
+          "properties": {
+            "name": { "type": "string" },
+            "bytes": { "type": "integer" }
+          }
+        }
+      },
+      "stderr_tail": { "type": "string" }
+    }
+  },
+  "examples": [
+    {
+      "title": "Volume change",
+      "input": {
+        "args": ["-i", "{in:a}", "-af", "volume=-3dB", "{out:quiet.wav}"],
+        "inputs": { "a": "tone.wav" },
+        "outputs": ["quiet.wav"]
+      },
+      "fixtures": { "tone.wav": { "sine": { "freq": 1000, "seconds": 3, "amplitude_db": -20 } } }
+    }
+  ]
+}
