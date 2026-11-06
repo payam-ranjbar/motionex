@@ -1,0 +1,7 @@
+{
+  "description": "Video for Telegram bots: Telegram caps videos at 50 MB, so this targets 45 MB, caps the longer side at 1920, uses the slow preset and AAC 128 kbit/s.",
+  "target_size_mb": 45,
+  "scale": { "max_long_side": 1920 },
+  "video": { "preset": "slow" },
+  "audio": { "bitrate_k": 128 }
+}

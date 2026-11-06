@@ -1,0 +1,16 @@
+{
+  "description": "Instagram Reels delivery: H.264 high profile level 4.2, closed GOP with a keyframe every 60 frames, AAC 48 kHz at no more than 128 kbit/s, capped at 25 Mbit/s via a 9 Mbit/s maxrate. Reels run 3 s to 15 min and are best at 9:16; a 16:9 source is letterboxed by Instagram.",
+  "two_pass": true,
+  "scale": { "max_long_side": 1920 },
+  "video": {
+    "profile": "high",
+    "level": "4.2",
+    "bitrate_k": 5300,
+    "maxrate_k": 9000,
+    "gop": 60,
+    "keyint_min": 60,
+    "sc_threshold": 0,
+    "closed_gop": true
+  },
+  "audio": { "codec": "aac", "bitrate_k": 128, "sample_rate": 48000 }
+}

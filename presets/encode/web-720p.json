@@ -1,0 +1,6 @@
+{
+  "description": "Web playback at up to 720p: the longer side is capped at 1280 (no upscaling), crf 23 with the slow preset, AAC 160 kbit/s.",
+  "scale": { "max_long_side": 1280 },
+  "video": { "crf": 23, "preset": "slow" },
+  "audio": { "bitrate_k": 160 }
+}
