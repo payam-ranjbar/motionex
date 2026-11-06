@@ -45,25 +45,44 @@ export async function applyMaster(audio, master = {}, { signal } = {}) {
       // gain + limiter, iterated: the limiter removes loudness from transient-heavy material (a kick-driven drop
       // lost 1.2 LU), so measure the limited result and correct the gain until it lands on the target
       // (±0.3 LU, at most 5 passes). Each pass limits the ORIGINAL audio with the new gain, never twice.
-      const limit = Math.min(1, Math.max(0.0625, 10 ** ((true_peak_db - 0.5) / 20)));
-      const chain = `alimiter=limit=${limit.toFixed(6)}:attack=4:release=60:level=disabled:latency=1`;
-      // Secant steps: once the limiter works hard, 1 dB more gain buys less than 1 LU, so use the measured slope.
+      // alimiter limits SAMPLE peaks. Inter-sample (true) peaks of dense material (supersaws, bright hats) can sit
+      // more than 0.5 dB above them, so after limiting measure the true peak; if it overshoots the ceiling, lower
+      // the sample ceiling by the overshoot and run again (at most 3 rounds), then say so if it still misses.
       const source = audio;
+      let margin = 0.5;
       let g = target_lufs - i;
-      let prev = null;
       let got = null;
-      for (let pass = 1; pass <= 8; pass++) {
-        audio = fitLength(await filterAudio(applyGainDb(source, g), chain, { signal }), n);
-        got = integratedLufs(audio);
-        if (got == null || Math.abs(target_lufs - got) <= 0.3) break;
-        const slope = prev ? Math.min(1, Math.max(0.1, (got - prev.got) / (g - prev.g || 1e-9))) : 1;
-        prev = { g, got };
-        g += Math.max(-12, Math.min(12, (target_lufs - got) / slope));
-        if (g > 48) break;
+      let tp = null;
+      for (let round = 1; round <= 3; round++) {
+        const limit = Math.min(1, Math.max(0.0625, 10 ** ((true_peak_db - margin) / 20)));
+        const chain = `alimiter=limit=${limit.toFixed(6)}:attack=4:release=60:level=disabled:latency=1`;
+        // Secant steps: once the limiter works hard, 1 dB more gain buys less than 1 LU, so use the measured slope.
+        let prev = null;
+        for (let pass = 1; pass <= 8; pass++) {
+          audio = fitLength(await filterAudio(applyGainDb(source, g), chain, { signal }), n);
+          got = integratedLufs(audio);
+          if (got == null || Math.abs(target_lufs - got) <= 0.3) break;
+          const slope = prev ? Math.min(1, Math.max(0.1, (got - prev.got) / (g - prev.g || 1e-9))) : 1;
+          prev = { g, got };
+          g += Math.max(-12, Math.min(12, (target_lufs - got) / slope));
+          if (g > 48) break;
+        }
+        tp = (await measureAudio(audio, { signal })).true_peak_dbtp;
+        if (tp == null || tp <= true_peak_db + 0.05) break;
+        margin += tp - true_peak_db + 0.1;
       }
+      const warnings = [];
       if (got != null && Math.abs(target_lufs - got) > 0.5) {
-        warning = `loudness target ${target_lufs} LUFS not reached with a ${true_peak_db} dBTP ceiling (got ${got.toFixed(1)}); the material is too peaky for this target: lower the target or tame the transients first`;
+        warnings.push(
+          `loudness target ${target_lufs} LUFS not reached with a ${true_peak_db} dBTP ceiling (got ${got.toFixed(1)}); the material is too peaky for this target: lower the target or tame the transients first`,
+        );
       }
+      if (tp != null && tp > true_peak_db + 0.05) {
+        warnings.push(
+          `true peak ${tp.toFixed(1)} dBTP is above the ${true_peak_db} dBTP ceiling after 3 limiter rounds; lower true_peak_db or tame the transients first`,
+        );
+      }
+      if (warnings.length) warning = warnings.join('; ');
       loudnessGainDb = g;
     }
   }

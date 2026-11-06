@@ -165,3 +165,26 @@ test(
     assert.ok(report.after.true_peak_dbtp <= -0.5, `TP ${report.after.true_peak_dbtp}`);
   },
 );
+
+test(
+  'gain+limiter keeps the TRUE peak under the ceiling when inter-sample peaks exceed the sample peaks',
+  needs('ffmpeg'),
+  async () => {
+    // 100 Hz + a 12 kHz (fs/4) sine at 45 degrees: the samples never hit the 12 kHz crest, so the true peak sits
+    // about 1.2 dB above the sample peak, more than the limiter's 0.5 dB sample-ceiling margin. Seen live: a supersaw
+    // drop mastered to "-2.2 dBTP" measured -1.8 dBTP.
+    const n = 3 * SR;
+    const ch = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      ch[i] =
+        0.5 * Math.sin((2 * Math.PI * 100 * i) / SR) + 0.4 * Math.sin((2 * Math.PI * 12000 * i) / SR + Math.PI / 4);
+    }
+    const input = { sampleRate: SR, channels: [ch, Float32Array.from(ch)] };
+    const { audio, report } = await applyMaster(input, {
+      loudness: { target_lufs: -8, true_peak_db: -9, method: 'gain+limiter' },
+    });
+    assert.equal(audio.channels[0].length, n, 'length unchanged');
+    assert.ok(report.after.true_peak_dbtp <= -8.95, `true peak ${report.after.true_peak_dbtp}, expected <= -9`);
+    assert.ok(!/true peak/.test(report.warning ?? ''), `no true-peak warning expected: ${report.warning}`);
+  },
+);
