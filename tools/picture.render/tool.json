@@ -1,0 +1,250 @@
+{
+  "$comment": "Picture capture: any HTML page that implements window.__motion = {ready, seek(t), duration?, size?} becomes an MP4. Frames are rendered by several browser pages in parallel and streamed in order into one ffmpeg process, so an audio file can be muxed in the same pass.",
+  "name": "picture.render",
+  "version": "1.0.0",
+  "title": "Picture render",
+  "summary": "Render an HTML page that exposes window.__motion (ready, seek(t), duration?, size?) to a video, frame by frame, with optional audio muxed in the same pass.",
+  "description": "Serves the page over http from the workspace (plus /_mx/lib/... browser libraries), drives window.__motion.seek(t) for every frame in parallel browser pages, and streams the frames in order into ffmpeg. The page contract: window.__motion = {ready: true, seek(t) -> void | Promise, duration?: seconds, size?: {width, height}}. Size comes from width/height or from window.__motion.size; the end time from to_s or window.__motion.duration. Frames go in as JPEG (quality) or PNG, so the page is lossy only if you ask for JPEG. Colour is converted to BT.709 video range because browsers hand back full-range BT.601 JPEG and RGB PNG. Sections rendered with from_s/to_s join seamlessly because frame times are exact multiples of 1/fps. Use picture.stills for review stills.",
+  "kind": "node",
+  "handler": "handler.mjs",
+  "deterministic": false,
+  "cache_default": "off",
+  "resources": { "class": "capture", "slots": { "from_input": "workers", "default": 4 }, "memory_mb": 2048 },
+  "timeout_s": 7200,
+  "requires": { "binaries": ["ffmpeg", "chromium"] },
+  "input_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["page"],
+    "properties": {
+      "page": {
+        "type": "string",
+        "x-mx-ref": true,
+        "description": "The HTML page to capture: a workspace path, job:<id>/<output> or pin:<name>. It must set window.__motion = {ready: true, seek(t), duration?, size?}."
+      },
+      "inject": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "x-mx-ref": true,
+          "description": "An HTML fragment file to splice into the page: a workspace path, job:<id>/<output> or pin:<name>."
+        },
+        "description": "HTML fragments spliced into the page in order: at the first <!--mx:inject--> marker, else right before </body>. Use it to add a shot list or data without editing the page."
+      },
+      "globals": {
+        "type": "object",
+        "additionalProperties": true,
+        "description": "Window globals defined before the page scripts run: NAME -> any JSON value (written as window.NAME = ...). Names must be JS identifiers."
+      },
+      "globals_files": {
+        "type": "object",
+        "additionalProperties": { "type": "string", "x-mx-ref": true },
+        "description": "Window globals read from JSON files: NAME -> a .json file (workspace path, job:<id>/<output> or pin:<name>). An entry in globals wins over the same name here."
+      },
+      "query": {
+        "type": "string",
+        "default": "render",
+        "description": "Query string appended to the page URL (without the '?'), so a page can tell capture from preview."
+      },
+      "width": {
+        "type": "integer",
+        "minimum": 2,
+        "maximum": 16384,
+        "description": "Viewport width in pixels. Omit to use window.__motion.size.width."
+      },
+      "height": {
+        "type": "integer",
+        "minimum": 2,
+        "maximum": 16384,
+        "description": "Viewport height in pixels. Omit to use window.__motion.size.height."
+      },
+      "fps": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "maximum": 240,
+        "default": 30,
+        "description": "Frames per second. Frame i is captured at t = (round(from_s·fps) + i) / fps."
+      },
+      "from_s": {
+        "type": "number",
+        "minimum": 0,
+        "default": 0,
+        "description": "First captured time in seconds. Frames are exact multiples of 1/fps, so sections rendered separately join seamlessly."
+      },
+      "to_s": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "description": "End time in seconds (exclusive: the last frame is the one before it). Omit to use window.__motion.duration."
+      },
+      "workers": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 16,
+        "default": 4,
+        "description": "How many browser pages render in parallel. Each page loads the page once and keeps its own window, and is warmed up before the first frame is taken."
+      },
+      "intermediate": {
+        "enum": ["jpeg", "png"],
+        "default": "jpeg",
+        "description": "Format of the frames handed to ffmpeg: jpeg (small, lossy at jpeg_quality) or png (lossless, slower, bigger)."
+      },
+      "jpeg_quality": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100,
+        "default": 95,
+        "description": "JPEG quality of the intermediate frames when intermediate is jpeg. Ignored for png."
+      },
+      "video": {
+        "type": "object",
+        "additionalProperties": false,
+        "default": {},
+        "description": "Encoder settings (passed to ffmpeg as-is; libx264 with crf 18 is the default).",
+        "properties": {
+          "codec": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]+$",
+            "default": "libx264",
+            "description": "Video encoder name, e.g. libx264, libx265, libvpx-vp9, h264_nvenc."
+          },
+          "preset": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]+$",
+            "default": "medium",
+            "description": "Encoder preset (libx264/libx265: ultrafast .. veryslow)."
+          },
+          "crf": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 63,
+            "default": 18,
+            "description": "Constant quality value; lower is better and bigger."
+          },
+          "pix_fmt": {
+            "type": "string",
+            "pattern": "^[a-z0-9_]+$",
+            "default": "yuv420p",
+            "description": "Output pixel format. yuv420p plays everywhere; yuv444p / yuv420p10le need a matching crf and player."
+          },
+          "color": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+$",
+            "default": "bt709",
+            "description": "Colour space tagged on the output (bt709, bt601, bt2020nc). Frames are converted from full-range BT.601 JPEG / RGB PNG to BT.709 video range."
+          }
+        }
+      },
+      "audio": {
+        "type": "string",
+        "x-mx-ref": true,
+        "description": "Optional audio file muxed in the same ffmpeg pass: a workspace path, job:<id>/<output> or pin:<name>. Trimmed to [from_s, to_s] and padded with silence when it is shorter than the video."
+      },
+      "audio_codec": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_.-]+$",
+        "default": "aac",
+        "description": "Audio encoder for the muxed audio stream (aac, libmp3lame, alac, ...)."
+      },
+      "audio_bitrate_k": {
+        "type": "integer",
+        "minimum": 8,
+        "maximum": 512,
+        "default": 192,
+        "description": "Audio bitrate in kbit/s (ignored by lossless codecs)."
+      },
+      "warmup": {
+        "type": "boolean",
+        "default": true,
+        "description": "Take and discard one cheap screenshot per page before the real frames. Headless Chromium stalls for about 15 s on a fresh page's first screenshot, so leave this on unless you know the pages are warm."
+      },
+      "frame_timeout_s": {
+        "type": "number",
+        "minimum": 0.1,
+        "maximum": 600,
+        "default": 15,
+        "description": "How long one frame (seek + screenshot) may take before it is retried."
+      },
+      "frame_retries": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10,
+        "default": 3,
+        "description": "Attempts per frame; the frame is re-seeked before every retry. All attempts failing fails the job."
+      },
+      "ready_timeout_s": {
+        "type": "number",
+        "minimum": 1,
+        "maximum": 3600,
+        "default": 60,
+        "description": "How long a page may take to set window.__motion.ready = true."
+      },
+      "offline": {
+        "type": "boolean",
+        "default": false,
+        "description": "Block every request whose origin is not the local static server (fonts, CDNs, analytics); each block is recorded in page_errors. The page itself is always served."
+      },
+      "device_scale_factor": {
+        "type": "number",
+        "minimum": 0.1,
+        "maximum": 4,
+        "default": 1,
+        "description": "Device pixel ratio of the browser contexts. Above 1 renders a page designed for CSS pixels at a higher pixel count."
+      },
+      "name": {
+        "type": "string",
+        "pattern": "^[\\w.-]+(?:/[\\w.-]+)*$",
+        "default": "video.mp4",
+        "description": "Output file name inside the job's out folder, e.g. video.mp4 or picture/act1.mp4. The extension follows the codec."
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["frames", "fps", "seconds", "width", "height", "render_s", "stalls", "page_errors", "audio"],
+    "properties": {
+      "frames": { "type": "integer", "description": "Number of frames written" },
+      "fps": { "type": "number", "description": "Frames per second used" },
+      "seconds": { "type": "number", "description": "frames / fps" },
+      "width": { "type": "integer", "description": "Video width in pixels (viewport width × device_scale_factor)" },
+      "height": { "type": "integer", "description": "Video height in pixels (viewport height × device_scale_factor)" },
+      "render_s": { "type": "number", "description": "Wall-clock seconds the whole render took" },
+      "stalls": { "type": "integer", "description": "Frames that failed once and needed a retry" },
+      "page_errors": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Up to 50 unique page errors, console errors and blocked requests"
+      },
+      "audio": { "type": "boolean", "description": "Whether an audio stream was muxed in" }
+    }
+  },
+  "examples": [
+    {
+      "title": "Half a second of a tiny page (end time from window.__motion.duration)",
+      "input": { "page": "pages/tiny.html", "workers": 1, "fps": 10 },
+      "fixtures": {
+        "pages/tiny.html": {
+          "text": "<!doctype html><html><body style=\"margin:0;background:#000\"><script>window.__motion={ready:true,duration:0.5,size:{width:64,height:64},seek(t){document.body.style.background=t<0.25?'#112233':'#445566';}};</script></body></html>"
+        }
+      }
+    },
+    {
+      "title": "A section with an audio file muxed in",
+      "input": {
+        "page": "pages/tiny.html",
+        "workers": 1,
+        "fps": 10,
+        "from_s": 0.2,
+        "to_s": 0.5,
+        "audio": "tone.wav",
+        "video": { "crf": 28, "preset": "ultrafast" }
+      },
+      "fixtures": {
+        "pages/tiny.html": {
+          "text": "<!doctype html><html><body style=\"margin:0;background:#000\"><script>window.__motion={ready:true,duration:0.5,size:{width:64,height:64},seek(t){document.body.style.background=t<0.25?'#112233':'#445566';}};</script></body></html>"
+        },
+        "tone.wav": { "sine": { "freq": 440, "seconds": 1, "amplitude_db": -20 } }
+      }
+    }
+  ]
+}
