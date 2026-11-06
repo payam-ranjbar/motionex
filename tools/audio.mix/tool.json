@@ -1,0 +1,384 @@
+{
+  "name": "audio.mix",
+  "version": "1.0.0",
+  "title": "Mix (tracks, buses, pan)",
+  "summary": "Declarative track/bus mixer: places clips sample-accurately on tracks, sums them to an exact length, optional per-track fx, level, sidechain and master stage. Plain float sum by default.",
+  "description": "Sums audio clips on named tracks to an exact length. Processing order: (1) track_defaults are merged under each track with the same name; (2) every clip's `at` is resolved (seconds or a timespec against `timeline`); (3) each distinct (src, offset_s, duration_s, fx) is decoded once; (4) optional per-clip leveling; (5) per clip gain, linear fades, the pan law, then mix at its sample position; (6) track fx; (7) track gain_db; (8) optional track `level`; (9) optional sidechains; (10) mute; (11) bus fx and gain, then the master sum = buses + tracks without a bus; (12) optional master fx/gain/loudness; (13) fit to N samples and write. N = round(duration_s*sample_rate) or the latest clip end. Defaults are neutral: no ducking, no normalisation, no limiter; the default output is 32-bit float WAV so a sum above 0 dBFS does not clip. Pan law: mono into stereo is equal-power. Pan 0 gives 0.7071 per channel (matching ffmpeg's mono upmix); stereo into stereo at pan 0 is the identity; into mono a stereo clip becomes (L+R)/2 and pan is ignored.",
+  "kind": "node",
+  "handler": "handler.mjs",
+  "deterministic": true,
+  "cache_default": "auto",
+  "resources": { "class": "audio", "slots": 2, "memory_mb": 4096 },
+  "timeout_s": 1800,
+  "presets": "mix",
+  "requires": { "binaries": ["ffmpeg"] },
+  "input_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["tracks"],
+    "properties": {
+      "preset": {
+        "type": "string",
+        "description": "Optional named mix preset; its settings are merged under this request (the request wins)."
+      },
+      "sample_rate": {
+        "type": "integer",
+        "minimum": 1,
+        "default": 48000,
+        "description": "Mix sample rate in Hz. Default 48000."
+      },
+      "channels": {
+        "enum": [1, 2],
+        "default": 2,
+        "description": "Output channel count: 1 (mono) or 2 (stereo). Default 2."
+      },
+      "duration_s": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "description": "Exact output length in seconds (rounded to whole samples). Omit to use the end of the latest clip."
+      },
+      "timeline": {
+        "type": "string",
+        "x-mx-ref": true,
+        "description": "Optional timeline.json ref; enables string `at` timespecs (scene, cue, bar, beat)."
+      },
+      "track_defaults": {
+        "type": "object",
+        "description": "Per-track-name settings merged UNDER each track with that name (the request's track wins). Presets use this.",
+        "additionalProperties": { "$ref": "#/$defs/trackDefaults" }
+      },
+      "tracks": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 64,
+        "description": "Tracks to sum. Each track holds clips and is processed independently.",
+        "items": { "$ref": "#/$defs/track" }
+      },
+      "buses": {
+        "type": "array",
+        "description": "Named sub-mixes. Tracks with `bus` sum here before the buses are summed into the master.",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name"],
+          "properties": {
+            "name": { "type": "string", "description": "Bus name referenced by tracks[].bus." },
+            "gain_db": {
+              "type": "number",
+              "default": 0,
+              "description": "Bus fader in dB, applied after the bus fx. Default 0."
+            },
+            "fx": {
+              "type": "string",
+              "description": "Optional ffmpeg -af chain applied to the summed bus (for example \"volume=6dB\")."
+            }
+          }
+        }
+      },
+      "sidechain": {
+        "type": "array",
+        "description": "Optional sidechain compressors. Each one ducks `target` using `key` as the trigger. Omit for no ducking.",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["target", "key"],
+          "properties": {
+            "target": { "type": "string", "description": "Track name to compress." },
+            "key": { "type": "string", "description": "Track name whose signal triggers the compressor." },
+            "threshold": {
+              "type": "number",
+              "default": 0.02,
+              "description": "Detector threshold (linear, 0..1). Default 0.02."
+            },
+            "ratio": { "type": "number", "default": 6, "description": "Compression ratio. Default 6." },
+            "attack_ms": { "type": "number", "default": 20, "description": "Attack time in milliseconds. Default 20." },
+            "release_ms": {
+              "type": "number",
+              "default": 400,
+              "description": "Release time in milliseconds. Default 400."
+            },
+            "knee": { "type": "number", "default": 2.8, "description": "Soft knee. Default 2.8." },
+            "makeup": { "type": "number", "default": 1, "description": "Makeup gain (linear). Default 1." },
+            "lookahead_s": {
+              "type": "number",
+              "default": 0,
+              "description": "Seconds the key is advanced to look ahead. Default 0."
+            }
+          }
+        }
+      },
+      "master": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Final stage. Absent, or neutral (no fx, gain_db 0, no loudness), means the mix is not touched.",
+        "properties": {
+          "gain_db": { "type": "number", "default": 0, "description": "Master gain in dB. Default 0." },
+          "fx": { "type": "string", "description": "Optional master ffmpeg -af chain." },
+          "loudness": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Optional loudness target for the master stage.",
+            "required": ["target_lufs"],
+            "properties": {
+              "target_lufs": { "type": "number", "description": "Target integrated loudness in LUFS." },
+              "true_peak_db": {
+                "type": "number",
+                "default": -1.5,
+                "description": "True-peak ceiling in dBTP. Default -1.5."
+              },
+              "method": {
+                "enum": ["gain+limiter", "loudnorm"],
+                "default": "gain+limiter",
+                "description": "How to reach the target: a measured gain plus limiter, or ffmpeg loudnorm. Default \"gain+limiter\"."
+              },
+              "lra": {
+                "type": "number",
+                "default": 11,
+                "description": "Loudness range target in LU (loudnorm). Default 11."
+              }
+            }
+          }
+        }
+      },
+      "output": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Output files.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[\\w.-]+$",
+            "default": "mix.wav",
+            "description": "Output file name. Default \"mix.wav\"."
+          },
+          "format": {
+            "enum": ["wav32f", "wav24", "wav"],
+            "default": "wav32f",
+            "description": "Output WAV encoding: 32-bit float (no clipping), 24-bit or 16-bit. Default \"wav32f\"."
+          },
+          "stems": {
+            "type": "boolean",
+            "default": false,
+            "description": "Also write stems/<track>.wav (32-bit float) for every track, post-level and pre-bus. Default false."
+          },
+          "preview_mp3": {
+            "type": "boolean",
+            "default": false,
+            "description": "Also write a 192 kbps preview.mp3. Default false."
+          }
+        }
+      }
+    },
+    "$defs": {
+      "level": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Loudness-relative track level, applied after the track fx and gain_db.",
+        "properties": {
+          "lufs": { "type": "number", "description": "Absolute target integrated LUFS for the track." },
+          "relative_to": { "type": "string", "description": "Another track name to be measured against." },
+          "lu": { "type": "number", "description": "Offset in LU from relative_to's level." }
+        }
+      },
+      "clipLeveling": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Per-clip loudness levelling, applied before fades and pan.",
+        "properties": {
+          "to": {
+            "type": ["number", "string"],
+            "description": "Target: a LUFS number, or \"median\" to use the median of the non-silent clips. Default \"median\"."
+          },
+          "tolerance_lu": {
+            "type": "number",
+            "description": "Clips already this close to the target get 0 dB. Default 0.75."
+          },
+          "min_db": { "type": "number", "description": "Lower clamp for a clip gain, in dB. Default -9." },
+          "max_db": { "type": "number", "description": "Upper clamp for a clip gain, in dB. Default 6." }
+        }
+      },
+      "trackDefaults": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Fields applied UNDER a track with this name (the request's track wins).",
+        "properties": {
+          "gain_db": { "type": "number", "description": "Default track fader in dB for matching tracks." },
+          "mute": { "type": "boolean", "description": "Default mute for matching tracks." },
+          "fx": { "type": "string", "description": "Default track ffmpeg -af chain for matching tracks." },
+          "bus": { "type": "string", "description": "Default bus name for matching tracks." },
+          "level": { "$ref": "#/$defs/level", "description": "Default loudness-relative level for matching tracks." },
+          "clip_leveling": {
+            "$ref": "#/$defs/clipLeveling",
+            "description": "Default per-clip loudness levelling for matching tracks."
+          }
+        }
+      },
+      "clip": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["src", "at"],
+        "properties": {
+          "src": {
+            "type": "string",
+            "x-mx-ref": true,
+            "description": "Audio file to place: a workspace path, job:<id>/<output-path> or pin:<name>."
+          },
+          "at": {
+            "type": ["number", "string"],
+            "description": "Where the clip starts: seconds (number) or a timespec string (\"scene\", \"scene#cue.end\", \"bar:4\") resolved against `timeline`."
+          },
+          "offset_s": {
+            "type": "number",
+            "default": 0,
+            "description": "Seconds into the source to start reading. Default 0."
+          },
+          "duration_s": {
+            "type": "number",
+            "description": "Seconds of source to use. Omit to use the rest of the source."
+          },
+          "gain_db": {
+            "type": "number",
+            "default": 0,
+            "description": "Clip gain in dB, applied before fades and pan. Default 0."
+          },
+          "pan": {
+            "type": "number",
+            "minimum": -1,
+            "maximum": 1,
+            "default": 0,
+            "description": "Stereo position, -1 hard left .. 1 hard right (balance for stereo, equal-power for mono into stereo). Default 0."
+          },
+          "fade_in_s": {
+            "type": "number",
+            "minimum": 0,
+            "default": 0,
+            "description": "Linear fade-in length in seconds. Default 0."
+          },
+          "fade_out_s": {
+            "type": "number",
+            "minimum": 0,
+            "default": 0,
+            "description": "Linear fade-out length in seconds. Default 0."
+          },
+          "fx": {
+            "type": "string",
+            "description": "Optional per-clip ffmpeg -af chain applied while decoding (for example \"volume=-3dB\"). Source filters such as movie are refused."
+          },
+          "name": { "type": "string", "description": "Optional label for the clip (informational only)." }
+        }
+      },
+      "track": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9_-]{1,32}$",
+            "description": "Track name, unique per mix; used by bus, level, sidechain and stem file names."
+          },
+          "gain_db": {
+            "type": "number",
+            "description": "Track fader in dB, applied after the track fx. Default 0 (unity)."
+          },
+          "mute": {
+            "type": "boolean",
+            "description": "When true the track is not summed into the mix (it can still key a sidechain). Default false."
+          },
+          "fx": {
+            "type": "string",
+            "description": "Optional ffmpeg -af chain applied to the whole track (for example \"volume=6dB\")."
+          },
+          "bus": {
+            "type": "string",
+            "description": "Name of a declared bus to sum this track into instead of the master. Omit for the master."
+          },
+          "level": { "$ref": "#/$defs/level", "description": "Optional loudness-relative level for this track." },
+          "clip_leveling": {
+            "$ref": "#/$defs/clipLeveling",
+            "description": "Optional per-clip loudness levelling for this track."
+          },
+          "clips": {
+            "type": "array",
+            "maxItems": 5000,
+            "description": "Clips placed on this track. May be empty.",
+            "items": { "$ref": "#/$defs/clip" }
+          }
+        }
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["duration_s", "samples", "sample_rate", "channels", "tracks", "master", "warnings"],
+    "properties": {
+      "duration_s": { "type": "number" },
+      "samples": { "type": "integer" },
+      "sample_rate": { "type": "integer" },
+      "channels": { "type": "integer" },
+      "tracks": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "object",
+          "required": ["integrated_lufs", "true_peak_dbtp", "sample_peak_dbfs", "gain_applied_db"],
+          "properties": {
+            "integrated_lufs": { "type": ["number", "null"] },
+            "true_peak_dbtp": { "type": ["number", "null"] },
+            "sample_peak_dbfs": { "type": ["number", "null"] },
+            "gain_applied_db": { "type": "number" }
+          }
+        }
+      },
+      "master": {
+        "type": ["object", "null"],
+        "properties": {
+          "before": { "type": "object" },
+          "after": { "type": "object" },
+          "gain_db": { "type": "number" },
+          "method": { "type": ["string", "null"] }
+        }
+      },
+      "warnings": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "examples": [
+    {
+      "title": "Two sine clips on one track",
+      "input": {
+        "duration_s": 1,
+        "tracks": [
+          {
+            "name": "tone",
+            "clips": [{ "src": "a.wav", "at": 0 }, { "src": "b.wav", "at": 0.5 }]
+          }
+        ]
+      },
+      "fixtures": {
+        "a.wav": { "sine": { "freq": 440, "seconds": 0.4, "amplitude_db": -20 } },
+        "b.wav": { "sine": { "freq": 660, "seconds": 0.4, "amplitude_db": -20 } }
+      }
+    },
+    {
+      "title": "Dialogue over music (two tracks, fixed length)",
+      "input": {
+        "duration_s": 2,
+        "tracks": [
+          {
+            "name": "dialogue",
+            "clips": [{ "src": "vo.wav", "at": 0.25, "fade_in_s": 0.02, "fade_out_s": 0.05 }]
+          },
+          {
+            "name": "music",
+            "gain_db": -12,
+            "clips": [{ "src": "bed.wav", "at": 0 }]
+          }
+        ]
+      },
+      "fixtures": {
+        "vo.wav": { "sine": { "freq": 300, "seconds": 1, "amplitude_db": -18 } },
+        "bed.wav": { "sine": { "freq": 120, "seconds": 2, "amplitude_db": -20 } }
+      }
+    }
+  ]
+}
