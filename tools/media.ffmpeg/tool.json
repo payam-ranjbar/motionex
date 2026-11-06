@@ -21,7 +21,7 @@
         "type": "array",
         "minItems": 1,
         "maxItems": 500,
-        "description": "The ffmpeg arguments, without the program name. Use {in:NAME}, {out:FILE} and {script:NAME} placeholders.",
+        "description": "The ffmpeg arguments, without the program name. Use {in:NAME} for an input, {out:FILE} for a declared output and {script:NAME} for a script file. An {out:FILE} may be an image-sequence pattern with one %d or %0Nd frame counter (e.g. {out:f-%03d.png}). Bare braces that are not placeholders are passed through to ffmpeg.",
         "items": { "type": "string" }
       },
       "inputs": {
@@ -38,10 +38,10 @@
         "type": "array",
         "minItems": 1,
         "maxItems": 20,
-        "description": "File names to write into the job's output directory. Every name must exist after the run.",
+        "description": "File names to write into the job's output directory. Every plain name must exist after the run. A name may be an image-sequence pattern with exactly one %d or %0Nd frame counter (N 1-9, e.g. f-%03d.png); at least one matching frame must exist, and every matching frame becomes a job output listed in frame order.",
         "items": {
           "type": "string",
-          "pattern": "^[\\w.-]{1,128}$"
+          "pattern": "^(?=.{1,128}$)(?:[\\w.-]+|[\\w.-]*%(?:0[1-9])?d[\\w.-]*)$"
         }
       },
       "scripts": {
