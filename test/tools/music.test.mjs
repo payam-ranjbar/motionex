@@ -241,3 +241,86 @@ test('music.render: unknown sound names are reported as warnings', needs('ffmpeg
     await rmTmp(ws);
   }
 });
+
+// Two agents shipped renders peaking at +4.7 and +1.2 dBFS: the integer encoders clamp that silently, and the
+// result only said so when `analyze` was on. The peak is now always measured, the clamp is warned about, and
+// `peak_db` scales the whole render before encoding.
+const dbOf = (x) => (x > 0 ? 20 * Math.log10(x) : -Infinity);
+const HOT = { code: 'note("c3 e3 g3").s("sine").gain(3)', cycles: 1, offline: true };
+const CLIP_WARNING =
+  /^the render peaks at \+[\d.]+ dBFS; \d+ samples clip in wav: lower \.gain\(\)\/\.postgain\(\), or set peak_db \(or use format wav32, which keeps overs\)$/;
+
+test('music.render: an over-hot render reports peak_db and warns about the clamp', needs('ffmpeg'), async () => {
+  const ws = await mkTmp();
+  try {
+    const run = await runTool('music.render', HOT, { workspace: ws });
+    assert.ok(run.result.peak_db > 0, `peak_db ${run.result.peak_db} should be above 0 dBFS`);
+    assert.equal(run.result.gain_db_applied, null, 'nothing was scaled');
+    const clipWarnings = run.result.warnings.filter((w) => /samples clip in/.test(w));
+    assert.equal(clipWarnings.length, 1, JSON.stringify(run.result.warnings));
+    assert.match(clipWarnings[0], CLIP_WARNING);
+    assert.ok(run.result.analysis.clippedSamples > 0, 'analyze agrees that samples clipped');
+    // The 16-bit file really is clamped, so the warning is not cosmetic.
+    const { audio } = await readOutput(run, 'music.wav');
+    assert.ok(peakOf(audio) > 0.99, `the written peak is clamped, got ${peakOf(audio)}`);
+
+    // wav32 keeps the overs, so the same song gets no clip warning there.
+    const wide = await runTool('music.render', { ...HOT, format: 'wav32' }, { workspace: ws });
+    assert.ok(wide.result.peak_db > 0);
+    assert.ok(!wide.result.warnings.some((w) => /samples clip in/.test(w)), JSON.stringify(wide.result.warnings));
+  } finally {
+    await rmTmp(ws);
+  }
+});
+
+test('music.render: peak_db scales the render before encoding, so nothing clips', needs('ffmpeg'), async () => {
+  const ws = await mkTmp();
+  try {
+    const run = await runTool('music.render', { ...HOT, peak_db: -1 }, { workspace: ws });
+    const { audio } = await readOutput(run, 'music.wav');
+    const written = dbOf(peakOf(audio));
+    assert.ok(Math.abs(written + 1) < 0.1, `the written WAV should peak at -1 dBFS, got ${written.toFixed(2)}`);
+    assert.ok(Math.abs(run.result.peak_db + 1) < 0.05, `peak_db ${run.result.peak_db} should be -1`);
+    assert.ok(run.result.gain_db_applied < 0, `gain_db_applied ${run.result.gain_db_applied} should be negative`);
+    assert.ok(!run.result.warnings.some((w) => /samples clip in/.test(w)), JSON.stringify(run.result.warnings));
+    // The analysis measures the same (scaled) render, so it agrees with peak_db.
+    assert.ok(Math.abs(run.result.analysis.peakDb + 1) < 0.1, `analysis peak ${run.result.analysis.peakDb}`);
+    // A silent render has no peak to scale, so it is left alone and says so.
+    const silent = await runTool(
+      'music.render',
+      { code: 'note("c3 e3").s("sine").gain(0)', cycles: 1, offline: true, peak_db: -1 },
+      { workspace: ws },
+    );
+    assert.equal(silent.result.peak_db, null);
+    assert.equal(silent.result.gain_db_applied, null);
+    assert.ok(
+      silent.result.warnings.some((w) => /render is silent, so peak_db/.test(w)),
+      JSON.stringify(silent.result.warnings),
+    );
+  } finally {
+    await rmTmp(ws);
+  }
+});
+
+test('music.render: a quiet render is untouched (no scaling, same bytes)', needs('ffmpeg'), async () => {
+  const ws = await mkTmp();
+  const bytesOf = async (run) => readFile(run.outputs.find((o) => o.name === 'music.wav').abs);
+  try {
+    const quiet = { code: 'note("c3 e3 g3").s("sine").gain(0.2)', cycles: 1, offline: true };
+    const a = await runTool('music.render', quiet, { workspace: ws });
+    assert.ok(a.result.peak_db < 0, `peak_db ${a.result.peak_db} should be below 0 dBFS`);
+    assert.equal(a.result.gain_db_applied, null, 'no peak_db means no gain');
+    assert.deepEqual(a.result.warnings, [], 'a quiet render warns about nothing');
+    // The measured peak is the written file's peak: the samples were not scaled on the way out.
+    const { audio } = await readOutput(a, 'music.wav');
+    assert.ok(Math.abs(dbOf(peakOf(audio)) - a.result.peak_db) < 0.01);
+    // Untouched means the bytes are exactly what the encoder receives, so a repeat run is identical.
+    const b = await runTool('music.render', quiet, { workspace: ws });
+    assert.deepEqual(await bytesOf(a), await bytesOf(b), 'the untouched render is byte-identical');
+    // Only peak_db changes the bytes.
+    const scaled = await runTool('music.render', { ...quiet, peak_db: -1 }, { workspace: ws });
+    assert.notDeepEqual(await bytesOf(a), await bytesOf(scaled));
+  } finally {
+    await rmTmp(ws);
+  }
+});

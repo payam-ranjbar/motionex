@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "title": "Music render (Strudel)",
   "summary": "Render a Strudel song to audio with the Mucavex engine: seeded deterministic noise, named section markers, optional tempo override and an analysis report.",
-  "description": "Evaluates Strudel live-coding JavaScript with the same semantics as the strudel.cc REPL and renders it offline to WAV/MP3/FLAC/OGG/Opus/M4A. Named markers (lines like `let DROP = 34;`) let a build move song sections without regenerating the code. Strudel noise is seeded, so identical input gives byte-identical audio. `max_polyphony` must stay high: the engine's old default of 128 steals voices and fades sample voices in long renders. The tool renders; it never applies loudness normalisation, ducking or limiting.",
+  "description": "Evaluates Strudel live-coding JavaScript with the same semantics as the strudel.cc REPL and renders it offline to WAV/MP3/FLAC/OGG/Opus/M4A. Named markers (lines like `let DROP = 34;`) let a build move song sections without regenerating the code. Strudel noise is seeded, so identical input gives byte-identical audio. `max_polyphony` must stay high: the engine's old default of 128 steals voices and fades sample voices in long renders. The tool renders; it applies no loudness normalisation, ducking or limiting of its own (`peak_db` is the only gain it will add, and only when asked). It always measures the render's sample peak, warns when an over-hot render would be clamped by the chosen format, and never clips silently.",
   "kind": "node",
   "handler": "handler.mjs",
   "deterministic": true,
@@ -90,13 +90,19 @@
       "format": {
         "enum": ["wav", "wav32", "mp3", "flac", "ogg", "opus", "m4a"],
         "default": "wav",
-        "description": "Output container/codec. wav is 16-bit PCM, wav32 is 32-bit float; flac/ogg/opus/m4a need ffmpeg."
+        "description": "Output container/codec. wav is 16-bit PCM, wav32 is 32-bit float (the only format that keeps overs above 0 dBFS); flac/ogg/opus/m4a need ffmpeg. Every other format clamps past ±1.0, which distorts an over-hot render."
       },
       "bitrate_k": {
         "type": "integer",
         "minimum": 32,
         "maximum": 320,
         "description": "Bitrate in kbps for lossy formats (mp3, opus, m4a). Omit for the encoder default."
+      },
+      "peak_db": {
+        "type": "number",
+        "minimum": -60,
+        "maximum": 0,
+        "description": "Scale the whole render by one gain so its sample peak lands exactly at this dBFS (for example -1), applied before encoding so nothing clips. Omit to leave the render untouched. `gain_db_applied` reports the gain used. A silent render is not scaled (it gets a warning instead)."
       },
       "max_polyphony": {
         "type": "integer",
@@ -129,7 +135,7 @@
   "output_schema": {
     "type": "object",
     "additionalProperties": false,
-    "required": ["seconds", "cps", "events", "render_ms", "markers_applied", "analysis"],
+    "required": ["seconds", "cps", "events", "render_ms", "markers_applied", "peak_db", "gain_db_applied", "analysis"],
     "properties": {
       "seconds": {
         "type": "number",
@@ -170,6 +176,14 @@
           }
         }
       },
+      "peak_db": {
+        "type": ["number", "null"],
+        "description": "Sample peak of the written render in dBFS (after any `peak_db` scaling), or null when the render is silent."
+      },
+      "gain_db_applied": {
+        "type": ["number", "null"],
+        "description": "Gain in dB applied to reach `peak_db`, or null when no scaling was requested (or the render is silent)."
+      },
       "analysis": {
         "type": ["object", "null"],
         "description": "Render analysis, or null when analyze is false.",
@@ -205,7 +219,7 @@
         "items": {
           "type": "string"
         },
-        "description": "Events the engine could not play (unknown sound names, failed sample loads), which are silent in the render. Empty when everything played."
+        "description": "Human-readable warnings: events the engine could not play (unknown sound names, failed sample loads), a render that peaks above 0 dBFS in a format that clamps, and a silent render asked to reach `peak_db`. Empty when nothing went wrong."
       }
     }
   },
