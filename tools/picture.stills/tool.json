@@ -64,7 +64,7 @@
         "minItems": 1,
         "maxItems": 200,
         "items": { "type": "number", "minimum": 0 },
-        "description": "Times in seconds (>= 0); one image is written per entry, named still-<t to 3 decimals>.<ext>."
+        "description": "Times in seconds (>= 0); one image is written per entry, named still-<t to 3 decimals, zero-padded to 8 chars, e.g. 0012.500>.<ext>."
       },
       "format": {
         "enum": ["png", "jpeg"],

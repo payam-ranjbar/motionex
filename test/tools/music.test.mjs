@@ -197,3 +197,25 @@ test('music.render: user console.log noise does not break the result', needs('ff
     await rmTmp(ws);
   }
 });
+
+// Found by the headful agent test: it passed `name: "music.wav"` (other tools take a name) and got a 422.
+test('music.render: an optional name sets the output file, extension follows format', needs('ffmpeg'), async () => {
+  const ws = await mkTmp();
+  try {
+    const base = { code: 'note("c3").s("sine")', cycles: 1, offline: true };
+    const a = await runTool('music.render', { ...base, name: 'score', format: 'mp3' }, { workspace: ws });
+    assert.ok(
+      a.outputs.some((o) => o.name === 'score.mp3'),
+      a.outputs.map((o) => o.name).join(','),
+    );
+    const b = await runTool('music.render', { ...base, name: 'theme.wav' }, { workspace: ws });
+    assert.ok(
+      b.outputs.some((o) => o.name === 'theme.wav'),
+      b.outputs.map((o) => o.name).join(','),
+    );
+    const c = await runTool('music.render', base, { workspace: ws });
+    assert.ok(c.outputs.some((o) => o.name === 'music.wav'));
+  } finally {
+    await rmTmp(ws);
+  }
+});

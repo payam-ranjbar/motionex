@@ -8,14 +8,27 @@
   "handler": "handler.mjs",
   "deterministic": true,
   "cache_default": "auto",
-  "resources": { "class": "music", "slots": 1, "memory_mb": 4096 },
+  "resources": {
+    "class": "music",
+    "slots": 1,
+    "memory_mb": 4096
+  },
   "timeout_s": 3600,
-  "requires": { "binaries": ["ffmpeg"] },
+  "requires": {
+    "binaries": ["ffmpeg"]
+  },
   "input_schema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
     "additionalProperties": false,
-    "oneOf": [{ "required": ["code"] }, { "required": ["file"] }],
+    "oneOf": [
+      {
+        "required": ["code"]
+      },
+      {
+        "required": ["file"]
+      }
+    ],
     "properties": {
       "code": {
         "type": "string",
@@ -29,7 +42,9 @@
       },
       "markers": {
         "type": "object",
-        "additionalProperties": { "type": "number" },
+        "additionalProperties": {
+          "type": "number"
+        },
         "description": "Rewrite named marker lines (`let NAME = value;`) before rendering, e.g. {\"DROP\": 30}. An unknown name is an invalid-input error that lists the markers found in the song."
       },
       "seconds": {
@@ -103,6 +118,11 @@
         "type": "boolean",
         "default": false,
         "description": "Only load samples from the sample cache, never the network. A missing sample then fails the render instead of downloading it."
+      },
+      "name": {
+        "type": "string",
+        "pattern": "^[\\w.-]{1,128}$",
+        "description": "Output file name for the rendered audio. Default music.<ext>. The extension always follows format (a given .wav/.mp3/... is replaced), e.g. name \"score\" with format mp3 writes score.mp3."
       }
     }
   },
@@ -111,10 +131,22 @@
     "additionalProperties": false,
     "required": ["seconds", "cps", "events", "render_ms", "markers_applied", "analysis"],
     "properties": {
-      "seconds": { "type": "number", "description": "Rendered duration in seconds, including the tail." },
-      "cps": { "type": "number", "description": "Cycles per second actually used." },
-      "events": { "type": "integer", "description": "Number of note/trigger events rendered." },
-      "render_ms": { "type": "number", "description": "Wall-clock milliseconds spent rendering the audio." },
+      "seconds": {
+        "type": "number",
+        "description": "Rendered duration in seconds, including the tail."
+      },
+      "cps": {
+        "type": "number",
+        "description": "Cycles per second actually used."
+      },
+      "events": {
+        "type": "integer",
+        "description": "Number of note/trigger events rendered."
+      },
+      "render_ms": {
+        "type": "number",
+        "description": "Wall-clock milliseconds spent rendering the audio."
+      },
       "markers_applied": {
         "type": "array",
         "description": "Markers that were rewritten, in request order.",
@@ -123,9 +155,18 @@
           "additionalProperties": false,
           "required": ["name", "value", "line"],
           "properties": {
-            "name": { "type": "string", "description": "Marker identifier." },
-            "value": { "type": ["number", "string"], "description": "Value written into the marker line." },
-            "line": { "type": "integer", "description": "1-based line number that was rewritten." }
+            "name": {
+              "type": "string",
+              "description": "Marker identifier."
+            },
+            "value": {
+              "type": ["number", "string"],
+              "description": "Value written into the marker line."
+            },
+            "line": {
+              "type": "integer",
+              "description": "1-based line number that was rewritten."
+            }
           }
         }
       },
@@ -138,13 +179,24 @@
             "type": ["number", "null"],
             "description": "Absolute sample peak in dBFS (-Infinity serialises as null by JSON)."
           },
-          "rmsDb": { "type": ["number", "null"], "description": "Overall RMS in dBFS." },
-          "crestDb": { "type": ["number", "null"], "description": "Peak minus RMS in dB." },
-          "clippedSamples": { "type": "integer", "description": "Samples at or above full scale." },
+          "rmsDb": {
+            "type": ["number", "null"],
+            "description": "Overall RMS in dBFS."
+          },
+          "crestDb": {
+            "type": ["number", "null"],
+            "description": "Peak minus RMS in dB."
+          },
+          "clippedSamples": {
+            "type": "integer",
+            "description": "Samples at or above full scale."
+          },
           "warnings": {
             "type": "array",
             "description": "Human-readable warnings (silence, clipping, mud, ...).",
-            "items": { "type": "string" }
+            "items": {
+              "type": "string"
+            }
           }
         }
       }
@@ -153,13 +205,23 @@
   "examples": [
     {
       "title": "Two cycles of a sawtooth triad, offline",
-      "input": { "code": "note(\"c3 e3 g3\").s(\"sawtooth\").lpf(800)", "cycles": 2, "offline": true },
+      "input": {
+        "code": "note(\"c3 e3 g3\").s(\"sawtooth\").lpf(800)",
+        "cycles": 2,
+        "offline": true
+      },
       "fixtures": {}
     },
     {
       "title": "Render a file with rewritten section markers",
       "run": false,
-      "input": { "file": "songs/theme.strudel", "markers": { "DROP": 30 }, "seconds": 60 },
+      "input": {
+        "file": "songs/theme.strudel",
+        "markers": {
+          "DROP": 30
+        },
+        "seconds": 60
+      },
       "fixtures": {}
     }
   ]

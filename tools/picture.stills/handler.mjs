@@ -81,7 +81,7 @@ export default async function run(input, ctx) {
           retries: input.frame_retries,
           onStall: (at, e) => ctx.log(`still at ${at.toFixed(3)} s stalled, retrying (${firstLine(e)})`),
         });
-        const name = `still-${t.toFixed(3)}.${ext}`;
+        const name = `still-${t.toFixed(3).padStart(8, '0')}.${ext}`; // zero-padded: name order = time order
         await writeFile(path.join(ctx.outDir, name), buf);
         stills.push({ t, name });
         ctx.progress(stills.length / times.length, `still ${stills.length}/${times.length} at ${t.toFixed(3)} s`);

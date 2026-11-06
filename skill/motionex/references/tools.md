@@ -724,6 +724,7 @@ class: music · deterministic: yes · cache: auto · version 1.0.0
 | seed | integer |  | 0 | Seed for the Math.random replacement Strudel noise uses. The same seed gives byte-identical audio; change it for a different noise take. |
 | analyze | boolean |  | true | Also measure the render (peak/RMS/crest/clipping/warnings) and write analysis.json. |
 | offline | boolean |  | false | Only load samples from the sample cache, never the network. A missing sample then fails the render instead of downloading it. |
+| name | string |  |  | Output file name for the rendered audio. Default music.<ext>. The extension always follows format (a given .wav/.mp3/... is replaced), e.g. name "score" with format mp3 writes score.mp3. |
 | (one of) |  |  |  | code \| file |
 
 ### Example: Two cycles of a sawtooth triad, offline
@@ -834,7 +835,7 @@ class: capture · deterministic: no · cache: off · version 1.0.0
 | query | string |  | "render" | Query string appended to the page URL (without the '?'), so a page can tell capture from preview. |
 | width | integer |  |  | Viewport width in pixels. Omit to use window.__motion.size.width. |
 | height | integer |  |  | Viewport height in pixels. Omit to use window.__motion.size.height. |
-| times | array | yes |  | Times in seconds (>= 0); one image is written per entry, named still-<t to 3 decimals>.<ext>. |
+| times | array | yes |  | Times in seconds (>= 0); one image is written per entry, named still-<t to 3 decimals, zero-padded to 8 chars, e.g. 0012.500>.<ext>. |
 | times[] | number |  |  |  |
 | format | enum |  | "png" | Image format: png (lossless) or jpeg (smaller, quality applies). JPEG output uses the .jpg extension. |
 | quality | integer |  | 90 | JPEG quality when format is jpeg. Ignored for png. |

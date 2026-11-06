@@ -69,8 +69,8 @@ test('media.frames: two PNGs, and width scales the frame', needs('ffmpeg', 'ffpr
     for (const o of pngs) assert.ok(o.bytes > 0, `${o.name} is empty`);
 
     const scaled = await runTool('media.frames', { video: 'clip.mp4', times: [1], width: 160 }, { workspace: ws });
-    const out = scaled.outputs.find((o) => o.name === 'frame-1.000.png');
-    assert.ok(out, `expected frame-1.000.png, got ${scaled.outputs.map((o) => o.name).join(', ')}`);
+    const out = scaled.outputs.find((o) => o.name === 'frame-0001.000.png');
+    assert.ok(out, `expected frame-0001.000.png, got ${scaled.outputs.map((o) => o.name).join(', ')}`);
     await copyFile(out.abs, path.join(ws, 'scaled.png'));
     const p = await runTool('media.probe', { input: 'scaled.png' }, { workspace: ws });
     const sv = p.result.streams.find((s) => s.type === 'video');

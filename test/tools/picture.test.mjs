@@ -323,7 +323,7 @@ test('picture.stills: two PNGs of the page size at the requested times', {
     assert.equal(run.result.height, 180);
     assert.deepEqual(
       run.result.stills.map((s) => s.name),
-      ['still-0.250.png', 'still-1.500.png'],
+      ['still-0000.250.png', 'still-0001.500.png'],
     );
     const pngs = run.outputs.filter((o) => o.name.endsWith('.png'));
     assert.equal(pngs.length, 2);

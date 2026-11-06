@@ -86,7 +86,9 @@ export default async function run(input, ctx) {
   const { bytes, ext } = await encode(rendered.channels, rendered.sampleRate, input.format, {
     bitrate: input.bitrate_k,
   });
-  await writeFile(path.join(ctx.outDir, `music.${ext}`), bytes);
+  // Optional output name (agents reach for one); the extension always follows `format`.
+  const base = input.name ? input.name.replace(/\.(wav|wav32|mp3|flac|ogg|opus|m4a)$/i, '') : 'music';
+  await writeFile(path.join(ctx.outDir, `${base}.${ext}`), bytes);
   await writeFile(path.join(ctx.outDir, 'song.strudel'), code);
 
   let analysis = null;

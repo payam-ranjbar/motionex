@@ -12,7 +12,7 @@ export default async function run(input, ctx) {
   const frames = [];
   for (let i = 0; i < input.times.length; i++) {
     const t = input.times[i];
-    const name = `frame-${t.toFixed(3)}.${ext}`;
+    const name = `frame-${t.toFixed(3).padStart(8, '0')}.${ext}`; // zero-padded: name order = time order
     const args = ['-hide_banner', '-y', '-ss', String(t), '-i', input.video, '-frames:v', '1'];
     if (input.width != null) args.push('-vf', `scale=${input.width}:-2`);
     args.push(path.join(ctx.outDir, name));
