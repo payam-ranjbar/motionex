@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="data:," />
+    <title>async-seek</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 320px;
+        height: 180px;
+        overflow: hidden;
+        background: #000;
+      }
+    </style>
+  </head>
+  <body>
+    <script>
+      // seek() returns a Promise that resolves on the next animation frame, after the frame has painted state.
+      const WIDTH = 320;
+      const HEIGHT = 180;
+      const DURATION = 2;
+      const apply = (t) => {
+        const k = Math.round((255 * Math.max(0, Math.min(DURATION, t))) / DURATION);
+        document.body.style.background = `rgb(${k}, 0, ${255 - k})`;
+      };
+      const motion = {
+        ready: false,
+        duration: DURATION,
+        size: { width: WIDTH, height: HEIGHT },
+        seek(t) {
+          return new Promise((resolve) => {
+            requestAnimationFrame(() => {
+              apply(t);
+              resolve();
+            });
+          });
+        },
+      };
+      window.__motion = motion;
+      apply(0);
+      motion.ready = true;
+    </script>
+  </body>
+</html>

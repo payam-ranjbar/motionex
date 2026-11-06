@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="data:," />
+    <title>plain</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 320px;
+        height: 180px;
+        overflow: hidden;
+        background: #000;
+      }
+    </style>
+  </head>
+  <body>
+    <script>
+      // The smallest page that follows the capture contract: synchronous seek, no assets, no network.
+      const WIDTH = 320;
+      const HEIGHT = 180;
+      const DURATION = 2;
+      const step = (t) => Math.round((255 * Math.max(0, Math.min(DURATION, t))) / DURATION);
+      const motion = {
+        ready: false,
+        duration: DURATION,
+        size: { width: WIDTH, height: HEIGHT },
+        seek(t) {
+          const k = step(t);
+          document.body.style.background = `rgb(${k}, 0, ${255 - k})`;
+        },
+      };
+      window.__motion = motion;
+      motion.seek(0);
+      motion.ready = true;
+    </script>
+  </body>
+</html>

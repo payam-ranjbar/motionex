@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="data:," />
+    <title>gsap</title>
+    <!-- absolute path: the page is served from the static server origin, so /_mx/lib/... works -->
+    <script src="/_mx/lib/gsap/gsap.min.js"></script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 320px;
+        height: 180px;
+        overflow: hidden;
+        background: #000;
+      }
+      #box {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 320px;
+        height: 180px;
+        background: #fff;
+        opacity: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="box"></div>
+    <script>
+      // A paused GSAP timeline driven by seek(): opacity 0 -> 1, linearly, over the page duration.
+      const WIDTH = 320;
+      const HEIGHT = 180;
+      const DURATION = 1;
+      const box = document.getElementById('box');
+      const motion = {
+        ready: false,
+        duration: DURATION,
+        size: { width: WIDTH, height: HEIGHT },
+        seek() {},
+      };
+      window.__motion = motion;
+      if (window.gsap) {
+        const tl = window.gsap.timeline({ paused: true });
+        tl.fromTo(box, { opacity: 0 }, { opacity: 1, duration: DURATION, ease: 'none' });
+        motion.seek = (t) => {
+          tl.seek(Math.max(0, Math.min(DURATION, t)));
+        };
+        motion.seek(0);
+        // ready only once the timeline has rendered: without gsap the page stays not-ready on purpose.
+        motion.ready = true;
+      }
+    </script>
+  </body>
+</html>

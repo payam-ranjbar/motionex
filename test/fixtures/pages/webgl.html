@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="data:," />
+    <title>webgl</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 320px;
+        height: 180px;
+        overflow: hidden;
+        background: #000;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="c" width="320" height="180"></canvas>
+    <script>
+      // A WebGL canvas kept readable for screenshots (preserveDrawingBuffer) whose clear colour follows t.
+      const WIDTH = 320;
+      const HEIGHT = 180;
+      const DURATION = 2;
+      const canvas = document.getElementById('c');
+      const attrs = { preserveDrawingBuffer: true, alpha: false, antialias: false, depth: false, stencil: false };
+      const gl = canvas.getContext('webgl2', attrs) || canvas.getContext('webgl', attrs);
+      const motion = {
+        ready: false,
+        duration: DURATION,
+        size: { width: WIDTH, height: HEIGHT },
+        seek() {},
+      };
+      window.__motion = motion;
+      if (gl) {
+        motion.seek = (t) => {
+          const k = Math.round((255 * Math.max(0, Math.min(DURATION, t))) / DURATION) / 255;
+          gl.viewport(0, 0, WIDTH, HEIGHT);
+          gl.clearColor(k, 0, 1 - k, 1);
+          gl.clear(gl.COLOR_BUFFER_BIT);
+          gl.finish();
+        };
+        motion.seek(0);
+        motion.ready = true;
+      }
+    </script>
+  </body>
+</html>
