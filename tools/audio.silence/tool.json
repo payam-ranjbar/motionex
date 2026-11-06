@@ -1,0 +1,76 @@
+{
+  "name": "audio.silence",
+  "version": "1.0.0",
+  "title": "Silence map",
+  "summary": "Finds silences (including leading and trailing) and where speech ends in an audio or video file, using 10 ms windows and a peak threshold.",
+  "description": "Decodes the first audio stream at its native rate and channel count and reports every run of near-silent 10 ms windows at least min_duration_s long, plus leading_s (a silence starting at 0), trailing_s (a silence ending at the file end) and speech_end_s (the last sample above -40 dBFS plus a 30 ms tail). Use it to trim dead air, place voice-over or find gaps. It measures; it never changes anything.",
+  "kind": "node",
+  "handler": "handler.mjs",
+  "deterministic": true,
+  "cache_default": "auto",
+  "resources": { "class": "audio", "slots": 1 },
+  "timeout_s": 600,
+  "requires": { "binaries": ["ffmpeg"] },
+  "input_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["input"],
+    "properties": {
+      "input": {
+        "type": "string",
+        "x-mx-ref": true,
+        "description": "Audio or video file: a workspace path, job:<id>/<output> or pin:<name>. The first audio stream is analysed at its native rate and channel count."
+      },
+      "threshold_db": {
+        "type": "number",
+        "default": -50,
+        "description": "A 10 ms window counts as silent when its peak absolute sample over all channels is below this dBFS level."
+      },
+      "min_duration_s": {
+        "type": "number",
+        "minimum": 0,
+        "default": 0.1,
+        "description": "Shortest silence to report, in seconds. Shorter runs are ignored."
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["duration_s", "silences", "leading_s", "trailing_s", "speech_end_s"],
+    "properties": {
+      "duration_s": { "type": "number" },
+      "silences": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["start", "end"],
+          "properties": {
+            "start": { "type": "number" },
+            "end": { "type": "number" }
+          }
+        }
+      },
+      "leading_s": { "type": "number" },
+      "trailing_s": { "type": "number" },
+      "speech_end_s": { "type": "number" }
+    }
+  },
+  "examples": [
+    {
+      "title": "Silence map of a tone with gaps",
+      "input": { "input": "clip.wav" },
+      "fixtures": {
+        "clip.wav": {
+          "concat": [
+            { "silence": { "seconds": 0.5, "sample_rate": 48000 } },
+            { "sine": { "freq": 1000, "seconds": 1, "amplitude_db": -20, "sample_rate": 48000 } },
+            { "silence": { "seconds": 0.5, "sample_rate": 48000 } },
+            { "sine": { "freq": 1000, "seconds": 1, "amplitude_db": -20, "sample_rate": 48000 } },
+            { "silence": { "seconds": 0.3, "sample_rate": 48000 } }
+          ]
+        }
+      }
+    }
+  ]
+}
