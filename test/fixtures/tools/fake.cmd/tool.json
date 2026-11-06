@@ -39,6 +39,13 @@
       "input": {
         "message": "hello ünïcödé ʃˈɒp"
       }
+    },
+    {
+      "title": "protocol round trip",
+      "input": {
+        "message": "ünï ʃˈɒp"
+      },
+      "fixtures": {}
     }
   ]
 }

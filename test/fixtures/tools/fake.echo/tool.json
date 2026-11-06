@@ -52,6 +52,18 @@
       "input": {
         "message": "hi"
       }
+    },
+    {
+      "title": "echo a file size",
+      "input": {
+        "message": "hi",
+        "file": "in/a.txt"
+      },
+      "fixtures": {
+        "in/a.txt": {
+          "text": "hello"
+        }
+      }
     }
   ]
 }
