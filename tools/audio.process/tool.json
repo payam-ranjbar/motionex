@@ -1,0 +1,197 @@
+{
+  "name": "audio.process",
+  "version": "1.0.0",
+  "title": "Process audio (pitch, tempo, trim, fades)",
+  "summary": "Run an ordered list of processing steps over audio takes: ffmpeg filters, pitch, tempo, gain, silence trim, pause tightening, fades and peak normalisation, written as wav, flac or mp3.",
+  "description": "The voice-fx and cleanup pass, for one file or a batch of takes. Each step does exactly one thing and the steps run in the order given, so a take can be pitched down for a deeper voice, its long pauses tightened, its edges faded and its peak normalised in one job. With no steps and no conversion options a file is only re-encoded. Presets such as deep-hero carry a whole named chain; a request's own steps replace a preset's steps. A step that needs real DSP is an ffmpeg chain, so it appears in the result's chain list in the order it ran; gain, trim, tightening, fades and normalisation are done in memory and do not add a chain. Nothing is enforced: no normalisation, no trimming, no resampling unless asked.",
+  "kind": "node",
+  "handler": "handler.mjs",
+  "deterministic": true,
+  "cache_default": "auto",
+  "resources": { "class": "audio", "slots": 1 },
+  "timeout_s": 1800,
+  "presets": "audio-process",
+  "requires": { "binaries": ["ffmpeg"] },
+  "input_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["inputs"],
+    "properties": {
+      "inputs": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 100,
+        "description": "Audio files to process, in order. Each becomes one output; the same stem twice gets a -2/-3 suffix.",
+        "items": {
+          "type": "string",
+          "x-mx-ref": true,
+          "description": "One audio file: a workspace path, job:<id>/<output> or pin:<name>. Its first audio stream is processed."
+        }
+      },
+      "preset": {
+        "type": "string",
+        "description": "Name of a preset under presets/audio-process/ (deep-hero, uncanny-villain) whose values are merged under this request. Your own fields win; your own steps replace the preset's steps."
+      },
+      "steps": {
+        "type": "array",
+        "default": [],
+        "description": "Processing steps, applied in order. Each step object holds exactly one operation. Empty means: just decode and re-encode.",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "maxProperties": 1,
+          "description": "One operation: filter, pitch_semitones, tempo, gain_db, trim_silence, tighten_pauses, fade_in_s, fade_out_s or normalize_peak_db.",
+          "properties": {
+            "filter": {
+              "type": "string",
+              "description": "An ffmpeg -af chain applied as-is, e.g. \"highpass=f=90,acompressor=threshold=0.06\" or \"bass=g=5:f=110,volume=6dB\". File-reading filters (movie, amovie, sendcmd, zmq) are refused."
+            },
+            "pitch_semitones": {
+              "type": "number",
+              "minimum": -24,
+              "maximum": 24,
+              "description": "Shift the pitch by this many semitones (negative = deeper) while keeping the duration. Runs as asetrate + aresample + atempo."
+            },
+            "tempo": {
+              "type": "number",
+              "minimum": 0.25,
+              "maximum": 4,
+              "description": "Speed factor with the pitch kept: 2 plays twice as fast, 0.5 half as fast. Duration is divided by it."
+            },
+            "gain_db": {
+              "type": "number",
+              "description": "Multiply the amplitude by this many dB (positive louder, negative quieter). No limiter: integer output formats clip above 0 dBFS."
+            },
+            "trim_silence": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Remove leading and/or trailing audio below threshold_db, judged by the peak over all channels, keeping keep_s of it.",
+              "properties": {
+                "threshold_db": {
+                  "type": "number",
+                  "default": -50,
+                  "description": "Frames whose peak over all channels is at or below this dBFS count as silence."
+                },
+                "start": { "type": "boolean", "default": true, "description": "Trim the silent head of the file." },
+                "end": { "type": "boolean", "default": true, "description": "Trim the silent tail of the file." },
+                "keep_s": {
+                  "type": "number",
+                  "minimum": 0,
+                  "default": 0.03,
+                  "description": "Seconds of the silence to keep at each trimmed edge (30 ms by default)."
+                }
+              }
+            },
+            "tighten_pauses": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["max_pause_s"],
+              "description": "Shorten every internal pause longer than max_pause_s to exactly max_pause_s, keeping half of it on each side of the cut. Leading and trailing silence are left alone.",
+              "properties": {
+                "max_pause_s": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "description": "Longest pause to keep, in seconds. Every longer internal silence is cut down to this. Required."
+                },
+                "threshold_db": {
+                  "type": "number",
+                  "default": -40,
+                  "description": "A window is silent when its peak over all channels is below this dBFS."
+                },
+                "window_ms": {
+                  "type": "number",
+                  "minimum": 1,
+                  "default": 10,
+                  "description": "Length of the analysis window in milliseconds. 10 ms is the dialogue-editor default."
+                }
+              }
+            },
+            "fade_in_s": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Linear fade in from silence over this many seconds at the start."
+            },
+            "fade_out_s": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Linear fade out to silence over this many seconds at the end."
+            },
+            "normalize_peak_db": {
+              "type": "number",
+              "maximum": 0,
+              "description": "Scale the whole file so its absolute sample peak lands exactly at this dBFS (0 = full scale). Rounded/actual peak may differ by the rounding of the output format."
+            }
+          }
+        }
+      },
+      "format": {
+        "enum": ["wav", "wav24", "wav32f", "flac", "mp3"],
+        "default": "wav",
+        "description": "Output format: wav = 16-bit, wav24, wav32f = 32-bit float (no clipping), flac, mp3 (192 kbit/s)."
+      },
+      "sample_rate": {
+        "type": "integer",
+        "minimum": 8000,
+        "maximum": 192000,
+        "description": "Convert the output to this sample rate in Hz. Omit to keep the input rate."
+      },
+      "channels": {
+        "enum": [1, 2],
+        "description": "Convert the output to this channel count (1 = mono, 2 = stereo). Omit to keep the input's channel count."
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["files", "warnings"],
+    "properties": {
+      "files": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["input", "name", "seconds", "sample_rate", "channels", "peak_db", "clipped_samples", "chain"],
+          "properties": {
+            "input": { "type": "string" },
+            "name": { "type": "string" },
+            "seconds": { "type": "number" },
+            "sample_rate": { "type": "integer" },
+            "channels": { "type": "integer" },
+            "peak_db": { "type": ["number", "null"] },
+            "clipped_samples": { "type": "integer" },
+            "chain": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      },
+      "warnings": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "examples": [
+    {
+      "title": "Pitch down 2.6 semitones and tighten long pauses",
+      "input": {
+        "inputs": ["take.wav"],
+        "steps": [{ "pitch_semitones": -2.6 }, { "tighten_pauses": { "max_pause_s": 0.35 } }]
+      },
+      "fixtures": {
+        "take.wav": {
+          "concat": [
+            { "silence": { "seconds": 0.3, "channels": 1, "sample_rate": 22050 } },
+            { "sine": { "freq": 220, "seconds": 0.6, "amplitude_db": -12, "channels": 1, "sample_rate": 22050 } },
+            { "silence": { "seconds": 1.2, "channels": 1, "sample_rate": 22050 } },
+            { "sine": { "freq": 220, "seconds": 0.6, "amplitude_db": -12, "channels": 1, "sample_rate": 22050 } },
+            { "silence": { "seconds": 0.3, "channels": 1, "sample_rate": 22050 } }
+          ]
+        }
+      }
+    },
+    {
+      "title": "Deep hero voice preset, mono 48 kHz output",
+      "input": { "inputs": ["take.wav"], "preset": "deep-hero", "channels": 1, "sample_rate": 48000 },
+      "fixtures": {
+        "take.wav": { "sine": { "freq": 180, "seconds": 1, "amplitude_db": -14, "channels": 1, "sample_rate": 22050 } }
+      }
+    }
+  ]
+}
