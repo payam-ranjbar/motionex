@@ -1,0 +1,9 @@
+{
+  "description": "The classic voice-driven layout from motion-studio: a short lead-in before the first line, a small gap between lines, a tail after the last line, and every scene length snapped up to a whole 2-beat unit.",
+  "defaults": {
+    "lead_s": 0.3,
+    "gap_s": 0.2,
+    "tail_s": 0.4,
+    "snap_beats": 2
+  }
+}
