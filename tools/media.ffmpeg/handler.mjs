@@ -1,20 +1,85 @@
 // media.ffmpeg: the escape hatch. Run any ffmpeg command on workspace files.
 // Placeholders: {in:NAME}, {out:FILE}, {script:NAME}. Paths are confined to the workspace;
 // only placeholder-substituted arguments may be absolute. Filter chains are checked for file-reading filters.
-import { stat, writeFile } from 'node:fs/promises';
+// An output FILE may hold one printf frame counter (%d or %0Nd, N 1-9) to write an image sequence.
+import { readdir, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { ToolError } from '../../src/lib/errors.mjs';
 import { checkChain, runFfmpeg } from '../../src/lib/ffmpeg.mjs';
 
 const FILTER_FLAGS = new Set(['-vf', '-af', '-filter:v', '-filter:a', '-filter_complex']);
-const EXACT_PLACEHOLDER = /^\{(in|out|script):([\w.-]{1,128})\}$/;
-const PLACEHOLDER = /\{(in|out|script):([\w.-]{1,128})\}/g;
-const OUTPUT_NAME = /^[\w.-]{1,128}$/;
+const FRAME_COUNTER = /%(?:0[1-9])?d/;
+const FRAME_COUNTER_ALL = /%(?:0[1-9])?d/g;
+const PLACEHOLDER = /\{(in|out|script):([^{}]{1,200})\}/g;
+const PLACEHOLDER_TOKEN = /^\{(in|out|script):([^{}]*)\}$/;
+const PLACEHOLDER_CANDIDATE = /\{(?:in|out|script):[^}]*\}?/g;
+const EXACT_PLACEHOLDER = /^\{(in|out|script):[^{}]{1,200}\}$/;
+const BARE_BRACE = /\{([\w-]{1,64})\}/g;
 const INPUT_NAME = /^[\w-]{1,64}$/;
 const SCRIPT_NAME = /^[\w.-]{1,128}$/;
+const NAME_PART = /^[\w.-]*$/;
 
 const nameOk = (name, re) => typeof name === 'string' && re.test(name);
 const isAbsolute = (p) => p.startsWith('/') || p.startsWith('\\\\') || /^[A-Za-z]:[\\/]/.test(p);
+const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** True when `name` is a safe output file name with at most one %d or %0Nd frame counter. */
+function isOutputName(name) {
+  if (typeof name !== 'string' || name.length < 1 || name.length > 128) return false;
+  if ((name.match(FRAME_COUNTER_ALL) ?? []).length > 1) return false;
+  return name.split(FRAME_COUNTER).every((part) => NAME_PART.test(part));
+}
+
+const hasFrameCounter = (name) => FRAME_COUNTER.test(name);
+
+/** True when `name` is a valid placeholder body for `kind`. */
+function placeholderNameOk(kind, name) {
+  if (kind === 'in') return INPUT_NAME.test(name);
+  if (kind === 'script') return SCRIPT_NAME.test(name);
+  return isOutputName(name);
+}
+
+/**
+ * Reject placeholder-looking arguments that do not parse as complete, valid placeholders, before ffmpeg runs.
+ * Other braces (ffmpeg expressions, drawtext) are left alone.
+ */
+function checkPlaceholders(arg, index, inputs) {
+  PLACEHOLDER_CANDIDATE.lastIndex = 0;
+  for (let m = PLACEHOLDER_CANDIDATE.exec(arg); m !== null; m = PLACEHOLDER_CANDIDATE.exec(arg)) {
+    const token = PLACEHOLDER_TOKEN.exec(m[0]);
+    if (!token || !placeholderNameOk(token[1], token[2])) {
+      throw new ToolError(
+        'invalid-input',
+        `argument ${index} "${arg}": malformed placeholder; use {in:NAME}, {out:FILE} or {script:NAME} (FILE may hold one %d or %03d frame counter for an image sequence)`,
+      );
+    }
+  }
+  BARE_BRACE.lastIndex = 0;
+  for (let m = BARE_BRACE.exec(arg); m !== null; m = BARE_BRACE.exec(arg)) {
+    if (Object.hasOwn(inputs, m[1])) {
+      throw new ToolError('invalid-input', `argument ${index} "${arg}": use {in:NAME} for an input`);
+    }
+  }
+}
+
+/** The tail of ffmpeg's stderr, for a missing-output failure. */
+function stderrTail(run) {
+  return String(run.stderr ?? '')
+    .trim()
+    .split('\n')
+    .slice(-6)
+    .join(' | ')
+    .slice(-600);
+}
+
+function missingOutput(run, name) {
+  const tail = stderrTail(run);
+  // ffmpeg exits 0 and writes nothing when e.g. -ss is past the end of the input; show its own words.
+  return new ToolError(
+    'tool-failed',
+    `declared output "${name}" was not written by the command (a common cause: -ss past the end of the input). ffmpeg said: ${tail || '(nothing)'}`,
+  );
+}
 
 /**
  * @param {{args: string[], inputs?: Record<string, string>, outputs: string[], scripts?: Record<string, string>}} input
@@ -26,8 +91,11 @@ export default async function run(input, ctx) {
 
   // Declared outputs: safe single-segment names, resolved under outDir.
   const resolvedOutputs = outputs.map((name) => {
-    if (!nameOk(name, OUTPUT_NAME)) {
-      throw new ToolError('invalid-input', `output name "${name}" must match ^[\\w.-]{1,128}$`);
+    if (!isOutputName(name)) {
+      throw new ToolError(
+        'invalid-input',
+        `output name "${name}" must match ^[\\w.-]{1,128}$ (optionally with one %d or %0Nd frame counter)`,
+      );
     }
     const abs = path.join(outDir, name);
     const rel = path.relative(outDir, abs);
@@ -63,14 +131,14 @@ export default async function run(input, ctx) {
   const resolved = [];
   const filterIndices = new Set();
   let nextIsFilter = false;
-  for (const original of args) {
+  for (let i = 0; i < args.length; i++) {
+    const original = args[i];
+    checkPlaceholders(original, i, inputs);
     if (nextIsFilter) {
       filterIndices.add(resolved.length);
       nextIsFilter = false;
     }
-    let didSubstitute = false;
     const value = original.replace(PLACEHOLDER, (_m, kind, name) => {
-      didSubstitute = true;
       if (kind === 'in') {
         if (!Object.hasOwn(inputs, name)) {
           throw new ToolError('invalid-input', `unknown input placeholder "{in:${name}}"`);
@@ -88,7 +156,7 @@ export default async function run(input, ctx) {
       return scriptPaths[name];
     });
     if (FILTER_FLAGS.has(value)) nextIsFilter = true;
-    resolved.push({ original, value, didSubstitute });
+    resolved.push({ original, value });
   }
 
   // Safety: filter chains are checked; every other argument must stay in the workspace.
@@ -116,27 +184,39 @@ export default async function run(input, ctx) {
     signal,
   });
 
-  // Every declared output must exist now.
+  // Every declared output must exist now. An image-sequence output is satisfied by at least one frame.
   const written = [];
   for (const out of resolvedOutputs) {
-    let info;
-    try {
-      info = await stat(out.abs);
-    } catch {
-      // ffmpeg exits 0 and writes nothing when e.g. -ss is past the end of the input; show its own words.
-      const tail = String(run0.stderr ?? '')
-        .trim()
-        .split('\n')
-        .slice(-6)
-        .join(' | ')
-        .slice(-600);
-      throw new ToolError(
-        'tool-failed',
-        `declared output "${out.name}" was not written by the command (a common cause: -ss past the end of the input). ffmpeg said: ${tail || '(nothing)'}`,
-      );
+    if (!hasFrameCounter(out.name)) {
+      let info;
+      try {
+        info = await stat(out.abs);
+      } catch {
+        throw missingOutput(run0, out.name);
+      }
+      if (!info.isFile()) throw new ToolError('tool-failed', `declared output "${out.name}" is not a file`);
+      written.push({ name: out.name, bytes: info.size });
+      continue;
     }
-    if (!info.isFile()) throw new ToolError('tool-failed', `declared output "${out.name}" is not a file`);
-    written.push({ name: out.name, bytes: info.size });
+
+    const [prefix, suffix] = out.name.split(FRAME_COUNTER);
+    const frameName = new RegExp(`^${escapeRegExp(prefix)}(\\d+)${escapeRegExp(suffix)}$`);
+    const frames = [];
+    for (const entry of await readdir(outDir)) {
+      const m = frameName.exec(entry);
+      if (!m) continue;
+      let info;
+      try {
+        info = await stat(path.join(outDir, entry));
+      } catch {
+        continue;
+      }
+      if (!info.isFile()) continue;
+      frames.push({ name: entry, bytes: info.size, frame: Number(m[1]) });
+    }
+    if (frames.length === 0) throw missingOutput(run0, out.name);
+    frames.sort((a, b) => a.frame - b.frame || a.name.localeCompare(b.name));
+    for (const f of frames) written.push({ name: f.name, bytes: f.bytes });
   }
 
   return { result: { outputs: written, stderr_tail: String(run0.stderr ?? '').slice(-2000) } };

@@ -30,6 +30,26 @@ async function writePng(ws, rel, color, width = 320, height = 180) {
   ]);
 }
 
+/** Write a short test video with ffmpeg's testsrc source (native mpeg4, no external encoder). */
+async function writeVideo(ws, rel, seconds = 1) {
+  const abs = path.join(ws, rel);
+  await mkdir(path.dirname(abs), { recursive: true });
+  await runFfmpeg([
+    '-hide_banner',
+    '-nostdin',
+    '-y',
+    '-f',
+    'lavfi',
+    '-i',
+    `testsrc=size=160x120:rate=10:duration=${seconds}`,
+    '-c:v',
+    'mpeg4',
+    '-pix_fmt',
+    'yuv420p',
+    abs,
+  ]);
+}
+
 test('media.ffmpeg: registry collects refs inside additionalProperties', needs('ffmpeg'), async () => {
   const ws = await mkTmp();
   try {
@@ -138,6 +158,121 @@ test('media.ffmpeg: a declared output that is never written fails clearly', need
       ),
       (e) => (e.type === 'tool-failed' || e.type === 'invalid-input') && /missing\.wav/.test(e.message),
     );
+  } finally {
+    await rmTmp(ws);
+  }
+});
+
+test('media.ffmpeg: an image-sequence output writes and lists every frame', needs('ffmpeg'), async () => {
+  const ws = await mkTmp();
+  try {
+    await writeVideo(ws, 'clip.mp4');
+    const { result, outputs } = await runTool(
+      'media.ffmpeg',
+      {
+        args: ['-i', '{in:v}', '-vf', 'fps=5,scale=80:-2', '{out:f-%03d.png}'],
+        inputs: { v: 'clip.mp4' },
+        outputs: ['f-%03d.png'],
+      },
+      { workspace: ws },
+    );
+    const expected = ['f-001.png', 'f-002.png', 'f-003.png', 'f-004.png', 'f-005.png'];
+    assert.deepStrictEqual(
+      result.outputs.map((o) => o.name),
+      expected,
+      'the result must list the frames in frame order',
+    );
+    for (const o of result.outputs) assert.ok(o.bytes > 0, `${o.name} is empty`);
+    // The runner registers every file in outDir, so all frames must be job outputs too.
+    assert.deepStrictEqual(
+      outputs.map((o) => o.name).sort(),
+      expected,
+      'every matching frame must be registered as a job output',
+    );
+  } finally {
+    await rmTmp(ws);
+  }
+});
+
+test('media.ffmpeg: an image-sequence output that writes no file fails clearly', needs('ffmpeg'), async () => {
+  const ws = await mkTmp();
+  try {
+    await writeVideo(ws, 'clip.mp4');
+    await assert.rejects(
+      runTool(
+        'media.ffmpeg',
+        {
+          args: ['-i', '{in:v}', '-vf', 'fps=1', '-frames:v', '0', '{out:none-%03d.png}'],
+          inputs: { v: 'clip.mp4' },
+          outputs: ['none-%03d.png'],
+        },
+        { workspace: ws },
+      ),
+      (e) =>
+        e.type === 'tool-failed' &&
+        /declared output "none-%03d\.png" was not written by the command/.test(e.message) &&
+        /ffmpeg said:/.test(e.message),
+    );
+  } finally {
+    await rmTmp(ws);
+  }
+});
+
+test('media.ffmpeg: a malformed {out:...} placeholder is refused before ffmpeg runs', needs('ffmpeg'), async () => {
+  const ws = await mkTmp();
+  try {
+    await writeFixture(ws, 'tone.wav', SINE);
+    await assert.rejects(
+      runTool(
+        'media.ffmpeg',
+        { args: ['-i', '{in:a}', '{out:bad name.wav}'], inputs: { a: 'tone.wav' }, outputs: ['ok.wav'] },
+        { workspace: ws },
+      ),
+      (e) =>
+        e.type === 'invalid-input' &&
+        e.message ===
+          'argument 2 "{out:bad name.wav}": malformed placeholder; use {in:NAME}, {out:FILE} or {script:NAME} (FILE may hold one %d or %03d frame counter for an image sequence)',
+    );
+  } finally {
+    await rmTmp(ws);
+  }
+});
+
+test('media.ffmpeg: a bare {NAME} input key is refused before ffmpeg runs', needs('ffmpeg'), async () => {
+  const ws = await mkTmp();
+  try {
+    await writeFixture(ws, 'tone.wav', SINE);
+    await assert.rejects(
+      runTool(
+        'media.ffmpeg',
+        { args: ['-i', '{v}', '{out:o.wav}'], inputs: { v: 'tone.wav' }, outputs: ['o.wav'] },
+        { workspace: ws },
+      ),
+      (e) => e.type === 'invalid-input' && e.message === 'argument 1 "{v}": use {in:NAME} for an input',
+    );
+  } finally {
+    await rmTmp(ws);
+  }
+});
+
+test('media.ffmpeg: ordinary braces in a filter argument are left untouched', needs('ffmpeg'), async () => {
+  const ws = await mkTmp();
+  try {
+    await writeVideo(ws, 'clip.mp4');
+    const { result } = await runTool(
+      'media.ffmpeg',
+      {
+        args: ['-i', '{in:v}', '-vf', 'metadata=mode=add:key=comment:value={note}', '-update', '1', '{out:frame.png}'],
+        inputs: { v: 'clip.mp4' },
+        outputs: ['frame.png'],
+      },
+      { workspace: ws },
+    );
+    assert.deepStrictEqual(
+      result.outputs.map((o) => o.name),
+      ['frame.png'],
+    );
+    assert.ok(result.outputs[0].bytes > 0);
   } finally {
     await rmTmp(ws);
   }
