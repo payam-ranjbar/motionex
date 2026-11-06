@@ -19,6 +19,7 @@ Every motionex tool takes a JSON object. Any file input is a ref: a workspace pa
 - **media.mux** — Put an audio track onto a video without re-encoding the video: stream-copy the video and encode (or copy) the audio, with an optional audio delay.
 - **media.probe** — Inspect a media file with ffprobe: duration, size, format and bit rate plus a typed per-stream summary of codec, dimensions, frame rate, pixel format, colour tags, sample rate and channels.
 - **music.render** — Render a Strudel song to audio with the Mucavex engine: seeded deterministic noise, named section markers, optional tempo override and an analysis report.
+- **music.sounds** — List the sounds the Strudel engine knows: name, kind (synth/sample/soundfont) and bank size, plus the bank names usable with .bank().
 - **picture.render** — Render an HTML page that exposes window.__motion (ready, seek(t), duration?, size?) to a video, frame by frame, with optional audio muxed in the same pass.
 - **picture.stills** — Write still frames of an HTML page that exposes window.__motion (ready, seek(t), duration?, size?) as PNG or JPEG, at the times you ask for.
 - **sfx.synth** — Synthesize sound effects from a recipe module: a workspace .mjs or the built-in generic recipes. Each sound is finished (trim, fades, normalise), written as a WAV and measured.
@@ -747,6 +748,26 @@ class: music · deterministic: yes · cache: auto · version 1.0.0
   },
   "seconds": 60
 }
+```
+
+## music.sounds
+
+**Music sounds**: List the sounds the Strudel engine knows: name, kind (synth/sample/soundfont) and bank size, plus the bank names usable with .bank().
+
+Boots the vendored Mucavex engine and its prebake (synth/ZZFX sounds, GM soundfonts, sample banks and drum-machine bank aliases), then returns the registered sound map as a lookup table. Use it before music.render to find a real sound name instead of guessing, e.g. filter for `perc` or `/^gm_dulc/`. `variants` is the number of samples in a bank (the range `n` accepts), or null for synths and soundfonts. `banks` lists every `.bank("...")` name, including drum-machine aliases; the engine lowercases bank lookups, so the returned lowercase names work as-is. Listing reads only the in-memory registry; no audio is loaded, so it works offline with a warm sample cache.
+
+class: light · deterministic: no · cache: off · version 1.0.0
+
+| field | type | required | default | description |
+| --- | --- | --- | --- | --- |
+| filter | string |  |  | Only return sounds whose name contains this case-insensitive substring, or matches this regular expression when the value starts and ends with `/` (e.g. `/^gm_dulc/`). Omit to return every sound. |
+| kind | enum |  | "all" | Only return this kind of sound: `synth` for oscillators/noise, `sample` for sampler banks, `soundfont` for GM instruments, or `all`. |
+| offline | boolean |  | false | Only load sample maps and soundfonts from the sample cache, never the network. Omit (false) to allow downloading a missing map. Listing itself never loads audio. |
+
+### Example: List every known sound (needs the warm sample cache)
+
+```json
+{}
 ```
 
 ## picture.render

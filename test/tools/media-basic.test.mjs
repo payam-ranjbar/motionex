@@ -122,3 +122,38 @@ test('media.concat: copy and reencode join two one-second parts', needs('ffmpeg'
     await rmTmp(ws);
   }
 });
+
+// Found by an ON THE ONE episode agent: frames asked for 8–13 s on a 5 s draft died with an mjpeg encoder error.
+test('media.frames: times past the end are rejected with a plain message', needs('ffmpeg', 'ffprobe'), async () => {
+  const ws = await mkTmp();
+  try {
+    const abs = path.join(ws, 'v.mp4');
+    await runFfmpeg([
+      '-hide_banner',
+      '-y',
+      '-f',
+      'lavfi',
+      '-i',
+      'testsrc2=size=320x180:rate=30',
+      '-t',
+      '2',
+      '-c:v',
+      'libx264',
+      '-pix_fmt',
+      'yuv420p',
+      abs,
+    ]);
+    await assert.rejects(
+      runTool('media.frames', { video: 'v.mp4', times: [1, 3.5], format: 'jpeg', width: 160 }, { workspace: ws }),
+      (e) => e.type === 'invalid-input' && /past the end of the video \(2\.0\d\d s\): 3\.5/.test(e.detail),
+    );
+    const ok = await runTool(
+      'media.frames',
+      { video: 'v.mp4', times: [1.9], format: 'jpeg', width: 160 },
+      { workspace: ws },
+    );
+    assert.equal(ok.outputs.length, 1);
+  } finally {
+    await rmTmp(ws);
+  }
+});

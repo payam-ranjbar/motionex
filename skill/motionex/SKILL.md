@@ -66,7 +66,7 @@ Your "ears" are `audio.loudness`, `audio.levels`, `audio.speech-ratio`, `audio.s
 2. **Voice drafts**: `voice.phonemize` names and odd words first, then `voice.piper` (or `voice.elevenlabs`), and `audio.process` for character (pitch, EQ, speed).
 3. **Timing**: `timeline.layout` turns the takes into scene times and cues (`timeline.json`). It is optional; you may also hand-write absolute times.
 4. **Picture**: HTML pages that expose `window.__motion`. Review with `picture.stills` and `image.contact-sheet` BEFORE a full render.
-5. **Music**: a Strudel song through `music.render`, with markers for the sections, checked with `audio.stats` or `audio.levels`.
+5. **Music**: look sound names up with `music.sounds`, then write a Strudel song for `music.render`, with markers for the sections, checked with `audio.stats` or `audio.levels`.
 6. **Sound effects**: `sfx.synth`, the built-in generic recipes or your own recipe file.
 7. **Mix**: `audio.mix`. The default is a plain sum; add a preset or explicit options. Check with `audio.loudness` and `audio.speech-ratio`.
 8. **Render**: `picture.render` with `audio` set. It encodes once, video and audio together.

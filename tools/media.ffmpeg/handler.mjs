@@ -123,7 +123,17 @@ export default async function run(input, ctx) {
     try {
       info = await stat(out.abs);
     } catch {
-      throw new ToolError('tool-failed', `declared output "${out.name}" was not written by the command`);
+      // ffmpeg exits 0 and writes nothing when e.g. -ss is past the end of the input; show its own words.
+      const tail = String(run0.stderr ?? '')
+        .trim()
+        .split('\n')
+        .slice(-6)
+        .join(' | ')
+        .slice(-600);
+      throw new ToolError(
+        'tool-failed',
+        `declared output "${out.name}" was not written by the command (a common cause: -ss past the end of the input). ffmpeg said: ${tail || '(nothing)'}`,
+      );
     }
     if (!info.isFile()) throw new ToolError('tool-failed', `declared output "${out.name}" is not a file`);
     written.push({ name: out.name, bytes: info.size });

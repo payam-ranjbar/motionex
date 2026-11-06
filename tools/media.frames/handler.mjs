@@ -1,6 +1,7 @@
 // media.frames: one still image per requested time, optionally scaled.
 import path from 'node:path';
-import { runFfmpeg } from '../../src/lib/ffmpeg.mjs';
+import { ToolError } from '../../src/lib/errors.mjs';
+import { parseDuration, runFfmpeg } from '../../src/lib/ffmpeg.mjs';
 import { mediaTypeOf } from '../../src/lib/media-types.mjs';
 
 /**
@@ -9,6 +10,21 @@ import { mediaTypeOf } from '../../src/lib/media-types.mjs';
  */
 export default async function run(input, ctx) {
   const ext = input.format === 'jpeg' ? 'jpg' : 'png';
+  // A time past the end makes ffmpeg fail with an encoder error that hides the real cause (an agent asked for
+  // 8–13 s on a 5 s draft). Check the duration first and say it plainly.
+  const probe = await runFfmpeg(['-hide_banner', '-i', input.video], { signal: ctx.signal }).catch((e) => ({
+    stderr: e.detail ?? '',
+  }));
+  const duration = parseDuration(probe.stderr);
+  if (duration != null) {
+    const late = input.times.filter((t) => t >= duration);
+    if (late.length) {
+      throw new ToolError(
+        'invalid-input',
+        `times past the end of the video (${duration.toFixed(3)} s): ${late.join(', ')}; the last frame is just before ${duration.toFixed(3)} s`,
+      );
+    }
+  }
   const frames = [];
   for (let i = 0; i < input.times.length; i++) {
     const t = input.times[i];
