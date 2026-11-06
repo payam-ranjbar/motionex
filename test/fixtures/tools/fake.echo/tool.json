@@ -1,0 +1,57 @@
+{
+  "name": "fake.echo",
+  "version": "1.0.0",
+  "title": "fake.echo",
+  "summary": "Test tool: returns its message and writes echo.json (deterministic, cached).",
+  "kind": "node",
+  "handler": "handler.mjs",
+  "deterministic": true,
+  "cache_default": "auto",
+  "resources": {
+    "class": "light",
+    "slots": 0
+  },
+  "timeout_s": 60,
+  "input_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["message"],
+    "properties": {
+      "message": {
+        "type": "string",
+        "description": "Echoed back."
+      },
+      "file": {
+        "type": "string",
+        "x-mx-ref": true,
+        "description": "Optional input file; its size is reported."
+      },
+      "delay_ms": {
+        "type": "integer",
+        "minimum": 0,
+        "default": 0,
+        "description": "Wait this long first."
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["message"],
+    "properties": {
+      "message": {
+        "type": "string"
+      },
+      "file_bytes": {
+        "type": "integer"
+      }
+    }
+  },
+  "examples": [
+    {
+      "title": "echo",
+      "input": {
+        "message": "hi"
+      }
+    }
+  ]
+}

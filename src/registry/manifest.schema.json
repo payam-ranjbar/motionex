@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:motionex:tool-manifest",
+  "title": "motionex tool manifest (tools/<name>/tool.json)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "name",
+    "version",
+    "title",
+    "summary",
+    "kind",
+    "deterministic",
+    "cache_default",
+    "resources",
+    "timeout_s",
+    "input_schema",
+    "examples"
+  ],
+  "properties": {
+    "$comment": { "type": "string" },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$",
+      "description": "Dotted tool name, equal to the folder name, e.g. audio.loudness"
+    },
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+(?:[-+][\\w.-]+)?$" },
+    "title": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "summary": { "type": "string", "minLength": 1, "maxLength": 300 },
+    "description": { "type": "string" },
+    "kind": { "enum": ["node", "command"] },
+    "handler": { "type": "string", "pattern": "^[\\w./-]+\\.m?js$" },
+    "command": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+    "deterministic": { "type": "boolean" },
+    "cache_default": { "enum": ["auto", "reuse", "off"] },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["class"],
+      "properties": {
+        "class": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+        "slots": {
+          "oneOf": [
+            { "type": "integer", "minimum": 0, "maximum": 64 },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["from_input", "default"],
+              "properties": {
+                "from_input": { "type": "string" },
+                "default": { "type": "integer", "minimum": 1, "maximum": 64 }
+              }
+            }
+          ]
+        },
+        "memory_mb": { "type": "integer", "minimum": 64, "maximum": 65536 }
+      }
+    },
+    "timeout_s": { "type": "number", "minimum": 0 },
+    "presets": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "Preset kind (folder under presets/). Enables the `preset` input field."
+    },
+    "requires": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "binaries": { "type": "array", "items": { "enum": ["ffmpeg", "ffprobe", "chromium", "python"] } },
+        "secrets": { "type": "array", "items": { "type": "string", "pattern": "^[a-z0-9_]+$" } }
+      }
+    },
+    "input_schema": { "type": "object" },
+    "output_schema": { "type": "object" },
+    "examples": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "input"],
+        "properties": {
+          "title": { "type": "string" },
+          "input": { "type": "object" },
+          "fixtures": { "type": "object", "additionalProperties": { "type": "object" } },
+          "run": {
+            "type": "boolean",
+            "description": "false = the contract test only validates this example (needs network, secrets or big files)"
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    { "if": { "properties": { "kind": { "const": "node" } } }, "then": { "required": ["handler"] } },
+    { "if": { "properties": { "kind": { "const": "command" } } }, "then": { "required": ["command"] } }
+  ]
+}

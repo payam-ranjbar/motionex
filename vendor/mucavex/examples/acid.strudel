@@ -1,0 +1,9 @@
+// synth-only: renders with no network access
+setcps(0.55)
+
+$: note("<c2 c2 eb2 g1>*4").s("sawtooth")
+  .lpf(sine.range(300, 2200).slow(4)).lpq(12)
+  .decay(.15).sustain(0).room(.2)
+
+$: note("<[c4,eb4,g4] [bb3,d4,f4]>").s("triangle")
+  .attack(.05).release(.6).gain(.4).delay(.3)

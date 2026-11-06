@@ -1,0 +1,6 @@
+// needs samples: fetched once from GitHub, then served from the cache
+samples('github:tidalcycles/dirt-samples')
+setcps(0.5)
+
+$: s("bd*2, [~ sd], hh*8").gain(.9)
+$: note("c2 [~ c2] eb2 g1").s("square").lpf(600).decay(.2).sustain(0)

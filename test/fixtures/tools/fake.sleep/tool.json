@@ -1,0 +1,45 @@
+{
+  "name": "fake.sleep",
+  "version": "1.0.0",
+  "title": "fake.sleep",
+  "summary": "Test tool: sleeps (honouring cancel), optionally spawning a child process that must be killed on cancel.",
+  "kind": "node",
+  "handler": "handler.mjs",
+  "deterministic": false,
+  "cache_default": "off",
+  "resources": {
+    "class": "audio",
+    "slots": 1
+  },
+  "timeout_s": 60,
+  "input_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "seconds": {
+        "type": "number",
+        "minimum": 0,
+        "default": 1,
+        "description": "How long to sleep."
+      },
+      "spawn_child": {
+        "type": "boolean",
+        "default": false,
+        "description": "Spawn a long-running grandchild and report its pid via ctx.trackProcess."
+      },
+      "ignore_cancel": {
+        "type": "boolean",
+        "default": false,
+        "description": "Keep sleeping after the signal aborts (tests the kill grace period)."
+      }
+    }
+  },
+  "examples": [
+    {
+      "title": "short sleep",
+      "input": {
+        "seconds": 0.1
+      }
+    }
+  ]
+}

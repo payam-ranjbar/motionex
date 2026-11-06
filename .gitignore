@@ -1,0 +1,11 @@
+node_modules/
+.venv/
+workspace/
+extensions/
+voices/*.onnx
+voices/*.onnx.json
+secrets/*
+!secrets/*.example
+compose.local.yaml
+*.log
+.mx/

@@ -1,0 +1,44 @@
+{
+  "name": "fake.fail",
+  "version": "1.0.0",
+  "title": "fake.fail",
+  "summary": "Test tool: fails in a chosen way.",
+  "kind": "node",
+  "handler": "handler.mjs",
+  "deterministic": true,
+  "cache_default": "off",
+  "resources": {
+    "class": "light",
+    "slots": 0
+  },
+  "timeout_s": 60,
+  "input_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["mode"],
+    "properties": {
+      "mode": {
+        "enum": ["throw", "tool-error", "exit", "bad-output"],
+        "description": "throw = plain Error; tool-error = ToolError invalid-input; exit = process.exit(3); bad-output = result violating output_schema."
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["ok"],
+    "properties": {
+      "ok": {
+        "type": "boolean"
+      }
+    }
+  },
+  "examples": [
+    {
+      "title": "throw",
+      "input": {
+        "mode": "throw"
+      },
+      "run": false
+    }
+  ]
+}

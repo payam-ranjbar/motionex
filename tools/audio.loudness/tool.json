@@ -1,0 +1,77 @@
+{
+  "name": "audio.loudness",
+  "version": "1.0.0",
+  "title": "Loudness (EBU R128)",
+  "summary": "Integrated loudness, loudness range, true peak and sample peak of an audio or video file, optionally with a momentary or short-term loudness curve.",
+  "description": "Measures the first audio stream with ffmpeg's ebur128 filter. Use it to check a mix against a platform target (for example -16 or -14 LUFS), to compare takes, or to find loud moments with the curve. It measures; it never changes anything.",
+  "kind": "node",
+  "handler": "handler.mjs",
+  "deterministic": true,
+  "cache_default": "auto",
+  "resources": { "class": "audio", "slots": 1 },
+  "timeout_s": 600,
+  "requires": { "binaries": ["ffmpeg"] },
+  "input_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["input"],
+    "properties": {
+      "input": {
+        "type": "string",
+        "x-mx-ref": true,
+        "description": "Audio or video file: a workspace path, job:<id>/<output> or pin:<name>. The first audio stream is measured."
+      },
+      "curve": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Also return a loudness curve. Omit for the summary only.",
+        "properties": {
+          "window": {
+            "enum": ["momentary", "short-term"],
+            "default": "momentary",
+            "description": "momentary = 400 ms window, short-term = 3 s window (EBU R128)."
+          },
+          "step_s": {
+            "type": "number",
+            "minimum": 0.01,
+            "maximum": 10,
+            "default": 0.1,
+            "description": "Seconds between curve points."
+          }
+        }
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["integrated_lufs", "lra_lu", "true_peak_dbtp", "sample_peak_dbfs", "duration_s"],
+    "properties": {
+      "integrated_lufs": { "type": ["number", "null"] },
+      "lra_lu": { "type": ["number", "null"] },
+      "true_peak_dbtp": { "type": ["number", "null"] },
+      "sample_peak_dbfs": { "type": ["number", "null"] },
+      "duration_s": { "type": ["number", "null"] },
+      "curve": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["t", "lufs"],
+          "properties": { "t": { "type": "number" }, "lufs": { "type": ["number", "null"] } }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "title": "Summary of a file",
+      "input": { "input": "tone.wav" },
+      "fixtures": { "tone.wav": { "sine": { "freq": 1000, "seconds": 3, "amplitude_db": -20 } } }
+    },
+    {
+      "title": "Momentary curve every 0.5 s",
+      "input": { "input": "tone.wav", "curve": { "step_s": 0.5 } },
+      "fixtures": { "tone.wav": { "sine": { "freq": 1000, "seconds": 3, "amplitude_db": -20 } } }
+    }
+  ]
+}
