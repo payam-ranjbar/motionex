@@ -1,0 +1,157 @@
+{
+  "$comment": "Still frames of a capture page: one page, one seek per requested time, one image per time. Cheap review of a motion-graphics scene without encoding anything.",
+  "name": "picture.stills",
+  "version": "1.0.0",
+  "title": "Picture stills",
+  "summary": "Write still frames of an HTML page that exposes window.__motion (ready, seek(t), duration?, size?) as PNG or JPEG, at the times you ask for.",
+  "description": "Serves the page over http from the workspace (plus /_mx/lib/... browser libraries), opens one browser page, and seeks to each requested time to write one image. Same page contract as picture.render: window.__motion = {ready: true, seek(t) -> void | Promise, duration?, size?: {width, height}}. Size comes from width/height or from window.__motion.size. Output names carry the time to three decimals, so a review folder can be read in order.",
+  "kind": "node",
+  "handler": "handler.mjs",
+  "deterministic": false,
+  "cache_default": "off",
+  "resources": { "class": "capture", "slots": 1, "memory_mb": 1024 },
+  "timeout_s": 600,
+  "requires": { "binaries": ["chromium"] },
+  "input_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["page", "times"],
+    "properties": {
+      "page": {
+        "type": "string",
+        "x-mx-ref": true,
+        "description": "The HTML page to capture: a workspace path, job:<id>/<output> or pin:<name>. It must set window.__motion = {ready: true, seek(t), duration?, size?}."
+      },
+      "inject": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "x-mx-ref": true,
+          "description": "An HTML fragment file to splice into the page: a workspace path, job:<id>/<output> or pin:<name>."
+        },
+        "description": "HTML fragments spliced into the page in order: at the first <!--mx:inject--> marker, else right before </body>."
+      },
+      "globals": {
+        "type": "object",
+        "additionalProperties": true,
+        "description": "Window globals defined before the page scripts run: NAME -> any JSON value (written as window.NAME = ...). Names must be JS identifiers."
+      },
+      "globals_files": {
+        "type": "object",
+        "additionalProperties": { "type": "string", "x-mx-ref": true },
+        "description": "Window globals read from JSON files: NAME -> a .json file (workspace path, job:<id>/<output> or pin:<name>). An entry in globals wins over the same name here."
+      },
+      "query": {
+        "type": "string",
+        "default": "render",
+        "description": "Query string appended to the page URL (without the '?'), so a page can tell capture from preview."
+      },
+      "width": {
+        "type": "integer",
+        "minimum": 2,
+        "maximum": 16384,
+        "description": "Viewport width in pixels. Omit to use window.__motion.size.width."
+      },
+      "height": {
+        "type": "integer",
+        "minimum": 2,
+        "maximum": 16384,
+        "description": "Viewport height in pixels. Omit to use window.__motion.size.height."
+      },
+      "times": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 200,
+        "items": { "type": "number", "minimum": 0 },
+        "description": "Times in seconds (>= 0); one image is written per entry, named still-<t to 3 decimals>.<ext>."
+      },
+      "format": {
+        "enum": ["png", "jpeg"],
+        "default": "png",
+        "description": "Image format: png (lossless) or jpeg (smaller, quality applies). JPEG output uses the .jpg extension."
+      },
+      "quality": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100,
+        "default": 90,
+        "description": "JPEG quality when format is jpeg. Ignored for png."
+      },
+      "offline": {
+        "type": "boolean",
+        "default": false,
+        "description": "Block every request whose origin is not the local static server (fonts, CDNs, analytics); each block is recorded in page_errors."
+      },
+      "device_scale_factor": {
+        "type": "number",
+        "minimum": 0.1,
+        "maximum": 4,
+        "default": 1,
+        "description": "Device pixel ratio of the browser context. Above 1 renders a page designed for CSS pixels at a higher pixel count."
+      },
+      "warmup": {
+        "type": "boolean",
+        "default": true,
+        "description": "Take and discard one cheap screenshot before the real stills. Headless Chromium stalls for about 15 s on a fresh page's first screenshot, so leave this on."
+      },
+      "frame_timeout_s": {
+        "type": "number",
+        "minimum": 0.1,
+        "maximum": 600,
+        "default": 15,
+        "description": "How long one still (seek + screenshot) may take before it is retried."
+      },
+      "frame_retries": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10,
+        "default": 3,
+        "description": "Attempts per still; the page is re-seeked before every retry. All attempts failing fails the job."
+      },
+      "ready_timeout_s": {
+        "type": "number",
+        "minimum": 1,
+        "maximum": 3600,
+        "default": 60,
+        "description": "How long the page may take to set window.__motion.ready = true."
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["stills", "width", "height", "page_errors"],
+    "properties": {
+      "stills": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["t", "name"],
+          "properties": {
+            "t": { "type": "number", "description": "Requested time in seconds" },
+            "name": { "type": "string", "description": "Output file name inside the job's out folder" }
+          }
+        },
+        "description": "One entry per requested time, in request order"
+      },
+      "width": { "type": "integer", "description": "Image width in pixels (viewport width × device_scale_factor)" },
+      "height": { "type": "integer", "description": "Image height in pixels (viewport height × device_scale_factor)" },
+      "page_errors": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Up to 50 unique page errors, console errors and blocked requests"
+      }
+    }
+  },
+  "examples": [
+    {
+      "title": "One still of a tiny page",
+      "input": { "page": "pages/tiny.html", "times": [0.125] },
+      "fixtures": {
+        "pages/tiny.html": {
+          "text": "<!doctype html><html><body style=\"margin:0;background:#000\"><script>window.__motion={ready:true,duration:0.5,size:{width:64,height:64},seek(t){document.body.style.background=t<0.25?'#112233':'#445566';}};</script></body></html>"
+        }
+      }
+    }
+  ]
+}
