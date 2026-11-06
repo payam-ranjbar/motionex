@@ -1,0 +1,90 @@
+{
+  "name": "music.sounds",
+  "version": "1.0.0",
+  "title": "Music sounds",
+  "summary": "List the sounds the Strudel engine knows: name, kind (synth/sample/soundfont) and bank size, plus the bank names usable with .bank().",
+  "description": "Boots the vendored Mucavex engine and its prebake (synth/ZZFX sounds, GM soundfonts, sample banks and drum-machine bank aliases), then returns the registered sound map as a lookup table. Use it before music.render to find a real sound name instead of guessing, e.g. filter for `perc` or `/^gm_dulc/`. `variants` is the number of samples in a bank (the range `n` accepts), or null for synths and soundfonts. `banks` lists every `.bank(\"...\")` name, including drum-machine aliases; the engine lowercases bank lookups, so the returned lowercase names work as-is. Listing reads only the in-memory registry; no audio is loaded, so it works offline with a warm sample cache.",
+  "kind": "node",
+  "handler": "handler.mjs",
+  "deterministic": false,
+  "cache_default": "off",
+  "resources": {
+    "class": "light",
+    "slots": 0
+  },
+  "timeout_s": 300,
+  "requires": {
+    "binaries": ["ffmpeg"]
+  },
+  "input_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "filter": {
+        "type": "string",
+        "description": "Only return sounds whose name contains this case-insensitive substring, or matches this regular expression when the value starts and ends with `/` (e.g. `/^gm_dulc/`). Omit to return every sound."
+      },
+      "kind": {
+        "enum": ["synth", "sample", "soundfont", "all"],
+        "default": "all",
+        "description": "Only return this kind of sound: `synth` for oscillators/noise, `sample` for sampler banks, `soundfont` for GM instruments, or `all`."
+      },
+      "offline": {
+        "type": "boolean",
+        "default": false,
+        "description": "Only load sample maps and soundfonts from the sample cache, never the network. Omit (false) to allow downloading a missing map. Listing itself never loads audio."
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["count", "sounds", "banks"],
+    "properties": {
+      "count": {
+        "type": "integer",
+        "description": "Number of sounds returned (after `filter` and `kind`)."
+      },
+      "sounds": {
+        "type": "array",
+        "description": "Registered sounds, sorted by name.",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "kind", "variants"],
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Sound name to use with `s(\"...\")` or `note(...).s(\"...\")`."
+            },
+            "kind": {
+              "enum": ["synth", "sample", "soundfont"],
+              "description": "`synth` oscillator/noise, `sample` sampler bank, or `soundfont` GM instrument."
+            },
+            "variants": {
+              "type": ["integer", "null"],
+              "description": "Number of samples in the bank (the range `n` accepts), or null when unknown (synths and soundfonts)."
+            }
+          }
+        }
+      },
+      "banks": {
+        "type": "array",
+        "description": "Every bank name usable with `.bank(\"...\")`, including drum-machine aliases. Bank lookups are lowercased, so these lowercase names work as-is.",
+        "items": {
+          "type": "string",
+          "description": "A bank name, e.g. `rolandtr909`, usable as `.bank(\"RolandTR909\")`."
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "title": "List every known sound (needs the warm sample cache)",
+      "run": false,
+      "input": {},
+      "fixtures": {}
+    }
+  ]
+}

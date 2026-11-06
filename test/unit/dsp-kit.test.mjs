@@ -198,3 +198,41 @@ test('dsp kit: reverb extends the buffer and stays finite', () => {
   assert.equal(y[0].length, y[1].length);
   for (const ch of y) for (const v of ch) assert.ok(Number.isFinite(v));
 });
+
+test('dsp kit: stPan accepts a constant pan as well as a function', () => {
+  const kit = createKit({ seed: 1 });
+  const m = kit.osc(0.01, 440);
+  // -1 puts everything on the left channel.
+  const left = kit.stPan(m, -1);
+  assert.deepEqual(Array.from(left[0]), Array.from(m));
+  assert.ok(
+    left[1].every((v) => v === 0),
+    'right channel should be silent',
+  );
+  // 0 is the constant-power centre: 1/sqrt(2) on both channels.
+  const centre = kit.stPan(m, 0);
+  for (let i = 0; i < m.length; i++) {
+    assert.ok(Math.abs(centre[0][i] - m[i] * Math.SQRT1_2) < 1e-6, `L[${i}] = ${centre[0][i]}`);
+    assert.ok(Math.abs(centre[1][i] - m[i] * Math.SQRT1_2) < 1e-6, `R[${i}] = ${centre[1][i]}`);
+  }
+  // A function pan(t) must behave exactly like the equivalent constant.
+  const byFn = kit.stPan(m, () => 0.5);
+  const byNum = kit.stPan(m, 0.5);
+  assert.deepEqual(Array.from(byFn[0]), Array.from(byNum[0]));
+  assert.deepEqual(Array.from(byFn[1]), Array.from(byNum[1]));
+});
+
+test('dsp kit: envApply accepts a constant gain as well as a function', () => {
+  const kit = createKit({ seed: 2 });
+  const byNum = kit.envApply(kit.osc(0.01, 440), 0.5);
+  const byFn = kit.envApply(kit.osc(0.01, 440), () => 0.5);
+  assert.deepEqual(Array.from(byNum), Array.from(byFn));
+});
+
+test('dsp kit: vari accepts a constant rate as well as a function', () => {
+  const kit = createKit({ seed: 3 });
+  const x = kit.osc(0.02, 440);
+  const byNum = kit.vari(x, 1.5, 0.01);
+  const byFn = kit.vari(x, () => 1.5, 0.01);
+  assert.deepEqual(Array.from(byNum), Array.from(byFn));
+});
