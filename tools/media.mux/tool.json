@@ -1,0 +1,83 @@
+{
+  "name": "media.mux",
+  "version": "1.0.0",
+  "title": "Media mux",
+  "summary": "Put an audio track onto a video without re-encoding the video: stream-copy the video and encode (or copy) the audio, with an optional audio delay.",
+  "description": "Combines a video file and an audio file into one container. The video stream is always copied; the audio is encoded (aac, opus, mp3) or copied. Use an offset to delay audio and shortest to trim the result to the shorter stream.",
+  "kind": "node",
+  "handler": "handler.mjs",
+  "deterministic": true,
+  "cache_default": "auto",
+  "resources": { "class": "encode", "slots": 1 },
+  "timeout_s": 1800,
+  "requires": { "binaries": ["ffmpeg"] },
+  "input_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["video", "audio"],
+    "properties": {
+      "video": {
+        "type": "string",
+        "x-mx-ref": true,
+        "description": "Video source: a workspace path, job:<id>/<output> or pin:<name>. Its first video stream is copied unchanged."
+      },
+      "audio": {
+        "type": "string",
+        "x-mx-ref": true,
+        "description": "Audio source: a workspace path, job:<id>/<output> or pin:<name>. Its first audio stream is mapped."
+      },
+      "audio_codec": {
+        "enum": ["aac", "copy", "libopus", "libmp3lame"],
+        "default": "aac",
+        "description": "Audio codec: aac, libopus or libmp3lame re-encode; copy passes the source audio through (use only when the container accepts it)."
+      },
+      "audio_bitrate_k": {
+        "type": "integer",
+        "minimum": 8,
+        "maximum": 512,
+        "default": 192,
+        "description": "Audio bit rate in kbit/s when the audio is re-encoded; ignored for copy."
+      },
+      "audio_sample_rate": {
+        "type": "integer",
+        "minimum": 8000,
+        "maximum": 192000,
+        "description": "Optional audio sample rate in Hz for re-encoding; omit to keep the source rate."
+      },
+      "audio_offset_s": {
+        "type": "number",
+        "default": 0,
+        "description": "Seconds to delay the audio relative to the video (ffmpeg -itsoffset); 0 starts both together."
+      },
+      "shortest": {
+        "type": "boolean",
+        "default": true,
+        "description": "Stop at the shorter of the two streams (ffmpeg -shortest); set false to keep the longer one."
+      },
+      "name": {
+        "type": "string",
+        "pattern": "^[\\w.-]+$",
+        "default": "video.mp4",
+        "description": "Output file name inside the job's out folder, e.g. video.mp4."
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["duration_s", "video_codec", "audio_codec"],
+    "properties": {
+      "duration_s": { "type": ["number", "null"] },
+      "video_codec": { "type": ["string", "null"] },
+      "audio_codec": { "type": ["string", "null"] }
+    }
+  },
+  "examples": [
+    {
+      "title": "Mux a tone onto a clip",
+      "input": { "video": "clip.mp4", "audio": "tone.wav" },
+      "fixtures": { "tone.wav": { "sine": { "freq": 440, "seconds": 3, "amplitude_db": -20 } } },
+      "run": false
+    }
+  ]
+}

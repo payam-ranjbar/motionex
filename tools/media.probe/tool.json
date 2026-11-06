@@ -1,0 +1,80 @@
+{
+  "name": "media.probe",
+  "version": "1.0.0",
+  "title": "Media probe",
+  "summary": "Inspect a media file with ffprobe: duration, size, format and bit rate plus a typed per-stream summary of codec, dimensions, frame rate, pixel format, colour tags, sample rate and channels.",
+  "description": "Runs ffprobe over a video, audio or image file and returns a compact, machine-friendly summary. Use it to check what a tool produced before muxing, concatenating or encoding. It reads; it never changes anything.",
+  "kind": "node",
+  "handler": "handler.mjs",
+  "deterministic": true,
+  "cache_default": "auto",
+  "resources": { "class": "light", "slots": 0 },
+  "timeout_s": 120,
+  "requires": { "binaries": ["ffprobe"] },
+  "input_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["input"],
+    "properties": {
+      "input": {
+        "type": "string",
+        "x-mx-ref": true,
+        "description": "Media file to inspect: a workspace path, job:<id>/<output> or pin:<name>."
+      },
+      "raw": {
+        "type": "boolean",
+        "default": false,
+        "description": "Also include the raw ffprobe JSON (including the absolute file name) under \"raw\"."
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["duration_s", "size_bytes", "format", "bit_rate", "streams"],
+    "properties": {
+      "duration_s": { "type": ["number", "null"] },
+      "size_bytes": { "type": ["number", "null"] },
+      "format": { "type": ["string", "null"] },
+      "bit_rate": { "type": ["number", "null"] },
+      "streams": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["index", "type", "codec"],
+          "properties": {
+            "index": { "type": "number" },
+            "type": { "type": "string" },
+            "codec": { "type": ["string", "null"] },
+            "width": { "type": "number" },
+            "height": { "type": "number" },
+            "fps": { "type": "number" },
+            "pix_fmt": { "type": "string" },
+            "color_space": { "type": "string" },
+            "color_range": { "type": "string" },
+            "color_transfer": { "type": "string" },
+            "color_primaries": { "type": "string" },
+            "sample_rate": { "type": "number" },
+            "channels": { "type": "number" },
+            "duration_s": { "type": "number" },
+            "bit_rate": { "type": "number" }
+          }
+        }
+      },
+      "raw": { "type": "object" }
+    }
+  },
+  "examples": [
+    {
+      "title": "Probe a WAV file",
+      "input": { "input": "tone.wav" },
+      "fixtures": { "tone.wav": { "sine": { "freq": 1000, "seconds": 1, "amplitude_db": -20 } } }
+    },
+    {
+      "title": "Probe with the raw ffprobe JSON",
+      "input": { "input": "tone.wav", "raw": true },
+      "fixtures": { "tone.wav": { "sine": { "freq": 1000, "seconds": 1, "amplitude_db": -20 } } },
+      "run": false
+    }
+  ]
+}
