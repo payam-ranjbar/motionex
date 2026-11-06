@@ -101,3 +101,4 @@ Every step is replaceable. A music-only piece, a silent loop, a title card or a 
 - `references/review-and-delivery.md`: review loops, encode presets, platform limits, covers.
 - `references/collaboration.md`: briefs, parallel agents (one file per act), decision logs.
 - `references/extending.md`: add your own tool (any language), presets and extensions.
+- `references/example-tiny-film.md`: a complete 6-second film as a sequence of jobs (copy the shapes).
