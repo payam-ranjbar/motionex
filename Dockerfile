@@ -16,7 +16,10 @@ ENV UV_PYTHON_INSTALL_DIR=/opt/python UV_LINK_MODE=copy UV_COMPILE_BYTECODE=1
 COPY py/requirements.txt /tmp/requirements.txt
 RUN uv python install 3.12 \
  && uv venv /opt/venv --python 3.12 \
- && uv pip install --python /opt/venv/bin/python --require-hashes --no-deps -r /tmp/requirements.txt
+ && uv pip install --python /opt/venv/bin/python --require-hashes --no-deps -r /tmp/requirements.txt \
+ && find /opt/python -path '*/lib/python3.12/*' -type d \
+      \( -name test -o -name tests -o -name idlelib -o -name tkinter -o -name turtledemo -o -name ensurepip \) \
+      -prune -exec rm -rf {} +
 
 # ---- node deps: production modules only, pruned to linux-x64 ----
 FROM ${NODE_IMAGE} AS deps
@@ -29,15 +32,18 @@ RUN sh /tmp/prune-modules.sh node_modules
 # ---- runtime ----
 FROM ${NODE_IMAGE} AS runtime
 ENV DEBIAN_FRONTEND=noninteractive PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
+# Chromium headless-shell libraries (Playwright's debian12 list, without Xvfb and its CJK/Thai fonts) + fonts we ship.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates libasound2 fontconfig \
+ && apt-get install -y --no-install-recommends ca-certificates libasound2 fontconfig libfontconfig1 libfreetype6 \
+      libatk-bridge2.0-0 libatk1.0-0 libatspi2.0-0 libcairo2 libcups2 libdbus-1-3 libdrm2 libgbm1 libglib2.0-0 \
+      libnspr4 libnss3 libpango-1.0-0 libx11-6 libxcb1 libxcomposite1 libxdamage1 libxext6 libxfixes3 libxkbcommon0 libxrandr2 \
       fonts-dejavu-core fonts-liberation2 fonts-noto-core fonts-noto-color-emoji \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
-# Chromium headless shell matching the pinned playwright-core, plus its system libraries.
-RUN node node_modules/playwright-core/cli.js install --with-deps --only-shell chromium \
- && rm -rf /var/lib/apt/lists/* /tmp/* /root/.cache
+# Chromium headless shell matching the pinned playwright-core (its libraries are installed above).
+RUN node node_modules/playwright-core/cli.js install --only-shell chromium \
+ && rm -rf /tmp/* /root/.cache
 COPY --from=ffmpeg /ffmpeg /ffprobe /usr/local/bin/
 COPY --from=py /opt/python /opt/python
 COPY --from=py /opt/venv /opt/venv

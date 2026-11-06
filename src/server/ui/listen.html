@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>motionex listening room</title>
+<style>
+  :root { --bg: #f6f5f2; --fg: #1b1b1b; --muted: #6b6b6b; --card: #fff; --line: #e3e1dc; --accent: #c2410c; --ok: #15803d; --bad: #b91c1c; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #131313; --fg: #ececec; --muted: #9a9a9a; --card: #1d1d1d; --line: #2c2c2c; --accent: #fb923c; --ok: #4ade80; --bad: #f87171; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display: flex; gap: 16px; align-items: baseline; flex-wrap: wrap; padding: 18px 20px 8px; }
+  header h1 { margin: 0; font-size: 20px; letter-spacing: .02em; }
+  header .muted, .muted { color: var(--muted); font-size: 13px; }
+  main { padding: 8px 20px 40px; max-width: 1200px; margin: 0 auto; }
+  .bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 8px 0 16px; }
+  input, select, button { font: inherit; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--fg); }
+  button { cursor: pointer; } button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; min-width: 0; }
+  .card h3 { margin: 0 0 4px; font-size: 14px; font-weight: 600; word-break: break-all; }
+  .meta { color: var(--muted); font-size: 12px; margin-bottom: 8px; word-break: break-all; }
+  .status-succeeded { color: var(--ok); } .status-failed, .status-canceled { color: var(--bad); }
+  audio, video, img { width: 100%; display: block; border-radius: 8px; margin-top: 6px; }
+  .out { margin-top: 8px; } .out .name { font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; }
+  .ref { font-family: ui-monospace, Consolas, monospace; font-size: 11px; cursor: pointer; }
+  .ab { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } @media (max-width: 720px) { .ab { grid-template-columns: 1fr; } }
+  .preview { display: grid; gap: 10px; } .stagewrap { background: #000; border-radius: 12px; overflow: hidden; position: relative; }
+  iframe { border: 0; display: block; transform-origin: 0 0; }
+  .note { padding: 10px 12px; border-left: 3px solid var(--accent); background: var(--card); border-radius: 6px; margin: 8px 0 16px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>motionex · listening room</h1>
+  <span class="muted">Agents can't hear. You can. Listen, compare, and tell them what you hear.</span>
+</header>
+<main id="app"></main>
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const q = new URLSearchParams(location.search);
+const app = $('#app');
+
+async function api(path) {
+  const r = await fetch(path);
+  if (!r.ok) throw new Error(`${r.status} ${path}`);
+  return r.json();
+}
+// A ref (job:<id>/<name>, pin:<name>[#out], or workspace path) -> a URL the browser can play.
+async function refUrl(ref) {
+  const m = /^job:(job_[0-9a-f]{32})\/(.+)$/.exec(ref);
+  if (m) return `/v1/jobs/${m[1]}/outputs/${m[2].split('/').map(encodeURIComponent).join('/')}`;
+  const r = await api(`/v1/refs/resolve?ref=${encodeURIComponent(ref)}`);
+  if (r.job && r.output) return `/v1/jobs/${r.job}/outputs/${r.output.split('/').map(encodeURIComponent).join('/')}`;
+  return `/v1/files/${r.path.split('/').map(encodeURIComponent).join('/')}`;
+}
+function player(url, mediaType, name) {
+  const t = mediaType || '';
+  if (t.startsWith('audio/') || /\.(wav|mp3|flac|ogg|m4a)$/i.test(name)) return `<audio controls preload="none" src="${esc(url)}"></audio>`;
+  if (t.startsWith('video/') || /\.(mp4|webm|mov)$/i.test(name)) return `<video controls preload="metadata" src="${esc(url)}"></video>`;
+  if (t.startsWith('image/') || /\.(png|jpe?g|webp|gif)$/i.test(name)) return `<a href="${esc(url)}" target="_blank"><img loading="lazy" src="${esc(url)}" alt="${esc(name)}"></a>`;
+  return `<a href="${esc(url)}" target="_blank">open</a>`;
+}
+
+async function viewCompare(refs) {
+  app.innerHTML = `<div class="bar"><a href="/listen">← all jobs</a><span class="muted">A/B: listen to both, then tell the agent which one (and why).</span></div><div class="ab" id="ab"></div>`;
+  const ab = $('#ab');
+  for (const [i, ref] of refs.entries()) {
+    const url = await refUrl(ref).catch((e) => null);
+    ab.insertAdjacentHTML('beforeend', `<div class="card"><h3>${'AB'[i] ?? i + 1}</h3><div class="meta ref">${esc(ref)}</div>${url ? player(url, '', ref) : '<p class="status-failed">cannot resolve</p>'}</div>`);
+  }
+}
+
+async function viewPreview(page, audioRef, timelineRef) {
+  app.innerHTML = `<div class="bar"><a href="/listen">← all jobs</a><span class="muted">Live preview: scrub the audio; the page follows.</span></div>
+    <div class="preview"><div class="stagewrap" id="wrap"></div><audio id="aud" controls></audio><div class="meta" id="info"></div></div>`;
+  const params = new URLSearchParams();
+  if (timelineRef) params.set('mx_globals', `TIMELINE:${timelineRef}`);
+  const src = `/w/${page.split('/').map(encodeURIComponent).join('/')}?preview&${params}`;
+  const frame = document.createElement('iframe');
+  frame.src = src;
+  $('#wrap').append(frame);
+  const aud = $('#aud');
+  if (audioRef) aud.src = await refUrl(audioRef);
+  frame.addEventListener('load', async () => {
+    const w = frame.contentWindow;
+    for (let i = 0; i < 200 && !w.__motion?.ready; i++) await new Promise((r) => setTimeout(r, 50));
+    const m = w.__motion;
+    if (!m) { $('#info').textContent = 'This page has no window.__motion.'; return; }
+    const size = m.size ?? { width: 1920, height: 1080 };
+    const scale = Math.min(1, $('#wrap').clientWidth / size.width);
+    Object.assign(frame.style, { width: `${size.width}px`, height: `${size.height}px`, transform: `scale(${scale})` });
+    $('#wrap').style.height = `${size.height * scale}px`;
+    $('#info').textContent = `${page} · ${size.width}×${size.height} · ${m.duration ?? '?'} s`;
+    let last = -1;
+    const tick = () => { const t = aud.currentTime || 0; if (t !== last) { last = t; try { m.seek(t); } catch {} } requestAnimationFrame(tick); };
+    tick();
+  });
+}
+
+async function viewJobs() {
+  app.innerHTML = `<div class="bar">
+      <select id="tool"><option value="">all tools</option></select>
+      <input id="label" placeholder="label or project">
+      <button id="reload" class="primary">refresh</button>
+      <span class="muted" id="count"></span></div>
+    <div class="note muted">Tip for agents: link the human to <code>/listen?compare=job:…/a.wav,job:…/b.wav</code> for A/B,
+      or <code>/listen?page=films/x/scene.html&amp;audio=job:…/mix.wav&amp;timeline=job:…/timeline.json</code> for a live preview.</div>
+    <div class="grid" id="jobs"></div>`;
+  const tools = await api('/v1/tools?brief=1').catch(() => ({ tools: [] }));
+  for (const t of tools.tools) $('#tool').insertAdjacentHTML('beforeend', `<option>${esc(t.name)}</option>`);
+  const load = async () => {
+    const p = new URLSearchParams({ limit: '60' });
+    if ($('#tool').value) p.set('tool', $('#tool').value);
+    const lab = $('#label').value.trim();
+    const { jobs } = await api(`/v1/jobs?${p}`);
+    const list = lab ? jobs.filter((j) => j.label === lab || j.project === lab) : jobs;
+    $('#count').textContent = `${list.length} jobs`;
+    $('#jobs').innerHTML = list.map((j) => `<div class="card">
+        <h3>${esc(j.tool)} <span class="status-${esc(j.status)}">· ${esc(j.status)}</span></h3>
+        <div class="meta">${esc(j.label ?? '')} ${esc(j.project ?? '')} ${esc((j.finished_at ?? j.created_at ?? '').replace('T', ' ').slice(0, 19))}${j.cached_from ? ' · cached' : ''}<br>
+          <span class="ref" title="click to copy">${esc(j.id)}</span></div>
+        ${j.error ? `<div class="status-failed">${esc(j.error.type)}: ${esc((j.error.detail ?? '').slice(0, 200))}</div>` : ''}
+        ${(j.outputs ?? []).filter((o) => !/\.json$/.test(o.name)).slice(0, 6).map((o) => `<div class="out"><div class="name"><span>${esc(o.name)}</span>
+          <span class="ref" title="click to copy">${esc(o.ref)}</span></div>${player(`/v1/jobs/${j.id}/outputs/${o.name.split('/').map(encodeURIComponent).join('/')}`, o.media_type, o.name)}</div>`).join('')}
+      </div>`).join('') || '<p class="muted">No jobs yet.</p>';
+    for (const el of document.querySelectorAll('.ref')) el.onclick = () => navigator.clipboard?.writeText(el.textContent);
+  };
+  $('#reload').onclick = load;
+  $('#tool').onchange = load;
+  await load();
+}
+
+(async () => {
+  try {
+    if (q.get('compare')) await viewCompare(q.get('compare').split(',').map((s) => s.trim()).filter(Boolean));
+    else if (q.get('page')) await viewPreview(q.get('page'), q.get('audio'), q.get('timeline'));
+    else await viewJobs();
+  } catch (e) {
+    app.innerHTML = `<p class="status-failed">${esc(e.message)}</p>`;
+  }
+})();
+</script>
+</body>
+</html>

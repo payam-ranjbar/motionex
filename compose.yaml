@@ -1,0 +1,33 @@
+# motionex: one container, loopback only (the API executes code that agents submit: scene JS, Strudel, ffmpeg chains).
+#   docker compose up --build -d          (add -f compose.local.yaml for secrets, fonts, extra voices)
+#   MX_WORKSPACE_HOST=<folder> picks the host folder agents share with the service (default ./workspace).
+name: motionex
+services:
+  motionex:
+    build: .
+    image: motionex:local
+    container_name: motionex
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
+    user: "10001:10001"
+    read_only: true
+    tmpfs:
+      - /tmp:size=2g,mode=1777
+    shm_size: "1gb"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      MX_LOG_LEVEL: info
+      MX_ALLOWED_HOSTS: "127.0.0.1:8095,localhost:8095,motionex:8095"
+      MX_ALLOWED_ORIGINS: "http://127.0.0.1:8095,http://localhost:8095"
+    ports:
+      - "127.0.0.1:8095:8095"
+    volumes:
+      - ${MX_WORKSPACE_HOST:-./workspace}:/workspace
+      - ${MX_EXTENSIONS_HOST:-./extensions}:/extensions:ro
+      - motionex-cache:/cache
+      - motionex-scratch:/scratch
+volumes:
+  motionex-cache: {}
+  motionex-scratch: {}
