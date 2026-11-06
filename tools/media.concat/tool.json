@@ -1,0 +1,110 @@
+{
+  "name": "media.concat",
+  "version": "1.0.0",
+  "title": "Media concat",
+  "summary": "Join two or more clips: stream copy for sections rendered with identical settings, or the concat filter to re-encode across differing sources.",
+  "description": "Concatenates video files in order. copy uses the concat demuxer with -c copy (fast, requires identical codecs, resolution and frame rate); reencode uses the concat filter and re-encodes video (and audio when every input has it).",
+  "kind": "node",
+  "handler": "handler.mjs",
+  "deterministic": true,
+  "cache_default": "auto",
+  "resources": { "class": "encode", "slots": 2 },
+  "timeout_s": 3600,
+  "requires": { "binaries": ["ffmpeg"] },
+  "input_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["inputs"],
+    "properties": {
+      "inputs": {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 200,
+        "items": {
+          "type": "string",
+          "x-mx-ref": true,
+          "description": "A clip: a workspace path, job:<id>/<output> or pin:<name>."
+        },
+        "description": "Clips to join, in playback order (2 to 200)."
+      },
+      "mode": {
+        "enum": ["copy", "reencode"],
+        "default": "copy",
+        "description": "copy = concat demuxer with stream copy (identical settings); reencode = concat filter that re-encodes."
+      },
+      "video": {
+        "type": "object",
+        "additionalProperties": false,
+        "default": {},
+        "description": "Video encoder settings used by reencode; omit (or leave fields out) to accept ffmpeg defaults. Ignored by copy.",
+        "properties": {
+          "codec": {
+            "type": "string",
+            "description": "Video codec for reencode, e.g. libx264 (the default) or libx265."
+          },
+          "preset": {
+            "type": "string",
+            "description": "Encoder preset for reencode, e.g. veryfast or slow."
+          },
+          "crf": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 63,
+            "description": "Constant rate factor for reencode (lower is better quality)."
+          },
+          "pix_fmt": {
+            "type": "string",
+            "description": "Pixel format for reencode, e.g. yuv420p (the default)."
+          }
+        }
+      },
+      "audio": {
+        "type": "object",
+        "additionalProperties": false,
+        "default": {},
+        "description": "Audio encoder settings used by reencode when every input has audio. Ignored by copy.",
+        "properties": {
+          "codec": {
+            "type": "string",
+            "default": "aac",
+            "description": "Audio codec for reencode (default aac)."
+          },
+          "bitrate_k": {
+            "type": "integer",
+            "minimum": 8,
+            "maximum": 512,
+            "default": 192,
+            "description": "Audio bit rate in kbit/s for reencode (default 192)."
+          }
+        }
+      },
+      "name": {
+        "type": "string",
+        "pattern": "^[\\w.-]+$",
+        "default": "concat.mp4",
+        "description": "Output file name inside the job's out folder, e.g. concat.mp4."
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["duration_s", "mode"],
+    "properties": {
+      "duration_s": { "type": ["number", "null"] },
+      "mode": { "enum": ["copy", "reencode"] }
+    }
+  },
+  "examples": [
+    {
+      "title": "Copy-concat two clips",
+      "input": { "inputs": ["part1.mp4", "part2.mp4"] },
+      "run": false
+    },
+    {
+      "title": "Re-encode concat with a scale-friendly preset",
+      "input": { "inputs": ["part1.mp4", "part2.mp4"], "mode": "reencode", "video": { "crf": 20 } },
+      "run": false
+    }
+  ]
+}
