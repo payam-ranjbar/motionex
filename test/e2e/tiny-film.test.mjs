@@ -78,9 +78,9 @@ MotionAdapters.fromFunction((t) => {
 
 const SONG = `setcpm(120/4)
 let DROP = 1;
+const span = (a, b) => cat(...Array(a).fill(0), ...Array(b - a).fill(1), ...Array(64).fill(0))
 $: note("<c2 g1 a1 f1>").s("sawtooth").lpf(600).gain(.5)
-$: s("bd*4").bank("RolandTR909").gain(.0)   // muted kit (no samples needed offline)
-$: note("c4 e4 g4 b4").s("triangle").gain(.25).mask(\`<\${'0 '.repeat(DROP)}1>\`)
+$: note("c4 e4 g4 b4").s("triangle").gain(.25).mask(span(DROP, DROP + 64))
 `;
 
 const RECIPE = `export const sounds = {

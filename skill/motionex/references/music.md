@@ -15,7 +15,11 @@ Write songs with named markers that the picture can move without a rewrite:
 let HUNT = 4;   // cycle where the hunt section starts
 let DARK = 23;  // works for 15..24
 let DROP = 34;  // works for 20..34
-$: s("bd*4").mask(`<${'1 '.repeat(DROP)}>`) ...
+// A section is an on/off pattern of cycles. Build masks from arrays: string and backtick
+// literals are parsed as mini-notation, so `${...}` interpolation does NOT work in Strudel.
+const span = (a, b) => cat(...Array(a).fill(0), ...Array(b - a).fill(1), ...Array(64).fill(0))
+$: s("bd*4").bank("RolandTR909").mask(span(DROP, DROP + 64))     // drums only after the drop
+$: note("<c2 g1>").s("sawtooth").lpf(500).mask(span(DARK, DROP)) // the dark part
 ```
 - `music.render {markers: {DROP: 31}}` rewrites `let DROP = …;` before rendering. `song.strudel` in the outputs shows exactly what was rendered.
 - Write the song so it works over a RANGE of marker values, and say which range in a comment. Then the edit can move without breaking the music.
