@@ -66,6 +66,16 @@ export default async function run(input, ctx) {
 
   ctx.progress(0.1, 'rendering');
   const started = performance.now();
+  // The engine skips events it cannot play (an unknown sound name, a sample that failed to load) with only a
+  // console.warn. An agent cannot hear the missing part, so collect those messages and return them as warnings.
+  const skipped = new Map();
+  const warn = console.warn;
+  console.warn = (...args) => {
+    const msg = args.map(String).join(' ');
+    const m = /event skipped: (.*)$/.exec(msg);
+    if (m) skipped.set(m[1], (skipped.get(m[1]) ?? 0) + 1);
+    warn(...args);
+  };
   let rendered;
   try {
     rendered = await render({
@@ -79,7 +89,10 @@ export default async function run(input, ctx) {
   } catch (err) {
     // RangeError (too long / empty) and evaluation errors are the agent's fault, so invalid-input.
     throw invalidInput('Strudel render failed', err);
+  } finally {
+    console.warn = warn;
   }
+  const warnings = [...skipped].map(([why, n]) => `${n} event(s) skipped (silent in the render): ${why}`);
   const renderMs = Math.round(performance.now() - started);
 
   ctx.progress(0.75, 'encoding');
@@ -117,6 +130,7 @@ export default async function run(input, ctx) {
       render_ms: renderMs,
       markers_applied: markersApplied,
       analysis,
+      warnings,
     },
   };
 }

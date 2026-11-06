@@ -199,6 +199,13 @@
             }
           }
         }
+      },
+      "warnings": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Events the engine could not play (unknown sound names, failed sample loads), which are silent in the render. Empty when everything played."
       }
     }
   },

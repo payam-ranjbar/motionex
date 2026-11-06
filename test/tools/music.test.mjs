@@ -219,3 +219,25 @@ test('music.render: an optional name sets the output file, extension follows for
     await rmTmp(ws);
   }
 });
+
+// Agents cannot hear a missing part: an unknown sound name must come back as a warning, not silence.
+test('music.render: unknown sound names are reported as warnings', needs('ffmpeg'), async () => {
+  const ws = await mkTmp();
+  try {
+    const { result } = await runTool(
+      'music.render',
+      { code: '$: note("c3 e3").s("sawtooth")\n$: s("definitely_not_a_sound*4")', cycles: 1, offline: true },
+      { workspace: ws },
+    );
+    assert.equal(result.warnings.length, 1, JSON.stringify(result.warnings));
+    assert.match(result.warnings[0], /4 event\(s\) skipped.*definitely_not_a_sound/);
+    const ok = await runTool(
+      'music.render',
+      { code: 'note("c3").s("sine")', cycles: 1, offline: true },
+      { workspace: ws },
+    );
+    assert.deepEqual(ok.result.warnings, []);
+  } finally {
+    await rmTmp(ws);
+  }
+});

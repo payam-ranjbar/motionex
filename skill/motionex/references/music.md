@@ -7,6 +7,7 @@
 - **Polyphony**: `max_polyphony` defaults to 4096. Strudel's own default of 128 steals voices and FADES THE DRUMS in long renders; we measured 4–17 dB too quiet.
 - **Determinism**: noise and random patterns are seeded (`seed`, default 0), so a re-render is identical and the job cache works.
 - **Cost**: a 60–90 s score renders in 3–12 minutes. Dense arrangements are slower. Render variants as separate jobs at the same time, and keep working.
+- **Check `result.warnings`** after every render: a sound name that does not exist (a typo, or a GM instrument not in the soundfont list) is SKIPPED, so that part is simply silent. The warning names it and counts the lost events.
 - **Offline**: samples are fetched once into a cache volume. `offline: true` uses only the cache.
 
 ## Section markers: let picture and music meet
