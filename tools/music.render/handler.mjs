@@ -7,8 +7,30 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { ToolError } from '../../src/lib/errors.mjs';
-import { mulberry32 } from '../../src/lib/signal.mjs';
+import { fromDb, mulberry32 } from '../../src/lib/signal.mjs';
 import { applyMarkers } from '../../src/lib/strudel-markers.mjs';
+
+/** Formats whose encoder keeps float samples, so a peak above 0 dBFS is preserved instead of clamped. */
+const FLOAT_FORMATS = new Set(['wav32']);
+const round2 = (x) => Math.round(x * 100) / 100;
+
+/**
+ * Sample peak of the float render plus how many samples are at or past full scale (the same 0.999
+ * threshold the analyzer uses), in one pass over every channel.
+ * @param {Float32Array[]} channels @returns {{peak: number, clipped: number}}
+ */
+function renderPeak(channels) {
+  let peak = 0;
+  let clipped = 0;
+  for (const ch of channels) {
+    for (let i = 0; i < ch.length; i++) {
+      const a = Math.abs(ch[i]);
+      if (a > peak) peak = a;
+      if (a >= 0.999) clipped++;
+    }
+  }
+  return { peak, clipped };
+}
 
 /** Turn an engine/transpiler throw into a job error without swallowing cancellation. */
 function invalidInput(prefix, err) {
@@ -95,6 +117,29 @@ export default async function run(input, ctx) {
   const warnings = [...skipped].map(([why, n]) => `${n} event(s) skipped (silent in the render): ${why}`);
   const renderMs = Math.round(performance.now() - started);
 
+  // 7. Sample peak of the float render (one pass). Measured always, because an agent cannot hear overs and an
+  //    integer encoder clamps them silently; `peak_db` then scales the whole render before encoding.
+  let { peak, clipped } = renderPeak(rendered.channels);
+  let gainDbApplied = null;
+  if (input.peak_db != null) {
+    if (peak > 0) {
+      const gain = fromDb(input.peak_db) / peak;
+      for (const ch of rendered.channels) for (let i = 0; i < ch.length; i++) ch[i] *= gain;
+      gainDbApplied = round2(20 * Math.log10(gain));
+      peak *= gain;
+      clipped = 0;
+    } else {
+      warnings.push(`the render is silent, so peak_db (${input.peak_db}) was not applied`);
+    }
+  }
+  const peakDb = peak > 0 ? round2(20 * Math.log10(peak)) : null;
+  // Only the float format keeps overs; every other encoder clamps at ±1.0, which is audible distortion.
+  if (peakDb != null && peakDb > 0 && !FLOAT_FORMATS.has(input.format))
+    warnings.push(
+      `the render peaks at +${peakDb.toFixed(1)} dBFS; ${clipped} samples clip in ${input.format}: ` +
+        'lower .gain()/.postgain(), or set peak_db (or use format wav32, which keeps overs)',
+    );
+
   ctx.progress(0.75, 'encoding');
   const { bytes, ext } = await encode(rendered.channels, rendered.sampleRate, input.format, {
     bitrate: input.bitrate_k,
@@ -129,6 +174,8 @@ export default async function run(input, ctx) {
       events: rendered.events,
       render_ms: renderMs,
       markers_applied: markersApplied,
+      peak_db: peakDb,
+      gain_db_applied: gainDbApplied,
       analysis,
       warnings,
     },

@@ -161,6 +161,64 @@ test('honours offset_s/duration_s and linear fades', needs('ffmpeg'), async () =
   }
 });
 
+// Found in a real episode: a music clip longer than the mix had fade_out_s 0.35, but the fade sat at the
+// clip's own end, which the mix cut off, so the audible end was a hard cut.
+const peakBetween = (ch, fromS, toS, sr = SR) => {
+  let p = 0;
+  for (let i = Math.round(fromS * sr); i < Math.min(ch.length, Math.round(toS * sr)); i++) {
+    p = Math.max(p, Math.abs(ch[i]));
+  }
+  return p;
+};
+
+test('a fade-out ends at the mix cut when duration_s truncates the clip', needs('ffmpeg'), async () => {
+  const ws = await mkTmp();
+  try {
+    // 2 s of a 100 Hz stereo sine at 0.5 into a mix that is only 1.5 s long (stereo so the pan law is the
+    // identity at pan 0 and the level is the raw amplitude).
+    await writeWavFile(ws, 'bed.wav', sineCh(SR * 2, 100, 0.5, 2));
+    const faded = await runTool(
+      'audio.mix',
+      { duration_s: 1.5, tracks: [{ name: 'music', clips: [{ src: 'bed.wav', at: 0, fade_out_s: 0.5 }] }] },
+      { workspace: ws },
+    );
+    const ch = (await readOutput(faded)).channels[0];
+    assert.equal(ch.length, Math.round(1.5 * SR), 'the mix length is duration_s');
+    const full = peakBetween(ch, 0.8, 1.0);
+    assert.ok(Math.abs(full - 0.5) < 0.01, `0.9 s should still be full level, got ${full}`);
+    const last = peakBetween(ch, 1.49, 1.5);
+    assert.ok(last < 0.02, `the last samples should be near silent, got ${last}`);
+    assert.equal(ch[ch.length - 1], 0, 'the fade-out ends on the last audible sample');
+    const ramp = [peakBetween(ch, 1.0, 1.1), peakBetween(ch, 1.2, 1.3), peakBetween(ch, 1.4, 1.5)];
+    assert.ok(ramp[0] > ramp[1] && ramp[1] > ramp[2], `the fade should fall over 1.0-1.5 s, got ${ramp.join(', ')}`);
+    assert.ok(
+      faded.result.warnings.some((w) => /clip 0 extends past the mix length and was truncated/.test(w)),
+      JSON.stringify(faded.result.warnings),
+    );
+    assert.ok(
+      faded.result.warnings.some((w) => /its 0\.5 s fade-out was applied at the cut/.test(w)),
+      JSON.stringify(faded.result.warnings),
+    );
+
+    // No fade requested: the same cut stays a hard cut (no fade is added behind the agent's back).
+    const hard = await runTool(
+      'audio.mix',
+      { duration_s: 1.5, tracks: [{ name: 'music', clips: [{ src: 'bed.wav', at: 0 }] }] },
+      { workspace: ws },
+    );
+    const hardCh = (await readOutput(hard)).channels[0];
+    const hardLast = peakBetween(hardCh, 1.45, 1.5);
+    assert.ok(hardLast > 0.49, `fade_out_s 0 still ends at full level, got ${hardLast}`);
+    assert.notEqual(hardCh[hardCh.length - 1], 0, 'the last sample is untouched (no fade was added)');
+    assert.ok(
+      hard.result.warnings.every((w) => !/fade-out was applied/.test(w)),
+      JSON.stringify(hard.result.warnings),
+    );
+  } finally {
+    await rmTmp(ws);
+  }
+});
+
 test('pan law: stereo identity, mono equal-power, hard left', needs('ffmpeg'), async () => {
   const ws = await mkTmp();
   try {

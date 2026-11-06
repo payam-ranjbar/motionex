@@ -51,10 +51,14 @@ export function panGains(pan, inCh, outCh) {
 }
 
 /** Apply a gain in dB plus linear fades (in starts at the first sample, out ends on the last sample).
- * @param {Float32Array[]} channels @returns {Float32Array[]} new arrays */
-export function applyGainFades(channels, { gainDb = 0, fadeInS = 0, fadeOutS = 0, sampleRate }) {
+ * `audibleLen` is how many samples of the clip are actually heard (the mix may cut it short): the
+ * fade-out then ends at that sample instead of at the end of the buffer, so the cut is not a hard one.
+ * @param {Float32Array[]} channels @param {{audibleLen?: number}} [opts]
+ * @returns {Float32Array[]} new arrays */
+export function applyGainFades(channels, { gainDb = 0, fadeInS = 0, fadeOutS = 0, sampleRate, audibleLen }) {
   const g = fromDb(gainDb);
   const len = channels[0]?.length ?? 0;
+  const end = Math.max(0, Math.min(len, audibleLen ?? len));
   const fadeIn = Math.max(0, Math.round(fadeInS * sampleRate));
   const fadeOut = Math.max(0, Math.round(fadeOutS * sampleRate));
   return channels.map((ch) => {
@@ -62,7 +66,8 @@ export function applyGainFades(channels, { gainDb = 0, fadeInS = 0, fadeOutS = 0
     for (let i = 0; i < len; i++) {
       let f = g;
       if (fadeIn > 0 && i < fadeIn) f *= i / fadeIn;
-      if (fadeOut > 0 && i > len - 1 - fadeOut) f *= (len - 1 - i) / fadeOut;
+      // `end - 1 - i` reaches 0 on the last audible sample; samples past it are inaudible, so clamp at 0.
+      if (fadeOut > 0 && i > end - 1 - fadeOut) f *= Math.max(0, (end - 1 - i) / fadeOut);
       out[i] = ch[i] * f;
     }
     return out;
@@ -86,13 +91,15 @@ export function panClip(channels, pan, outCh) {
   });
 }
 
-/** Gain + fades + pan for one clip. `extraGainDb` carries per-clip leveling gain. @returns {Float32Array[]} */
-export function prepareClip(audio, clip, { outCh, extraGainDb = 0 } = {}) {
+/** Gain + fades + pan for one clip. `extraGainDb` carries per-clip leveling gain.
+ * `audibleLen` (samples) lets a fade-out end where the mix cuts the clip. @returns {Float32Array[]} */
+export function prepareClip(audio, clip, { outCh, extraGainDb = 0, audibleLen } = {}) {
   const gained = applyGainFades(audio.channels, {
     gainDb: (clip.gain_db ?? 0) + extraGainDb,
     fadeInS: clip.fade_in_s ?? 0,
     fadeOutS: clip.fade_out_s ?? 0,
     sampleRate: audio.sampleRate,
+    audibleLen,
   });
   return panClip(gained, clip.pan ?? 0, outCh);
 }
@@ -182,9 +189,20 @@ export function buildTrackBuffers(plan, decoded) {
     }
     clips.forEach((clip, ci) => {
       const audio = decoded.get(clipKey(clip));
-      const processed = prepareClip(audio, clip, { outCh: plan.channels, extraGainDb: levelGains?.[ci] ?? 0 });
-      if (clip.atSample + framesOf(audio) > n)
-        warnings.push(`track "${track.name}" clip ${ci} extends past the mix length and was truncated`);
+      const frames = framesOf(audio);
+      const truncated = clip.atSample + frames > n;
+      // A truncated clip is heard from atSample to the mix end only, so its fade-out must end there.
+      const audibleLen = truncated ? Math.max(0, n - clip.atSample) : frames;
+      const processed = prepareClip(audio, clip, {
+        outCh: plan.channels,
+        extraGainDb: levelGains?.[ci] ?? 0,
+        audibleLen,
+      });
+      if (truncated) {
+        const fadeOut = clip.fade_out_s ?? 0;
+        const what = `track "${track.name}" clip ${ci} extends past the mix length and was truncated`;
+        warnings.push(fadeOut > 0 ? `${what}; its ${fadeOut} s fade-out was applied at the cut` : what);
+      }
       mixInto(trackCh, processed, clip.atSample);
     });
     buffers.set(track.name, { sampleRate: plan.sampleRate, channels: trackCh });
