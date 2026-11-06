@@ -1,0 +1,234 @@
+{
+  "name": "media.encode",
+  "version": "1.0.0",
+  "title": "Video encoder (delivery)",
+  "summary": "Encode a video with explicit quality, bitrate, size, scaling and audio controls, including fit-to-N-MB two-pass encoding and named delivery presets.",
+  "description": "The delivery encoder. It never guesses: quality (crf or bitrate), scale caps, fps, audio codec/bitrate and colour are explicit inputs. Use target_size_mb to hit a byte budget with a two-pass x264/x265 encode, or a preset from presets/encode/ for a known platform. Colour is converted only when asked: with video.color set (the default 'bt709') the scale filter maps in_color_matrix=auto/in_range=auto to the requested matrix and TV range, with matching tags; video.color null leaves colour untouched. Scaling never upscales and keeps the aspect ratio.",
+  "kind": "node",
+  "handler": "handler.mjs",
+  "deterministic": true,
+  "cache_default": "auto",
+  "resources": { "class": "encode", "slots": 2 },
+  "timeout_s": 7200,
+  "presets": "encode",
+  "requires": { "binaries": ["ffmpeg", "ffprobe"] },
+  "input_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["input"],
+    "properties": {
+      "input": {
+        "type": "string",
+        "x-mx-ref": true,
+        "description": "Video file to encode: a workspace path, job:<id>/<output> or pin:<name>."
+      },
+      "replace_audio": {
+        "type": "string",
+        "x-mx-ref": true,
+        "description": "Use this file's audio instead of the input's audio. Omit to keep the input audio (if any)."
+      },
+      "preset": {
+        "type": "string",
+        "description": "Name of an encode preset under presets/encode/ (master, web-720p, fit-size, telegram-video, instagram-reel). Explicit fields in this request override the preset."
+      },
+      "video": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Video stream settings. All optional; absent means the encoder default, except that with no crf, bitrate_k or target_size_mb the tool uses crf 18.",
+        "properties": {
+          "codec": {
+            "type": "string",
+            "default": "libx264",
+            "description": "Video encoder, e.g. libx264, libx265, libvpx-vp9. Default libx264."
+          },
+          "preset": {
+            "type": "string",
+            "default": "medium",
+            "description": "Encoder speed preset, e.g. ultrafast, slow, veryslow. Default medium."
+          },
+          "crf": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 63,
+            "description": "Constant quality (lower is better/bigger). Ignored when bitrate_k or target_size_mb is set."
+          },
+          "bitrate_k": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "Target video bitrate in kbit/s. Overrides crf."
+          },
+          "maxrate_k": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "Maximum video bitrate in kbit/s. bufsize_k defaults to 2x this."
+          },
+          "maxrate_factor": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "With target_size_mb, maxrate_k = computed video kbps x this factor. Default 1.75 when omitted."
+          },
+          "bufsize_k": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "Rate-control buffer in kbit/s. Defaults to 2x maxrate_k."
+          },
+          "profile": { "type": "string", "description": "H.264/H.265 profile, e.g. high, main." },
+          "level": {
+            "type": "string",
+            "description": "Codec level, e.g. '4.2'. A string so decimals like 4.2 survive."
+          },
+          "gop": { "type": "integer", "minimum": 1, "description": "Maximum keyframe interval in frames (-g)." },
+          "keyint_min": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Minimum keyframe interval in frames (-keyint_min)."
+          },
+          "sc_threshold": {
+            "type": "integer",
+            "description": "Scene-change threshold (-sc_threshold). 0 disables scene-cut keyframes."
+          },
+          "closed_gop": {
+            "type": "boolean",
+            "default": false,
+            "description": "Close every GOP (-flags +cgop), required by some social platforms."
+          },
+          "pix_fmt": { "type": "string", "default": "yuv420p", "description": "Output pixel format. Default yuv420p." },
+          "tune": { "type": "string", "description": "Encoder tuning, e.g. film, animation, fastdecode." },
+          "x264_params": { "type": "string", "description": "Extra -x264-params value, passed through verbatim." },
+          "color": {
+            "type": ["string", "null"],
+            "default": "bt709",
+            "description": "Output colour matrix, e.g. bt709, bt601, smpte240m. Adds an auto->target colour conversion plus matching tags. null adds no conversion and no tags."
+          }
+        }
+      },
+      "audio": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Audio stream settings applied to the mapped audio (input or replace_audio).",
+        "properties": {
+          "codec": {
+            "type": "string",
+            "default": "aac",
+            "description": "Audio encoder, e.g. aac, libopus, copy. Default aac."
+          },
+          "bitrate_k": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "default": 192,
+            "description": "Audio bitrate in kbit/s. Default 192."
+          },
+          "sample_rate": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Output sample rate in Hz (-ar). Omit to keep the source rate."
+          },
+          "channels": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32,
+            "description": "Output channel count (-ac). Omit to keep the source layout."
+          }
+        }
+      },
+      "scale": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Scaling. Explicit width/height win; otherwise max_long_side and max_width cap the size, never upscale, and keep the aspect ratio (the unknown side becomes -2).",
+        "properties": {
+          "width": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Exact output width. With height omitted, height is derived (-2)."
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Exact output height. With width omitted, width is derived (-2)."
+          },
+          "max_long_side": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Fit the longer side to this many pixels (never upscales)."
+          },
+          "max_width": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Cap the output width to this many pixels (never upscales)."
+          }
+        }
+      },
+      "fps": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "description": "Output frame rate (-r). Omit to keep the source rate."
+      },
+      "two_pass": {
+        "type": "boolean",
+        "default": false,
+        "description": "Run a two-pass encode (libx264/libx265 only; ignored for other codecs). Implied by target_size_mb."
+      },
+      "target_size_mb": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "description": "Fit the output under this many megabytes (1 MB = 10^6 bytes). Computes a bitrate and runs a two-pass x264/x265 encode."
+      },
+      "size_margin": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.04,
+        "description": "Fraction of the target bitrate held back for container overhead when fitting to a size. Default 0.04."
+      },
+      "name": {
+        "type": "string",
+        "pattern": "^[\\w.-]+$",
+        "default": "video.mp4",
+        "description": "Output file name inside the job output, matching ^[\\w.-]+$. Default video.mp4."
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["size_bytes", "duration_s", "video_bitrate_k", "passes", "attempts", "width", "height"],
+    "properties": {
+      "size_bytes": { "type": "integer", "description": "Size of the written file in bytes." },
+      "duration_s": { "type": ["number", "null"], "description": "Duration of the output in seconds." },
+      "video_bitrate_k": {
+        "type": ["number", "null"],
+        "description": "Video stream bitrate in kbit/s, from the output probe when available."
+      },
+      "passes": { "type": "integer", "description": "Number of encoding passes used for the final attempt (1 or 2)." },
+      "attempts": {
+        "type": "integer",
+        "description": "Number of encode attempts (2 when the first fit-to-size attempt was over target)."
+      },
+      "width": { "type": ["integer", "null"], "description": "Output video width in pixels." },
+      "height": { "type": ["integer", "null"], "description": "Output video height in pixels." }
+    }
+  },
+  "examples": [
+    {
+      "title": "Master preset",
+      "input": { "input": "render.mp4", "preset": "master" },
+      "run": false
+    },
+    {
+      "title": "Fit under 1 MB",
+      "input": {
+        "input": "render.mp4",
+        "target_size_mb": 1,
+        "video": { "preset": "slow" },
+        "audio": { "bitrate_k": 128 }
+      },
+      "run": false
+    },
+    {
+      "title": "Scale to 320 px and replace audio",
+      "input": { "input": "render.mp4", "replace_audio": "voice.wav", "scale": { "max_long_side": 320 } },
+      "run": false
+    }
+  ]
+}

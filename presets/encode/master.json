@@ -1,0 +1,5 @@
+{
+  "description": "High-quality H.264 master: crf 18, medium preset, BT.709 colour, AAC 192 kbit/s. Good for archiving or as the source for later delivery encodes.",
+  "video": { "crf": 18, "preset": "medium", "color": "bt709" },
+  "audio": { "codec": "aac", "bitrate_k": 192 }
+}

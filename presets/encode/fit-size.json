@@ -1,0 +1,6 @@
+{
+  "description": "Build a two-pass encode that fits a byte budget: pass target_size_mb in the request, and this preset adds the slow preset, a 1.75x maxrate factor and AAC 128 kbit/s. The bitrate is derived from the target size and the input duration.",
+  "two_pass": true,
+  "video": { "preset": "slow", "maxrate_factor": 1.75 },
+  "audio": { "bitrate_k": 128 }
+}
