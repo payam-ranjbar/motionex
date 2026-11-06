@@ -1,0 +1,30 @@
+{
+  "description": "Dialogue-anchored narrative mix (SHAPUR): every dialogue clip is levelled to its median and gently compressed; music plays straight through at about 9 LU under the dialogue with a static -3 dB EQ pocket at 2 kHz (no ducking: the listener heard dips under lines as the music being interrupted); sfx sit 14 LU under the dialogue with a light look-ahead sidechain. Master -16 LUFS, -1.5 dBTP limiter.",
+  "track_defaults": {
+    "dialogue": {
+      "clip_leveling": { "to": "median" },
+      "fx": "acompressor=threshold=0.1:ratio=2:attack=8:release=160:knee=4"
+    },
+    "music": {
+      "level": { "relative_to": "dialogue", "lu": -9 },
+      "fx": "equalizer=f=2000:t=o:w=2:g=-3"
+    },
+    "sfx": {
+      "level": { "relative_to": "dialogue", "lu": -14 }
+    }
+  },
+  "sidechain": [
+    {
+      "target": "sfx",
+      "key": "dialogue",
+      "threshold": 0.03,
+      "ratio": 3,
+      "attack_ms": 5,
+      "release_ms": 300,
+      "lookahead_s": 0.12
+    }
+  ],
+  "master": {
+    "loudness": { "target_lufs": -16, "true_peak_db": -1.5, "method": "gain+limiter" }
+  }
+}

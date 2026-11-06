@@ -85,13 +85,16 @@ export function validateBusRefs(tracks, buses = []) {
   });
 }
 
-/** Every sidechain target/key must be a track name. @throws {ToolError} invalid-input */
+/** Keep only sidechain entries whose target and key name a track; skip the rest with a warning.
+ * A preset may name tracks (for example "sfx") that the request does not have, which must not fail the mix.
+ * @returns {object[]} the entries whose target and key both name a track */
 export function validateSidechainRefs(sidechain = [], tracks) {
   const names = new Set(tracks.map((t) => t.name));
-  sidechain.forEach((s, i) => {
-    if (!names.has(s.target))
-      throw new ToolError('invalid-input', `sidechain[${i}].target: unknown track "${s.target}"`);
-    if (!names.has(s.key)) throw new ToolError('invalid-input', `sidechain[${i}].key: unknown track "${s.key}"`);
+  return sidechain.filter((s) => {
+    const missing = !names.has(s.target) ? s.target : !names.has(s.key) ? s.key : null;
+    if (missing == null) return true;
+    console.warn(`sidechain ${s.target}<-${s.key} skipped: no track named ${missing}`);
+    return false;
   });
 }
 
@@ -137,11 +140,10 @@ export async function buildPlan(input, { signal } = {}) {
   const timeline = input.timeline ? await loadTimeline(input.timeline, { signal }) : null;
   const tracks = resolveClipTimes(applyTrackDefaults(input.tracks, input.track_defaults ?? {}), timeline, sampleRate);
   const buses = input.buses ?? [];
-  const sidechain = input.sidechain ?? [];
 
   if (!tracks.length) throw new ToolError('invalid-input', 'tracks must contain at least one track');
+  const sidechain = validateSidechainRefs(input.sidechain ?? [], tracks);
   validateBusRefs(tracks, buses);
-  validateSidechainRefs(sidechain, tracks);
   validateClipLeveling(tracks);
 
   return {
