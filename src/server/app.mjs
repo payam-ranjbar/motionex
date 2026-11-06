@@ -148,9 +148,14 @@ export async function createApp(deps) {
       sendProblem(res, problem(code, detail), requestId);
     };
 
-    // 2. Host: DNS-rebinding guard
+    // 2. Host: DNS-rebinding guard. Health probes are exempt: they are read-only, and Docker's HEALTHCHECK calls
+    //    them from inside the container (Host 127.0.0.1:<MX_PORT>) whatever host port the service is published on.
     const host = req.headers.host;
-    if (!config.allowedHosts.includes('*') && !(typeof host === 'string' && config.allowedHosts.includes(host))) {
+    if (
+      !AUTH_FREE.has(pathname) &&
+      !config.allowedHosts.includes('*') &&
+      !(typeof host === 'string' && config.allowedHosts.includes(host))
+    ) {
       refuse('host-not-allowed', host ? `Host ${JSON.stringify(host)} is not in MX_ALLOWED_HOSTS` : 'no Host header');
       return;
     }

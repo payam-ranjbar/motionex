@@ -100,7 +100,9 @@ window.__motion = { ready: true, duration: 120, size: { width: 1280, height: 720
 </script></body>`);
   const j = await job('picture.render', { page: 'films/slow.html', workers: 2 }, 0);
   await sleep(8000);
-  const browsers = () => Number(sh("grep -l headless_shell /proc/[0-9]*/cmdline 2>/dev/null | wc -l").stdout.trim());
+  // count processes whose command starts with the Playwright browser folder (a plain grep would match itself)
+  const browsers = () =>
+    Number(sh("for p in /proc/[0-9]*; do tr '\\0' ' ' < $p/cmdline 2>/dev/null | grep -q '^/opt/ms-playwright/' && echo x; done | wc -l").stdout.trim());
   assert.ok(browsers() > 0, 'expected a running headless shell');
   await fetch(`${BASE}/v1/jobs/${j.id}/cancel`, { method: 'POST' });
   const done = await (await fetch(`${BASE}/v1/jobs/${j.id}?wait=30`)).json();

@@ -202,13 +202,17 @@ test('a Host that is not allowed is refused (DNS rebinding guard)', async () => 
   await new Promise((resolve) => strict.listen(0, '127.0.0.1', resolve));
   const { port } = strict.address();
   try {
-    const denied = await rawGet({ port, path: '/livez', headers: { Host: `127.0.0.1:${port}` } });
+    const denied = await rawGet({ port, path: '/v1', headers: { Host: `127.0.0.1:${port}` } });
     assert.equal(denied.status, 403);
     assert.equal(JSON.parse(denied.body).type, 'urn:motionex:problem:host-not-allowed');
 
-    const ok = await rawGet({ port, path: '/livez', headers: { Host: 'good:1' } });
+    const ok = await rawGet({ port, path: '/v1', headers: { Host: 'good:1' } });
     assert.equal(ok.status, 200);
-    assert.deepEqual(JSON.parse(ok.body), { ok: true });
+
+    // health probes are exempt (Docker's HEALTHCHECK calls them from inside with Host 127.0.0.1:<MX_PORT>)
+    const health = await rawGet({ port, path: '/livez', headers: { Host: `127.0.0.1:${port}` } });
+    assert.equal(health.status, 200);
+    assert.deepEqual(JSON.parse(health.body), { ok: true });
   } finally {
     strict.closeAllConnections?.();
     await new Promise((resolve) => strict.close(resolve));
