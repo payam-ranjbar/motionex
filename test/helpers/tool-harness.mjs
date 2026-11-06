@@ -102,6 +102,10 @@ export async function runTool(
   let proc = child;
   if (child) {
     child.on('message', onMessage);
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (d) => {
+      log += d;
+    });
     child.send({
       type: 'run',
       handlerPath: path.join(entry.dir, entry.manifest.handler),
