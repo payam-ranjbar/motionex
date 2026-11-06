@@ -8,9 +8,14 @@
   "handler": "handler.mjs",
   "deterministic": true,
   "cache_default": "auto",
-  "resources": { "class": "encode", "slots": 1 },
+  "resources": {
+    "class": "encode",
+    "slots": 1
+  },
   "timeout_s": 1800,
-  "requires": { "binaries": ["ffmpeg"] },
+  "requires": {
+    "binaries": ["ffmpeg"]
+  },
   "input_schema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
@@ -52,8 +57,8 @@
       },
       "shortest": {
         "type": "boolean",
-        "default": true,
-        "description": "Stop at the shorter of the two streams (ffmpeg -shortest); set false to keep the longer one."
+        "default": false,
+        "description": "false (default): the file is exactly as long as the VIDEO; the audio is padded with silence or trimmed to fit. true: ffmpeg -shortest (stops at the shorter stream; with a copied video this can drop the last frames)."
       },
       "name": {
         "type": "string",
@@ -67,16 +72,33 @@
     "type": "object",
     "required": ["duration_s", "video_codec", "audio_codec"],
     "properties": {
-      "duration_s": { "type": ["number", "null"] },
-      "video_codec": { "type": ["string", "null"] },
-      "audio_codec": { "type": ["string", "null"] }
+      "duration_s": {
+        "type": ["number", "null"]
+      },
+      "video_codec": {
+        "type": ["string", "null"]
+      },
+      "audio_codec": {
+        "type": ["string", "null"]
+      }
     }
   },
   "examples": [
     {
       "title": "Mux a tone onto a clip",
-      "input": { "video": "clip.mp4", "audio": "tone.wav" },
-      "fixtures": { "tone.wav": { "sine": { "freq": 440, "seconds": 3, "amplitude_db": -20 } } },
+      "input": {
+        "video": "clip.mp4",
+        "audio": "tone.wav"
+      },
+      "fixtures": {
+        "tone.wav": {
+          "sine": {
+            "freq": 440,
+            "seconds": 3,
+            "amplitude_db": -20
+          }
+        }
+      },
       "run": false
     }
   ]

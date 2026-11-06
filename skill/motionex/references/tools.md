@@ -657,7 +657,7 @@ class: encode · deterministic: yes · cache: auto · version 1.0.0
 | audio_bitrate_k | integer |  | 192 | Audio bit rate in kbit/s when the audio is re-encoded; ignored for copy. |
 | audio_sample_rate | integer |  |  | Optional audio sample rate in Hz for re-encoding; omit to keep the source rate. |
 | audio_offset_s | number |  | 0 | Seconds to delay the audio relative to the video (ffmpeg -itsoffset); 0 starts both together. |
-| shortest | boolean |  | true | Stop at the shorter of the two streams (ffmpeg -shortest); set false to keep the longer one. |
+| shortest | boolean |  | false | false (default): the file is exactly as long as the VIDEO; the audio is padded with silence or trimmed to fit. true: ffmpeg -shortest (stops at the shorter stream; with a copied video this can drop the last frames). |
 | name | string |  | "video.mp4" | Output file name inside the job's out folder, e.g. video.mp4. |
 
 ### Example: Mux a tone onto a clip

@@ -22,6 +22,28 @@ export default async function run(input, ctx) {
     throw new ToolError('invalid-input', `name "${input.name}" is not a safe file name`);
   const out = path.join(ctx.outDir, input.name);
 
+  // The picture sets the length: by default the audio is padded with silence or trimmed to the VIDEO stream's
+  // duration. (-shortest with a copied video dropped the last 3 frames when a mix came out 3 ms short.)
+  let videoDur = null;
+  if (!input.shortest) {
+    const vp = await runFfprobe(
+      [
+        '-v',
+        'error',
+        '-select_streams',
+        'v:0',
+        '-show_entries',
+        'stream=duration:format=duration',
+        '-of',
+        'json',
+        input.video,
+      ],
+      { signal: ctx.signal, stdout: 'buffer' },
+    ).catch(() => null);
+    const j = vp ? JSON.parse(vp.stdout.toString('utf8') || '{}') : {};
+    videoDur = num(j.streams?.[0]?.duration) ?? num(j.format?.duration);
+  }
+
   const args = ['-hide_banner', '-y', '-i', input.video];
   if (input.audio_offset_s) args.push('-itsoffset', String(input.audio_offset_s));
   args.push('-i', input.audio, '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'copy');
@@ -32,6 +54,10 @@ export default async function run(input, ctx) {
     if (input.audio_sample_rate != null) args.push('-ar', String(input.audio_sample_rate));
   }
   if (input.shortest) args.push('-shortest');
+  else if (videoDur != null) {
+    if (input.audio_codec !== 'copy') args.push('-af', 'apad');
+    args.push('-t', String(videoDur));
+  }
   args.push('-movflags', '+faststart', out);
 
   ctx.progress(0.1, 'muxing');

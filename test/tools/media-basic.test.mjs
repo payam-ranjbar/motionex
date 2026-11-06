@@ -157,3 +157,47 @@ test('media.frames: times past the end are rejected with a plain message', needs
     await rmTmp(ws);
   }
 });
+
+// Found by an ON THE ONE agent: muxing a 3 ms shorter mix onto a copied video with -shortest dropped 3 frames.
+test(
+  'media.mux: by default the file keeps every video frame (audio padded/trimmed to the video)',
+  needs('ffmpeg', 'ffprobe'),
+  async () => {
+    const ws = await mkTmp();
+    try {
+      await runFfmpeg([
+        '-hide_banner',
+        '-y',
+        '-f',
+        'lavfi',
+        '-i',
+        'testsrc2=size=320x180:rate=30',
+        '-t',
+        '2',
+        '-c:v',
+        'libx264',
+        '-pix_fmt',
+        'yuv420p',
+        path.join(ws, 'v.mp4'),
+      ]);
+      await writeFixture(ws, 'short.wav', { sine: { freq: 440, seconds: 1.997 } });
+      await writeFixture(ws, 'long.wav', { sine: { freq: 440, seconds: 3 } });
+      for (const audio of ['short.wav', 'long.wav']) {
+        const r = await runTool('media.mux', { video: 'v.mp4', audio }, { workspace: ws });
+        const frames = await runTool(
+          'media.probe',
+          { input: `.mx/jobs/${path.basename(path.dirname(r.outDir))}/out/video.mp4` },
+          { workspace: ws },
+        );
+        const v = frames.result.streams.find((s) => s.type === 'video');
+        assert.ok(Math.abs(v.duration_s - 2) < 0.02, `${audio}: video ${v.duration_s}`);
+        assert.ok(Math.abs(frames.result.duration_s - 2) < 0.05, `${audio}: file ${frames.result.duration_s}`);
+      }
+      // a time between the video end (2.0) and a longer container end has no frame: rejected plainly
+      const mux = await runTool('media.mux', { video: 'v.mp4', audio: 'long.wav', shortest: false }, { workspace: ws });
+      assert.ok(mux.result.duration_s < 2.1);
+    } finally {
+      await rmTmp(ws);
+    }
+  },
+);

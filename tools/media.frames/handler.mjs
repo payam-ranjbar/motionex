@@ -1,7 +1,7 @@
 // media.frames: one still image per requested time, optionally scaled.
 import path from 'node:path';
 import { ToolError } from '../../src/lib/errors.mjs';
-import { parseDuration, runFfmpeg } from '../../src/lib/ffmpeg.mjs';
+import { parseDuration, runFfmpeg, runFfprobe } from '../../src/lib/ffmpeg.mjs';
 import { mediaTypeOf } from '../../src/lib/media-types.mjs';
 
 /**
@@ -12,10 +12,20 @@ export default async function run(input, ctx) {
   const ext = input.format === 'jpeg' ? 'jpg' : 'png';
   // A time past the end makes ffmpeg fail with an encoder error that hides the real cause (an agent asked for
   // 8–13 s on a 5 s draft). Check the duration first and say it plainly.
-  const probe = await runFfmpeg(['-hide_banner', '-i', input.video], { signal: ctx.signal }).catch((e) => ({
-    stderr: e.detail ?? '',
-  }));
-  const duration = parseDuration(probe.stderr);
+  // Use the VIDEO stream's duration: the container's can be longer (a mix 0.1 s longer than the picture), and a
+  // time between the two still has no frame. Fall back to the container duration when there is no ffprobe.
+  let duration = null;
+  const vp = await runFfprobe(
+    ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=duration', '-of', 'csv=p=0', input.video],
+    { signal: ctx.signal, stdout: 'buffer' },
+  ).catch(() => null);
+  duration = vp ? Number.parseFloat(vp.stdout.toString('utf8')) : Number.NaN;
+  if (!Number.isFinite(duration)) {
+    const probe = await runFfmpeg(['-hide_banner', '-i', input.video], { signal: ctx.signal }).catch((e) => ({
+      stderr: e.detail ?? '',
+    }));
+    duration = parseDuration(probe.stderr);
+  }
   if (duration != null) {
     const late = input.times.filter((t) => t >= duration);
     if (late.length) {
