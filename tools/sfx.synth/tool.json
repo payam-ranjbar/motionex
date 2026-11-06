@@ -1,0 +1,163 @@
+{
+  "name": "sfx.synth",
+  "version": "1.0.0",
+  "title": "SFX synthesis",
+  "summary": "Synthesize sound effects from a recipe module: a workspace .mjs or the built-in generic recipes. Each sound is finished (trim, fades, normalise), written as a WAV and measured.",
+  "description": "Runs a sound-effect recipe and renders each named sound with the shared DSP kit at 48 kHz stereo. A recipe is a workspace .mjs/.js file, or the built-in `generic` recipes. Recipe contract: `export const sounds = { name(kit, params) { /* return [Float32Array, Float32Array] at kit.SR (48000) */ } }` (a sound may be async); optionally `export const finish = { name: { peak_db: -3 } }` for per-sound finish overrides and `export const describe = { name: 'one line' }` for descriptions. `kit` is the DSP kit (osc, noise, filters, envelopes, crush, reverb, echo, pal, rng, ...). `params[name]` is passed through from the request. Every sound is finished with the `finish` options (DC block, head/tail trim, fades, peak normalise), written to `<name>.wav`, and measured. `sounds.json` holds the per-sound results.",
+  "kind": "node",
+  "handler": "handler.mjs",
+  "deterministic": false,
+  "cache_default": "off",
+  "resources": { "class": "audio", "slots": 1 },
+  "timeout_s": 1800,
+  "requires": { "binaries": ["ffmpeg"] },
+  "input_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "oneOf": [{ "required": ["recipe"] }, { "required": ["builtin"] }],
+    "properties": {
+      "recipe": {
+        "type": "string",
+        "x-mx-ref": true,
+        "description": "Workspace path/ref to a .mjs or .js recipe module exporting `sounds` (and optionally `describe`/`finish`). Exactly one of `recipe` or `builtin` is required."
+      },
+      "builtin": {
+        "enum": ["generic"],
+        "description": "Use the built-in generic recipes instead of a workspace module. Exactly one of `recipe` or `builtin` is required."
+      },
+      "sounds": {
+        "type": "array",
+        "items": { "type": "string", "description": "A sound name exported by the recipe's `sounds` object." },
+        "description": "Sound names to render, in order. Omit to render every sound the recipe exports."
+      },
+      "params": {
+        "type": "object",
+        "description": "Recipe parameters keyed by sound name. Each value is passed to the recipe as its second argument.",
+        "additionalProperties": {
+          "type": "object",
+          "description": "Parameters for one sound; arbitrary keys, read by the recipe."
+        }
+      },
+      "palette": {
+        "type": "object",
+        "description": "Named palette audio files that recipes slice with kit.pal(name, k, slot); each is decoded to 48 kHz stereo before the recipe runs.",
+        "additionalProperties": {
+          "type": "string",
+          "x-mx-ref": true,
+          "description": "Workspace path/ref to an audio file to decode into the palette."
+        }
+      },
+      "finish": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Finish options applied to every sound. These override a recipe's per-sound `finish` export.",
+        "properties": {
+          "head": {
+            "type": "boolean",
+            "default": true,
+            "description": "Trim leading near-silence (below head_db) before normalising."
+          },
+          "head_db": {
+            "type": "number",
+            "default": -54,
+            "description": "Head-trim threshold in dBFS (relative to the sound's peak)."
+          },
+          "tail_db": {
+            "type": "number",
+            "default": -62,
+            "description": "Tail-trim threshold in dBFS (relative to the sound's peak)."
+          },
+          "fade_in_s": {
+            "type": "number",
+            "minimum": 0,
+            "default": 0.002,
+            "description": "Fade-in length in seconds."
+          },
+          "fade_out_s": {
+            "type": "number",
+            "minimum": 0,
+            "default": 0.03,
+            "description": "Fade-out length in seconds (capped at a third of the sound)."
+          },
+          "peak_db": {
+            "type": "number",
+            "default": -1,
+            "description": "Target peak in dBFS after normalisation."
+          }
+        }
+      },
+      "format": {
+        "enum": ["wav", "wav24", "wav32f"],
+        "default": "wav24",
+        "description": "WAV bit depth: wav = 16-bit, wav24 = 24-bit, wav32f = 32-bit float."
+      },
+      "seed": {
+        "type": "integer",
+        "default": 1,
+        "description": "PRNG seed for the kit; the same seed renders the same sound."
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["sounds"],
+    "properties": {
+      "sounds": {
+        "type": "array",
+        "description": "One entry per rendered sound, in request order.",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "file",
+            "seconds",
+            "peak_db",
+            "rms_db",
+            "peak_at_s",
+            "momentary_max_lufs",
+            "integrated_lufs"
+          ],
+          "properties": {
+            "name": { "type": "string", "description": "Sound name from the recipe." },
+            "file": { "type": "string", "description": "Output WAV path (POSIX, relative to the job's out folder)." },
+            "seconds": { "type": "number", "description": "Finished duration in seconds." },
+            "peak_db": { "type": "number", "description": "Sample peak in dBFS after finishing." },
+            "rms_db": { "type": "number", "description": "RMS level in dBFS over the whole sound." },
+            "peak_at_s": { "type": "number", "description": "Time of the sample peak in seconds from the start." },
+            "momentary_max_lufs": {
+              "type": ["number", "null"],
+              "description": "Maximum 400 ms momentary loudness in LUFS, or null when the sound is shorter than the window."
+            },
+            "integrated_lufs": {
+              "type": ["number", "null"],
+              "description": "Integrated (EBU R128) loudness in LUFS, or null when the sound is too short."
+            },
+            "description": {
+              "type": "string",
+              "description": "The recipe's `describe` line for this sound, when present."
+            }
+          }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "title": "Built-in thump",
+      "input": { "builtin": "generic", "sounds": ["thump"] },
+      "fixtures": {}
+    },
+    {
+      "title": "Inline recipe with two sounds",
+      "input": { "recipe": "sfx/my.mjs" },
+      "fixtures": {
+        "sfx/my.mjs": {
+          "text": "export const sounds = {\n  blip: (kit) => kit.st(kit.osc(0.1, 880)),\n  ping: (kit) => kit.st(kit.osc(0.2, 1320)),\n};\nexport const describe = { blip: 'short blip', ping: 'long ping' };\n"
+        }
+      }
+    }
+  ]
+}
