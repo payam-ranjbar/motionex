@@ -1,0 +1,75 @@
+{
+  "name": "voice.phonemize",
+  "version": "1.0.0",
+  "title": "Phonemize (IPA)",
+  "summary": "Show how a Piper voice will pronounce text as IPA, sentence by sentence, without synthesizing any audio. Use it to check a name, write [[raw phonemes]] lines, or debug odd pronunciation.",
+  "description": "Reads only the voice config, never the ONNX model, so it is fast and deterministic. The IPA it returns is exactly what voice.piper will synthesize for the same voice: to force a pronunciation, copy the phonemes into a [[ ... ]] block in the line text.",
+  "kind": "command",
+  "command": ["${MX_PYTHON}", "phonemize.py"],
+  "deterministic": true,
+  "cache_default": "auto",
+  "resources": { "class": "light", "slots": 0 },
+  "timeout_s": 120,
+  "requires": { "binaries": ["python"] },
+  "input_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["texts"],
+    "oneOf": [{ "required": ["voice"] }, { "required": ["voice_file"] }],
+    "properties": {
+      "voice": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Voice name as installed in the voice folders, e.g. en_US-john-medium. Either voice or voice_file is required."
+      },
+      "voice_file": {
+        "type": "string",
+        "x-mx-ref": true,
+        "description": "A specific .onnx voice file (workspace path, job:<id>/<output> or pin:<name>) with its .onnx.json config beside it. Use instead of voice to pin an exact model."
+      },
+      "texts": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 100,
+        "description": "The texts to phonemize, in order.",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000,
+          "description": "One text. A sentence split is applied by the phonemizer, so punctuation changes the result. [[ ... ]] blocks are returned as raw phonemes, unchanged."
+        }
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["results"],
+    "properties": {
+      "results": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["text", "sentences", "ipa"],
+          "properties": {
+            "text": { "type": "string" },
+            "sentences": { "type": "array", "items": { "type": "string" } },
+            "ipa": { "type": "string" }
+          }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "title": "Two short texts with the John voice",
+      "input": { "voice": "en_US-john-medium", "texts": ["Shapur", "Hello there."] },
+      "fixtures": {}
+    },
+    {
+      "title": "Raw phonemes pass through unchanged",
+      "input": { "voice": "en_US-norman-medium", "texts": ["My name is [[ʃˈɒpˌuːə.]]"] },
+      "fixtures": {}
+    }
+  ]
+}
