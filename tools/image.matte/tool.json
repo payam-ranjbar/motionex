@@ -1,0 +1,131 @@
+{
+  "name": "image.matte",
+  "version": "1.0.0",
+  "title": "Matte (cut a figure out of a glow)",
+  "summary": "Cut a figure out of an illustration whose background is a soft blurred glow or a flat colour, and return a PNG with alpha. Flood-fills the smooth background, clears glow trapped in small pockets, keeps the largest figure and softens the edge.",
+  "description": "For miniature or illustration characters on a broad beige aura (five Persian miniatures on dark grounds was the real case). It smooths the image, flood-fills the background from the border through pixels whose gradient is below `threshold`, clears enclosed smooth pockets (glow trapped between an arm and the body) when they are large, smooth and close in colour to the glow reference, keeps the largest figure component, erodes `erode_px` pixels off the edge and softens the alpha. Output is a PNG with alpha; set `mask` to additionally write a grayscale `mask.png`. It cuts; it never invents colour.",
+  "kind": "node",
+  "handler": "handler.mjs",
+  "deterministic": true,
+  "cache_default": "auto",
+  "resources": { "class": "encode", "slots": 1, "memory_mb": 2048 },
+  "timeout_s": 300,
+  "requires": { "binaries": ["ffmpeg", "ffprobe"] },
+  "input_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["image"],
+    "properties": {
+      "image": {
+        "type": "string",
+        "x-mx-ref": true,
+        "description": "Illustration to cut: a PNG, JPEG or WebP workspace path, job:<id>/<output> or pin:<name>. Up to 16 megapixels."
+      },
+      "threshold": {
+        "type": "number",
+        "minimum": 0,
+        "default": 9,
+        "description": "Gradient (max channel difference after smoothing) below which a pixel counts as smooth background. Raise it to reach further into a soft glow, lower it to stop at faint texture."
+      },
+      "erode_px": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 64,
+        "default": 2,
+        "description": "Pixels to erode off the figure edge after the cut, which removes the aura fringe. 0 keeps the edge as found."
+      },
+      "pockets": {
+        "type": ["object", "boolean"],
+        "default": { "enabled": true, "min_px": 250, "max_grad": 2.8, "max_dist": 60 },
+        "description": "Clear enclosed smooth pockets (glow trapped between an arm and the body). Pass false to skip pocket clearing entirely, or an object: set enabled to false to skip it, and tune min_px (minimum pocket area), max_grad (maximum mean gradient) and max_dist (maximum distance from the glow reference colour). A pocket is cleared only when it is at least min_px pixels, its mean gradient is below max_grad and its mean colour is within max_dist of the glow reference.",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Whether to look for and clear enclosed pockets at all."
+          },
+          "min_px": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 250,
+            "description": "Smallest pocket (in pixels) that is considered for clearing."
+          },
+          "max_grad": {
+            "type": "number",
+            "minimum": 0,
+            "default": 2.8,
+            "description": "Maximum mean gradient of a pocket for it to read as glow rather than texture; skin and fabric measured 3.6 or more, glow pockets 1.2 to 2.5."
+          },
+          "max_dist": {
+            "type": "number",
+            "minimum": 0,
+            "default": 60,
+            "description": "Maximum RGB distance between a pocket's mean colour and the glow reference colour for it to be cleared."
+          }
+        }
+      },
+      "keep_largest": {
+        "type": "boolean",
+        "default": true,
+        "description": "Keep only the largest connected figure component, which drops specks. Set false to keep every component."
+      },
+      "mask": {
+        "type": "boolean",
+        "default": false,
+        "description": "Also write mask.png, a grayscale copy of the matte (white = figure), next to the output."
+      },
+      "name": {
+        "type": "string",
+        "default": "matte.png",
+        "description": "Output PNG path relative to the job's out folder, for example matte.png or cut/figure.png."
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["width", "height", "figure_pct", "pockets_cleared", "glow_ref", "warnings"],
+    "properties": {
+      "width": { "type": "integer" },
+      "height": { "type": "integer" },
+      "figure_pct": { "type": "number" },
+      "pockets_cleared": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["x", "y", "px", "mean_grad", "dist"],
+          "properties": {
+            "x": { "type": "integer" },
+            "y": { "type": "integer" },
+            "px": { "type": "integer" },
+            "mean_grad": { "type": "number" },
+            "dist": { "type": "number" }
+          }
+        }
+      },
+      "glow_ref": {
+        "type": ["array", "null"],
+        "items": { "type": "number" },
+        "minItems": 3,
+        "maxItems": 3
+      },
+      "warnings": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "examples": [
+    {
+      "title": "Cut a miniature figure off its beige aura",
+      "input": {
+        "image": "characters/miniature.png",
+        "threshold": 9,
+        "erode_px": 2,
+        "pockets": { "min_px": 250, "max_grad": 2.8, "max_dist": 60 },
+        "keep_largest": true,
+        "mask": false,
+        "name": "matte.png"
+      },
+      "run": false
+    }
+  ]
+}
