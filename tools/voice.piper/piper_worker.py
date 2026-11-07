@@ -11,6 +11,7 @@ Stdout carries the protocol lines only; everything else is a log line.
 import json
 import sys
 import traceback
+import unicodedata
 import wave
 from pathlib import Path
 
@@ -19,6 +20,13 @@ from piper import PiperVoice, SynthesisConfig
 
 TAIL_S = 0.03
 SYNTHESIS_KEYS = ("length_scale", "noise_scale", "noise_w_scale")
+
+# Babble heuristic (docs/backlog.md #5): a one-word line should not take seconds. Speech is "far above" what the
+# text predicts when it beats this budget, and a warning tells the agent to try another voice or reword the line.
+BABBLE_MIN_SPEECH_S = 1.0
+BABBLE_S_PER_CHAR = 0.12
+BABBLE_BASE_S = 0.7
+STRESS_MARKS = "\u02c8\u02cc"  # ˈ (primary) and ˌ (secondary) IPA stress marks
 
 
 class InputError(Exception):
@@ -95,8 +103,33 @@ def line_name(line, index):
     return name
 
 
-def wav_seconds_and_speech_end(path, threshold_db):
-    """(seconds, speech_end_s) of a 16-bit PCM WAV: last sample above the threshold, plus 0.03 s."""
+def count_speech_chars(text):
+    """Characters that predict speech length: [[ ]] markup, IPA stress marks and punctuation are removed."""
+    stripped = text.replace("[[", "").replace("]]", "")
+    kept = 0
+    for char in stripped:
+        if char in STRESS_MARKS:
+            continue
+        if unicodedata.category(char).startswith("P"):
+            continue
+        kept += 1
+    return kept
+
+
+def babble_warning(name, text, speech_s, length_scale):
+    """Warning when a line's speech is far longer than its text predicts (Piper babbling), else None."""
+    chars = count_speech_chars(text)
+    expected = BABBLE_S_PER_CHAR * chars * length_scale + BABBLE_BASE_S
+    if speech_s > BABBLE_MIN_SPEECH_S and speech_s > expected:
+        return (
+            f'line "{name}": {speech_s:.2f} s of speech for a {chars}-character line; '
+            "Piper may be babbling, try another voice or reword it"
+        )
+    return None
+
+
+def wav_timing(path, threshold_db):
+    """(seconds, speech_start_s, speech_end_s) of a PCM WAV: first/last sample above the threshold (+0.03 s tail)."""
     with wave.open(str(path), "rb") as wav:
         rate = wav.getframerate()
         frames = wav.getnframes()
@@ -116,15 +149,16 @@ def wav_seconds_and_speech_end(path, threshold_db):
     elif width == 4:
         samples = np.frombuffer(raw, dtype="<i4").astype(np.float32) / 2147483648.0
     else:
-        return seconds, 0.0
+        return seconds, 0.0, 0.0
     if channels > 1:
         samples = samples.reshape(-1, channels).max(axis=1)
     threshold = 10 ** (threshold_db / 20.0)
     loud = np.flatnonzero(np.abs(samples) > threshold)
     if loud.size == 0:
-        return seconds, 0.0
+        return seconds, 0.0, 0.0
+    start = float(loud[0]) / rate
     end = min(seconds, (float(loud[-1]) + 1.0) / rate + TAIL_S)
-    return seconds, end
+    return seconds, start, end
 
 
 def synthesis_config(inp):
@@ -149,9 +183,10 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
 
     model_path, config_path, voice_name = resolve_voice(request)
-    lines = inp["lines"]
+    lines = [line if isinstance(line, dict) else {"text": line} for line in inp["lines"]]
     syn_config = synthesis_config(inp)
     threshold_db = float(inp.get("speech_end_threshold_db", -40))
+    length_scale = float(inp["length_scale"]) if inp.get("length_scale") is not None else 1.0
 
     stems = [line_name(line, i) for i, line in enumerate(lines)]
     if len(set(stems)) != len(stems):
@@ -164,36 +199,63 @@ def main():
 
     results = []
     outputs = []
+    warnings = []
     for index, line in enumerate(lines):
         stem = stems[index]
         file_name = f"{stem}.wav"
         target = out_dir / file_name
         with wave.open(str(target), "wb") as wav:
             voice.synthesize_wav(line["text"], wav, syn_config=syn_config)
-        seconds, speech_end = wav_seconds_and_speech_end(target, threshold_db)
+        seconds, speech_start, speech_end = wav_timing(target, threshold_db)
+        speech_s = max(0.0, speech_end - speech_start)
         results.append(
             {
                 "name": stem,
                 "file": file_name,
                 "text": line["text"],
                 "seconds": round(seconds, 3),
+                "speech_start_s": round(speech_start, 3),
                 "speech_end_s": round(speech_end, 3),
+                "speech_s": round(speech_s, 3),
             }
         )
+        warning = babble_warning(stem, line["text"], speech_s, length_scale)
+        if warning:
+            warnings.append(warning)
         outputs.append({"name": file_name})
-        log(f"{file_name}: {seconds:.3f} s (speech ends {speech_end:.3f} s)")
+        log(f"{file_name}: {seconds:.3f} s (speech {speech_start:.3f}-{speech_end:.3f} s)")
         progress((index + 1) / len(lines), f"{index + 1}/{len(lines)} {file_name}")
 
     emit(
         {
             "type": "result",
-            "result": {"voice": voice_name, "sample_rate": sample_rate, "lines": results},
+            "result": {
+                "voice": voice_name,
+                "sample_rate": sample_rate,
+                "lines": results,
+                "warnings": warnings,
+            },
             "outputs": outputs,
         }
     )
 
 
+def babble_cli(payload_json):
+    """Tiny CLI so the babble rule can be checked without synthesizing: --babble '{"text":...,"speech_s":...}'."""
+    payload = json.loads(payload_json)
+    warning = babble_warning(
+        payload.get("name", "line"),
+        payload.get("text", ""),
+        float(payload.get("speech_s", 0.0)),
+        float(payload.get("length_scale", 1.0)),
+    )
+    sys.stdout.write((warning or "") + "\n")
+
+
 if __name__ == "__main__":
+    if len(sys.argv) > 2 and sys.argv[1] == "--babble":
+        babble_cli(sys.argv[2])
+        sys.exit(0)
     try:
         main()
     except InputError as error:

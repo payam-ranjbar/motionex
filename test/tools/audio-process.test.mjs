@@ -162,6 +162,40 @@ test('audio.process: trim_silence removes the leading silence but keeps 0.03 s',
   }
 });
 
+test(
+  'audio.process: onset_s finds a tone after 0.2 s of silence and peak_at_s is at or after it',
+  needs('ffmpeg'),
+  async () => {
+    const ws = await mkTmp();
+    try {
+      await writeFixture(ws, 'late.wav', {
+        concat: [
+          { silence: { seconds: 0.2, channels: 1, sample_rate: 48000 } },
+          { sine: { freq: 440, seconds: 0.5, amplitude_db: -12, channels: 1, sample_rate: 48000 } },
+        ],
+      });
+      const { result } = await runTool('audio.process', { inputs: ['late.wav'] }, { workspace: ws });
+      const f = result.files[0];
+      assert.ok(Math.abs(f.onset_s - 0.2) <= 0.005, `onset_s ${f.onset_s}, expected about 0.2`);
+      assert.ok(f.peak_at_s >= 0.2, `peak_at_s ${f.peak_at_s} must not be before the tone`);
+    } finally {
+      await rmTmp(ws);
+    }
+  },
+);
+
+test('audio.process: onset_s and peak_at_s are null for a silent file', needs('ffmpeg'), async () => {
+  const ws = await mkTmp();
+  try {
+    await writeFixture(ws, 'silence.wav', { silence: { seconds: 0.3, channels: 1, sample_rate: 48000 } });
+    const { result } = await runTool('audio.process', { inputs: ['silence.wav'] }, { workspace: ws });
+    assert.equal(result.files[0].onset_s, null);
+    assert.equal(result.files[0].peak_at_s, null);
+  } finally {
+    await rmTmp(ws);
+  }
+});
+
 test('audio.process: gain_db warns about clipping in wav, not in wav32f', needs('ffmpeg'), async () => {
   const ws = await mkTmp();
   try {

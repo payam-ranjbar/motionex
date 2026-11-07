@@ -1,9 +1,9 @@
 {
   "name": "voice.piper",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "title": "Voice (Piper TTS)",
-  "summary": "Synthesize voice-over lines to 16-bit mono WAV files with a local Piper voice, one file per line, with per-line durations and speech-end times.",
-  "description": "Speaks each line in `lines` with a Piper voice and writes <name or line-001>.wav into the job's output folder. Every take is different (Piper's VITS sampling), so results are never cached. `speech_end_s` is where the audible speech stops inside the file: useful for snapping cuts without trimming a natural tail. Pass raw IPA inside [[ ... ]] when a name must be pronounced exactly, and raise `length_scale` slightly (about 1.1) for gravitas.",
+  "summary": "Synthesize voice-over lines to 16-bit mono WAV files with a local Piper voice, one file per line, with per-line speech-start/end times and a warning when Piper babbles.",
+  "description": "Speaks each line in `lines` with a Piper voice and writes <name or line-001>.wav into the job's output folder. Every take is different (Piper's VITS sampling), so results are never cached. Each line may be a plain string (shorthand for {text}) or an object with an optional name. `speech_start_s` and `speech_end_s` mark where the audible speech begins and ends inside the file, so a cue can be placed on the exact frame without guessing at leading or trailing silence; `speech_s` is their difference. `warnings` lists lines whose speech ran far longer than their text predicts, a sign that Piper is babbling: try another voice or reword the line. Pass raw IPA inside [[ ... ]] when a name must be pronounced exactly, and raise `length_scale` slightly (about 1.1) for gravitas.",
   "kind": "command",
   "command": ["${MX_PYTHON}", "piper_worker.py"],
   "deterministic": false,
@@ -32,24 +32,35 @@
         "type": "array",
         "minItems": 1,
         "maxItems": 200,
-        "description": "The lines to speak, in order; each one becomes its own WAV file.",
+        "description": "The lines to speak, in order; each one becomes its own WAV file. A line is either a plain string (shorthand for {\"text\": \"<string>\"}) or an object with an explicit text and an optional name.",
         "items": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["text"],
-          "properties": {
-            "text": {
+          "oneOf": [
+            {
               "type": "string",
               "minLength": 1,
               "maxLength": 2000,
-              "description": "What to say. Text inside [[ ... ]] is passed to Piper as raw IPA phonemes, for example \"My name is [[ʃˈɒpˌuːə.]]\"; the final punctuation must sit INSIDE the brackets, otherwise the model keeps the raw phonemes going through the next sentence."
+              "description": "A line to speak, shorthand for {\"text\": \"<this string>\"}. It gets the next line-001, line-002, ... name."
             },
-            "name": {
-              "type": "string",
-              "pattern": "^[\\w.-]{1,64}$",
-              "description": "Output file name without .wav, e.g. who-0 writes who-0.wav. Omit to get line-001, line-002, ... Names must be unique inside one call."
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["text"],
+              "description": "A line with an explicit text and an optional output name.",
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "What to say. Text inside [[ ... ]] is passed to Piper as raw IPA phonemes, for example \"My name is [[ʃˈɒpˌuːə.]]\"; the final punctuation must sit INSIDE the brackets, otherwise the model keeps the raw phonemes going through the next sentence."
+                },
+                "name": {
+                  "type": "string",
+                  "pattern": "^[\\w.-]{1,64}$",
+                  "description": "Output file name without .wav, e.g. who-0 writes who-0.wav. Omit to get line-001, line-002, ... Names must be unique inside one call."
+                }
+              }
             }
-          }
+          ]
         }
       },
       "length_scale": {
@@ -96,7 +107,7 @@
   },
   "output_schema": {
     "type": "object",
-    "required": ["voice", "sample_rate", "lines"],
+    "required": ["voice", "sample_rate", "lines", "warnings"],
     "properties": {
       "voice": { "type": "string" },
       "sample_rate": { "type": "integer" },
@@ -104,16 +115,19 @@
         "type": "array",
         "items": {
           "type": "object",
-          "required": ["name", "file", "text", "seconds", "speech_end_s"],
+          "required": ["name", "file", "text", "seconds", "speech_start_s", "speech_end_s", "speech_s"],
           "properties": {
             "name": { "type": "string" },
             "file": { "type": "string" },
             "text": { "type": "string" },
             "seconds": { "type": "number" },
-            "speech_end_s": { "type": "number" }
+            "speech_start_s": { "type": "number" },
+            "speech_end_s": { "type": "number" },
+            "speech_s": { "type": "number" }
           }
         }
-      }
+      },
+      "warnings": { "type": "array", "items": { "type": "string" } }
     }
   },
   "examples": [
