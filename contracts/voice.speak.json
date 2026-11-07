@@ -1,0 +1,116 @@
+{
+  "name": "voice.speak",
+  "version": "1.0.0",
+  "title": "Speak lines (any voice provider)",
+  "summary": "Speak voice-over lines with any voice provider (piper: local, elevenlabs: cloud) and get one WAV per line with the same timing fields, so changing provider changes nothing downstream.",
+  "description": "Submit {\"tool\": \"voice.speak\", \"input\": {\"provider\": \"piper\", ...}} and the service runs the provider's own tool (voice.piper, voice.elevenlabs, or one an extension adds) with the rest of the input. Every provider takes the fields below with the same meaning and may take its own as well: Piper's length_scale or noise_scale, ElevenLabs' model, stability or seed. Each provider's tool documents those fields. List voice ids with the voice.list contract.",
+  "outputs": "One <name>.wav per line (PCM WAV). A provider may add files, for example ElevenLabs keeps its original <name>.mp3.",
+  "input_schema": {
+    "type": "object",
+    "required": ["provider", "voice", "lines"],
+    "properties": {
+      "provider": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]*$",
+        "description": "Which provider speaks: piper (local Piper TTS) or elevenlabs (ElevenLabs, needs its key), or a provider an extension adds. GET /v1/contracts/voice.speak lists them and whether each can run here."
+      },
+      "voice": {
+        "type": "string",
+        "minLength": 1,
+        "description": "The provider's voice id: a Piper voice name such as en_US-john-medium, or an ElevenLabs voice id such as JBFqnCBsd6RMkjVDRZzb. The voice.list contract lists them."
+      },
+      "lines": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 200,
+        "description": "The lines to speak, in order; each becomes its own WAV file. A line is a plain string (it gets the name line-001, line-002, ...) or {text, name}.",
+        "items": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 5000,
+              "description": "A line to speak, shorthand for {\"text\": \"<this string>\"}."
+            },
+            {
+              "type": "object",
+              "required": ["text"],
+              "description": "A line with an explicit text and an optional output name.",
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 5000,
+                  "description": "What to say. Providers may accept markup: Piper reads raw IPA inside [[ ... ]], ElevenLabs eleven_v3 performs audio tags such as [whispers]. Providers may set a lower length limit."
+                },
+                "name": {
+                  "type": "string",
+                  "pattern": "^[\\w.-]{1,64}$",
+                  "description": "Output file name without .wav, e.g. who-0 writes who-0.wav. Unique inside one call."
+                }
+              }
+            }
+          ]
+        }
+      },
+      "speed": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "maximum": 4,
+        "description": "Speaking rate: 1 is the voice's own pace, 1.1 is 10% faster, 0.9 slower. Omit to keep the provider's default. Providers may accept a narrower range (ElevenLabs: 0.7 to 1.2)."
+      },
+      "speech_end_threshold_db": {
+        "type": "number",
+        "minimum": -120,
+        "maximum": 0,
+        "description": "Level (dBFS) below which a sample counts as silence when measuring speech_start_s and speech_end_s. Providers default to -40."
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["voice", "sample_rate", "lines", "warnings"],
+    "properties": {
+      "voice": { "type": "string", "description": "The voice that spoke." },
+      "sample_rate": { "type": "integer", "description": "Sample rate of the WAV files in Hz." },
+      "lines": {
+        "type": "array",
+        "description": "One entry per line, in input order.",
+        "items": {
+          "type": "object",
+          "required": ["name", "file", "text", "seconds", "speech_start_s", "speech_end_s", "speech_s"],
+          "properties": {
+            "name": { "type": "string", "description": "The line's name." },
+            "file": { "type": "string", "description": "Its WAV output, e.g. who-0.wav (ref job:<id>/who-0.wav)." },
+            "text": { "type": "string", "description": "The text as given." },
+            "seconds": { "type": "number", "description": "Length of the WAV file." },
+            "speech_start_s": { "type": "number", "description": "Where audible speech starts in the file." },
+            "speech_end_s": { "type": "number", "description": "Where audible speech ends (plus a 30 ms tail)." },
+            "speech_s": { "type": "number", "description": "speech_end_s - speech_start_s." }
+          }
+        }
+      },
+      "warnings": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Anything worth a second listen, e.g. a Piper line that babbles."
+      }
+    }
+  },
+  "examples": [
+    {
+      "title": "Two lines with a local Piper voice",
+      "input": { "provider": "piper", "voice": "en_US-john-medium", "lines": ["Hello there.", "This is motionex."] }
+    },
+    {
+      "title": "The same lines with an ElevenLabs voice, acted",
+      "input": {
+        "provider": "elevenlabs",
+        "voice": "JBFqnCBsd6RMkjVDRZzb",
+        "lines": [{ "text": "[warmly] Hello there.", "name": "hello" }, "This is motionex."],
+        "model": "eleven_v3",
+        "stability": 0.5
+      }
+    }
+  ]
+}

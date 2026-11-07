@@ -261,7 +261,8 @@ export class JobStore {
     let ids = [...this._jobs.keys()].sort().reverse();
     if (before !== undefined) ids = ids.filter((id) => id < before);
     let jobs = ids.map((id) => /** @type {Job} */ (this._jobs.get(id)));
-    if (tool !== undefined) jobs = jobs.filter((job) => job.tool === tool);
+    // a contract name (voice.speak) also finds the jobs submitted through it
+    if (tool !== undefined) jobs = jobs.filter((job) => job.tool === tool || job.contract === tool);
     if (status !== undefined) jobs = jobs.filter((job) => job.status === status);
     if (label !== undefined) jobs = jobs.filter((job) => job.label === label);
     if (project !== undefined) jobs = jobs.filter((job) => job.project === project);

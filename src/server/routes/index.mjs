@@ -15,6 +15,7 @@ export function register(router, deps) {
     workspace: deps.config.workspace,
     links: {
       tools: '/v1/tools',
+      contracts: '/v1/contracts',
       jobs: '/v1/jobs',
       files: '/v1/files',
       pins: '/v1/pins',

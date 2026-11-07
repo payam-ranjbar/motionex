@@ -1,0 +1,55 @@
+{
+  "name": "voice.piper-voices",
+  "version": "1.0.0",
+  "title": "Voices (Piper)",
+  "summary": "The Piper provider of voice.list: the Piper voices installed in the voice folders, with language, quality, sample rate and speaker count.",
+  "description": "Lists every <name>.onnx with its <name>.onnx.json config in the voice folders (MX_VOICES_DIRS, /voices in Docker). Pass an id as voice to voice.speak with provider piper, or to voice.piper. Reads only the configs, never the models, so it is instant.",
+  "kind": "node",
+  "handler": "handler.mjs",
+  "deterministic": false,
+  "cache_default": "off",
+  "resources": { "class": "light", "slots": 0 },
+  "timeout_s": 30,
+  "implements": [{ "contract": "voice.list", "provider": "piper" }],
+  "input_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "search": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Keep only voices whose name, language or labels contain this text (case-insensitive), e.g. en_GB or high."
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["voices", "warnings"],
+    "properties": {
+      "voices": {
+        "type": "array",
+        "description": "The installed voices, sorted by name.",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "name", "language", "labels", "sample_rate", "num_speakers"],
+          "properties": {
+            "id": { "type": "string", "description": "Voice name to pass as voice." },
+            "name": { "type": "string", "description": "The same name." },
+            "language": { "type": ["string", "null"], "description": "Language code from the config, e.g. en_US." },
+            "labels": { "type": "object", "description": "quality, sample_rate and (multi-speaker voices) speakers." },
+            "sample_rate": { "type": ["integer", "null"], "description": "Output sample rate in Hz." },
+            "num_speakers": { "type": "integer", "description": "Speakers in the model; pick one with speaker." }
+          }
+        }
+      },
+      "warnings": { "type": "array", "items": { "type": "string" }, "description": "For example: no voices installed." }
+    }
+  },
+  "examples": [
+    { "title": "Every installed voice", "input": {}, "fixtures": {} },
+    { "title": "Only US English voices", "input": { "search": "en_US" }, "fixtures": {} }
+  ]
+}

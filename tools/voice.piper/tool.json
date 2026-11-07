@@ -1,8 +1,8 @@
 {
   "name": "voice.piper",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "title": "Voice (Piper TTS)",
-  "summary": "Synthesize voice-over lines to 16-bit mono WAV files with a local Piper voice, one file per line, with per-line speech-start/end times and a warning when Piper babbles.",
+  "summary": "The Piper provider of voice.speak. Synthesize voice-over lines to 16-bit mono WAV files with a local Piper voice, one file per line, with per-line speech-start/end times and a warning when Piper babbles.",
   "description": "Speaks each line in `lines` with a Piper voice and writes <name or line-001>.wav into the job's output folder. Every take is different (Piper's VITS sampling), so results are never cached. Each line may be a plain string (shorthand for {text}) or an object with an optional name. `speech_start_s` and `speech_end_s` mark where the audible speech begins and ends inside the file, so a cue can be placed on the exact frame without guessing at leading or trailing silence; `speech_s` is their difference. `warnings` lists lines whose speech ran far longer than their text predicts, a sign that Piper is babbling: try another voice or reword the line. Pass raw IPA inside [[ ... ]] when a name must be pronounced exactly, and raise `length_scale` slightly (about 1.1) for gravitas.",
   "kind": "command",
   "command": ["${MX_PYTHON}", "piper_worker.py"],
@@ -11,6 +11,7 @@
   "resources": { "class": "voice", "slots": 1, "memory_mb": 2048 },
   "timeout_s": 900,
   "requires": { "binaries": ["python"] },
+  "implements": [{ "contract": "voice.speak", "provider": "piper" }],
   "input_schema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
@@ -68,6 +69,12 @@
         "minimum": 0.01,
         "maximum": 10,
         "description": "Speaking rate control: above 1 is slower (about 1.1 for gravitas), below 1 is faster. Omit to use the voice's own setting (1.0)."
+      },
+      "speed": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "maximum": 4,
+        "description": "Speaking rate, the voice.speak way: 1 is the voice's own pace, 1.1 is 10% faster. Sets length_scale to 1/speed, so give speed or length_scale, not both."
       },
       "noise_scale": {
         "type": "number",

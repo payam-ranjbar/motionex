@@ -4,6 +4,8 @@ Every motionex tool takes a JSON object. Any file input is a ref: a workspace pa
 
 ## Index
 
+- **voice.list** (contract) — List the voices one voice provider can speak with, as {id, name} plus whatever else the provider knows. Pass an id as voice to voice.speak with the same provider.
+- **voice.speak** (contract) — Speak voice-over lines with any voice provider (piper: local, elevenlabs: cloud) and get one WAV per line with the same timing fields, so changing provider changes nothing downstream.
 - **audio.levels** — RMS, sample peak and ungated LUFS per time window of an audio or video file, using explicit windows, a fixed step, or a musical bar/beat grid.
 - **audio.loudness** — Integrated loudness, loudness range, true peak and sample peak of an audio or video file, optionally with a momentary or short-term loudness curve.
 - **audio.mix** — Declarative track/bus mixer: places clips sample-accurately on tracks, sums them to an exact length, optional per-track fx, level, sidechain and master stage. Plain float sum by default.
@@ -25,10 +27,109 @@ Every motionex tool takes a JSON object. Any file input is a ref: a workspace pa
 - **picture.stills** — Write still frames of an HTML page that exposes window.__motion (ready, seek(t), duration?, size?) as PNG or JPEG, at the times you ask for.
 - **sfx.synth** — Synthesize sound effects from a recipe module: a workspace .mjs or the built-in generic recipes. Each sound is finished (trim, fades, normalise), written as a WAV and measured.
 - **timeline.layout** — Lay scenes out from voice-over lines: cue times, scene lengths, optional beat snapping, music markers and named times. Writes timeline.json and dialogue-clips.json.
-- **voice.elevenlabs** — Synthesize one line of speech with ElevenLabs and write take.mp3 plus take.wav. Optional provider: it needs an elevenlabs_api_key secret file and network access.
-- **voice.elevenlabs-voices** — List the ElevenLabs voices available to the key, optionally filtered by a search string. Optional provider: it needs an elevenlabs_api_key secret file and network access.
+- **voice.elevenlabs** — The ElevenLabs provider of voice.speak: speak lines with an ElevenLabs voice to one WAV per line (plus the original MP3), with speech-start/end times. Needs the elevenlabs_api_key secret file and network access.
+- **voice.elevenlabs-voices** — The ElevenLabs provider of voice.list: the voices the key can use, or a catalogue of premade voices when the key may not list them. Needs the elevenlabs_api_key secret file and network access.
 - **voice.phonemize** — Show how a Piper voice will pronounce text as IPA, sentence by sentence, without synthesizing any audio. Use it to check a name, write [[raw phonemes]] lines, or debug odd pronunciation.
-- **voice.piper** — Synthesize voice-over lines to 16-bit mono WAV files with a local Piper voice, one file per line, with per-line speech-start/end times and a warning when Piper babbles.
+- **voice.piper** — The Piper provider of voice.speak. Synthesize voice-over lines to 16-bit mono WAV files with a local Piper voice, one file per line, with per-line speech-start/end times and a warning when Piper babbles.
+- **voice.piper-voices** — The Piper provider of voice.list: the Piper voices installed in the voice folders, with language, quality, sample rate and speaker count.
+
+# Contracts
+
+A contract is one capability with several providers (voice.speak: piper or elevenlabs). Submit a job with the contract as the tool and pick the provider in the input: `{"tool": "voice.speak", "input": {"provider": "piper", ...}}`. Every provider takes the contract fields below with the same meaning and returns the same result fields, so switching provider changes nothing downstream; each provider's own tool (listed) documents its extra fields.
+
+## voice.list (contract)
+
+**List voices (any voice provider)**: List the voices one voice provider can speak with, as {id, name} plus whatever else the provider knows. Pass an id as voice to voice.speak with the same provider.
+
+Submit {"tool": "voice.list", "input": {"provider": "piper"}}. Piper lists the installed voice files; ElevenLabs asks the API and, when the key may not list voices (a text-to-speech-only key), returns the built-in catalogue of premade voices with a warning.
+
+providers: elevenlabs → voice.elevenlabs-voices · piper → voice.piper-voices · version 1.0.0
+
+| field | type | required | default | description |
+| --- | --- | --- | --- | --- |
+| provider | string | yes |  | Which provider's voices: piper, elevenlabs, or a provider an extension adds. |
+| search | string |  |  | Keep only voices whose id, name or labels contain this text (case-insensitive). |
+
+### Example: Installed Piper voices
+
+```json
+{
+  "tool": "voice.list",
+  "input": {
+    "provider": "piper"
+  }
+}
+```
+
+### Example: ElevenLabs voices named like George
+
+```json
+{
+  "tool": "voice.list",
+  "input": {
+    "provider": "elevenlabs",
+    "search": "george"
+  }
+}
+```
+
+## voice.speak (contract)
+
+**Speak lines (any voice provider)**: Speak voice-over lines with any voice provider (piper: local, elevenlabs: cloud) and get one WAV per line with the same timing fields, so changing provider changes nothing downstream.
+
+Submit {"tool": "voice.speak", "input": {"provider": "piper", ...}} and the service runs the provider's own tool (voice.piper, voice.elevenlabs, or one an extension adds) with the rest of the input. Every provider takes the fields below with the same meaning and may take its own as well: Piper's length_scale or noise_scale, ElevenLabs' model, stability or seed. Each provider's tool documents those fields. List voice ids with the voice.list contract.
+
+providers: elevenlabs → voice.elevenlabs · piper → voice.piper · version 1.0.0
+
+outputs: One <name>.wav per line (PCM WAV). A provider may add files, for example ElevenLabs keeps its original <name>.mp3.
+
+| field | type | required | default | description |
+| --- | --- | --- | --- | --- |
+| provider | string | yes |  | Which provider speaks: piper (local Piper TTS) or elevenlabs (ElevenLabs, needs its key), or a provider an extension adds. GET /v1/contracts/voice.speak lists them and whether each can run here. |
+| voice | string | yes |  | The provider's voice id: a Piper voice name such as en_US-john-medium, or an ElevenLabs voice id such as JBFqnCBsd6RMkjVDRZzb. The voice.list contract lists them. |
+| lines | array | yes |  | The lines to speak, in order; each becomes its own WAV file. A line is a plain string (it gets the name line-001, line-002, ...) or {text, name}. |
+| lines[] |  |  |  |  |
+| speed | number |  |  | Speaking rate: 1 is the voice's own pace, 1.1 is 10% faster, 0.9 slower. Omit to keep the provider's default. Providers may accept a narrower range (ElevenLabs: 0.7 to 1.2). |
+| speech_end_threshold_db | number |  |  | Level (dBFS) below which a sample counts as silence when measuring speech_start_s and speech_end_s. Providers default to -40. |
+
+### Example: Two lines with a local Piper voice
+
+```json
+{
+  "tool": "voice.speak",
+  "input": {
+    "provider": "piper",
+    "voice": "en_US-john-medium",
+    "lines": [
+      "Hello there.",
+      "This is motionex."
+    ]
+  }
+}
+```
+
+### Example: The same lines with an ElevenLabs voice, acted
+
+```json
+{
+  "tool": "voice.speak",
+  "input": {
+    "provider": "elevenlabs",
+    "voice": "JBFqnCBsd6RMkjVDRZzb",
+    "lines": [
+      {
+        "text": "[warmly] Hello there.",
+        "name": "hello"
+      },
+      "This is motionex."
+    ],
+    "model": "eleven_v3",
+    "stability": 0.5
+  }
+}
+```
+
+# Tools
 
 ## audio.levels
 
@@ -1153,40 +1254,53 @@ class: light · deterministic: yes · cache: auto · version 1.0.0 · presets: v
 
 ## voice.elevenlabs
 
-**Voice (ElevenLabs)**: Synthesize one line of speech with ElevenLabs and write take.mp3 plus take.wav. Optional provider: it needs an elevenlabs_api_key secret file and network access.
+**Voice (ElevenLabs)**: The ElevenLabs provider of voice.speak: speak lines with an ElevenLabs voice to one WAV per line (plus the original MP3), with speech-start/end times. Needs the elevenlabs_api_key secret file and network access.
 
-Performs a scripted line with an ElevenLabs voice, supporting v3 audio tags such as [whispers] or [excited] inside the text. It writes the raw MP3 response as take.mp3 and always also decodes it to take.wav. The API key is read from the elevenlabs_api_key secret file and never appears in results or logs. Requests are retried on 429, 5xx and network errors.
+Performs each line in `lines` with one ElevenLabs voice and writes <name>.wav plus the provider's original <name>.mp3 (pcm_* formats write only the WAV). The result has the same fields as voice.piper (voice.speak contract), plus the model, per-line request ids, the characters billed and, when ElevenLabs reports it, the credits spent. eleven_v3 performs audio tags such as [whispers], [excited] or [laughs] inside the text. Lines are spoken one at a time; requests are retried on 429, 5xx and network errors. Identical requests reuse the earlier take by default (cache "reuse") to save credits: submit with cache "off" for a new take. The API key is read from a secret file and never appears in results or logs. A text-to-speech-only key cannot list voices: voice.list with provider elevenlabs then returns a catalogue of premade voices.
 
-class: elevenlabs · deterministic: no · cache: reuse · version 1.0.0 · unavailable: secret "elevenlabs_api_key" is missing (file elevenlabs_api_key in the secrets dir)
+class: elevenlabs · deterministic: no · cache: reuse · version 2.0.0 · implements: voice.speak (provider elevenlabs)
 
 | field | type | required | default | description |
 | --- | --- | --- | --- | --- |
-| voice_id | string | yes |  | ElevenLabs voice id (for example 21m00Tcm4TlvDq8ikWAM). Use voice.elevenlabs-voices to list ids. |
-| text | string | yes |  | The line to speak. May contain v3 audio tags such as [whispers], [excited] or [laughs], which the eleven_v3 model performs. |
-| model | string |  | "eleven_v3" | ElevenLabs model id; eleven_v3 acts the tags in the text. |
-| stability | number |  |  | Voice stability; eleven_v3 likes 0 (creative), 0.5 (natural) or 1 (robust). |
+| voice | string | yes |  | ElevenLabs voice id, for example JBFqnCBsd6RMkjVDRZzb (George). voice.list with provider elevenlabs lists ids. |
+| lines | array | yes |  | The lines to speak, in order; each becomes <name>.wav. A line is a plain string (named line-001, line-002, ...) or {text, name}. |
+| lines[] |  |  |  |  |
+| model | string |  | "eleven_v3" | ElevenLabs model id. eleven_v3 acts audio tags; eleven_multilingual_v2 is steadier; eleven_flash_v2_5 is the cheapest (about half the credits per character). |
+| stability | number |  |  | Voice stability; eleven_v3 takes 0 (creative), 0.5 (natural) or 1 (robust). |
 | similarity | number |  |  | Similarity boost to the original voice (maps to similarity_boost). |
 | style | number |  |  | Style exaggeration (maps to style). |
-| speed | number |  |  | Speaking rate (maps to voice_settings.speed). |
-| seed | integer |  |  | Seed for deterministic generation when the model supports it; omit for varied takes. |
-| language | string |  |  | Optional ISO language code (maps to language_code), for example en. |
-| output_format | string |  | "mp3_44100_128" | Requested output format; mp3_44100_128 is the best the ElevenLabs Free tier allows. |
+| speed | number |  |  | Speaking rate, 1 = the voice's own pace (maps to voice_settings.speed). ElevenLabs accepts 0.7 to 1.2; for more, change the tempo with audio.process. |
+| seed | integer |  |  | Seed for repeatable generation when the model supports it; the same seed is used for every line. Omit for varied takes. |
+| language | string |  |  | ISO 639-1 language code (maps to language_code), for example en. Omit to let the model detect it. |
+| output_format | string |  | "mp3_44100_128" | ElevenLabs output format: mp3_<rate>_<kbps> keeps the MP3 and decodes it to WAV; pcm_<rate> (paid tiers) writes the WAV directly. mp3_44100_128 is the best the Free tier allows. |
+| speech_end_threshold_db | number |  | -40 | Level (dBFS) below which a sample counts as silence when measuring speech_start_s and speech_end_s. |
 
-### Example: One line with the eleven_v3 model
+### Example: Two lines with George on eleven_v3
 
 ```json
 {
-  "voice_id": "21m00Tcm4TlvDq8ikWAM",
-  "text": "Hello from motionex."
+  "voice": "JBFqnCBsd6RMkjVDRZzb",
+  "lines": [
+    "Hello from motionex.",
+    {
+      "text": "[whispers] Meet me at midnight.",
+      "name": "midnight"
+    }
+  ]
 }
 ```
 
-### Example: Acted line with an audio tag
+### Example: Acted line, natural stability, fixed seed
 
 ```json
 {
-  "voice_id": "21m00Tcm4TlvDq8ikWAM",
-  "text": "[whispers] Meet me at midnight.",
+  "voice": "nPczCjzI2devNBz1zQrb",
+  "lines": [
+    {
+      "text": "[excited] What's up, everyone!",
+      "name": "opener"
+    }
+  ],
   "model": "eleven_v3",
   "stability": 0.5,
   "seed": 7
@@ -1195,15 +1309,15 @@ class: elevenlabs · deterministic: no · cache: reuse · version 1.0.0 · unava
 
 ## voice.elevenlabs-voices
 
-**Voices (ElevenLabs)**: List the ElevenLabs voices available to the key, optionally filtered by a search string. Optional provider: it needs an elevenlabs_api_key secret file and network access.
+**Voices (ElevenLabs)**: The ElevenLabs provider of voice.list: the voices the key can use, or a catalogue of premade voices when the key may not list them. Needs the elevenlabs_api_key secret file and network access.
 
-Returns the ElevenLabs voices the key can use, with their ids, names and labels, so an agent can pick a voice_id for voice.elevenlabs. Reads the elevenlabs_api_key secret file; the key is never logged or returned. Retries 429, 5xx and network errors.
+Returns ElevenLabs voices with their ids, names and labels, so an agent can pick the voice for voice.speak (provider elevenlabs). A key scoped to text-to-speech gets 401 from the voices API: the tool then returns the built-in catalogue of premade voices (source "catalog") with a warning. Reads the elevenlabs_api_key secret file; the key is never logged or returned. Retries 429, 5xx and network errors.
 
-class: light · deterministic: no · cache: off · version 1.0.0 · unavailable: secret "elevenlabs_api_key" is missing (file elevenlabs_api_key in the secrets dir)
+class: light · deterministic: no · cache: off · version 1.1.0 · implements: voice.list (provider elevenlabs)
 
 | field | type | required | default | description |
 | --- | --- | --- | --- | --- |
-| search | string |  |  | Optional search term to filter voices by name or label; omit to list all available voices. |
+| search | string |  |  | Keep only voices whose id, name or labels contain this text (case-insensitive); omit to list all. |
 
 ### Example: List all available voices
 
@@ -1211,11 +1325,11 @@ class: light · deterministic: no · cache: off · version 1.0.0 · unavailable:
 {}
 ```
 
-### Example: Search for a narrator voice
+### Example: Search for a British voice
 
 ```json
 {
-  "search": "narrator"
+  "search": "british"
 }
 ```
 
@@ -1260,11 +1374,11 @@ class: light · deterministic: yes · cache: auto · version 1.0.0
 
 ## voice.piper
 
-**Voice (Piper TTS)**: Synthesize voice-over lines to 16-bit mono WAV files with a local Piper voice, one file per line, with per-line speech-start/end times and a warning when Piper babbles.
+**Voice (Piper TTS)**: The Piper provider of voice.speak. Synthesize voice-over lines to 16-bit mono WAV files with a local Piper voice, one file per line, with per-line speech-start/end times and a warning when Piper babbles.
 
 Speaks each line in `lines` with a Piper voice and writes <name or line-001>.wav into the job's output folder. Every take is different (Piper's VITS sampling), so results are never cached. Each line may be a plain string (shorthand for {text}) or an object with an optional name. `speech_start_s` and `speech_end_s` mark where the audible speech begins and ends inside the file, so a cue can be placed on the exact frame without guessing at leading or trailing silence; `speech_s` is their difference. `warnings` lists lines whose speech ran far longer than their text predicts, a sign that Piper is babbling: try another voice or reword the line. Pass raw IPA inside [[ ... ]] when a name must be pronounced exactly, and raise `length_scale` slightly (about 1.1) for gravitas.
 
-class: voice · deterministic: no · cache: off · version 1.1.0
+class: voice · deterministic: no · cache: off · version 1.2.0 · implements: voice.speak (provider piper)
 
 | field | type | required | default | description |
 | --- | --- | --- | --- | --- |
@@ -1273,6 +1387,7 @@ class: voice · deterministic: no · cache: off · version 1.1.0
 | lines | array | yes |  | The lines to speak, in order; each one becomes its own WAV file. A line is either a plain string (shorthand for {"text": "<string>"}) or an object with an explicit text and an optional name. |
 | lines[] |  |  |  |  |
 | length_scale | number |  |  | Speaking rate control: above 1 is slower (about 1.1 for gravitas), below 1 is faster. Omit to use the voice's own setting (1.0). |
+| speed | number |  |  | Speaking rate, the voice.speak way: 1 is the voice's own pace, 1.1 is 10% faster. Sets length_scale to 1/speed, so give speed or length_scale, not both. |
 | noise_scale | number |  |  | Generator noise; higher is more varied and expressive, lower is flatter. Omit to use the voice's own setting. |
 | noise_w_scale | number |  |  | Phoneme-width noise, i.e. timing variation; lower is more metronomic. Omit to use the voice's own setting. |
 | speaker | integer |  |  | Speaker id for a multi-speaker voice. Omit for the voice's default speaker. |
@@ -1308,5 +1423,31 @@ class: voice · deterministic: no · cache: off · version 1.1.0
       "name": "ipa-name"
     }
   ]
+}
+```
+
+## voice.piper-voices
+
+**Voices (Piper)**: The Piper provider of voice.list: the Piper voices installed in the voice folders, with language, quality, sample rate and speaker count.
+
+Lists every <name>.onnx with its <name>.onnx.json config in the voice folders (MX_VOICES_DIRS, /voices in Docker). Pass an id as voice to voice.speak with provider piper, or to voice.piper. Reads only the configs, never the models, so it is instant.
+
+class: light · deterministic: no · cache: off · version 1.0.0 · implements: voice.list (provider piper)
+
+| field | type | required | default | description |
+| --- | --- | --- | --- | --- |
+| search | string |  |  | Keep only voices whose name, language or labels contain this text (case-insensitive), e.g. en_GB or high. |
+
+### Example: Every installed voice
+
+```json
+{}
+```
+
+### Example: Only US English voices
+
+```json
+{
+  "search": "en_US"
 }
 ```

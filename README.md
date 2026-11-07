@@ -22,7 +22,7 @@ Five [pi](https://pi.dev) agents (DeepSeek V4.1 Flash) ran in parallel against o
 
 | Area | Tools |
 |---|---|
-| Voice | `voice.piper` (local TTS, raw IPA), `voice.phonemize`, `voice.elevenlabs` (optional), `audio.process` (pitch, tempo, trim, tighten pauses, fx) |
+| Voice | `voice.speak` contract: `piper` (local TTS, raw IPA) or `elevenlabs` (acted, optional), one result shape; `voice.list`; `voice.phonemize`; `audio.process` (pitch, tempo, trim, tighten pauses, fx) |
 | Picture | `picture.render` (any page with `window.__motion` → H.264, audio muxed in one encode), `picture.stills`, `image.contact-sheet` |
 | Music | `music.render` (Strudel via the vendored Mucavex engine, section markers, seeded, polyphony 4096) |
 | Sound | `sfx.synth` (DSP kit + recipes), `audio.mix` (exact-length track/bus mixer; neutral by default; presets) |
@@ -30,7 +30,7 @@ Five [pi](https://pi.dev) agents (DeepSeek V4.1 Flash) ran in parallel against o
 | Timing | `timeline.layout` (optional: voice-driven scenes, beat snapping, music markers, time specs) |
 | Delivery | `media.encode` (presets: master, web-720p, fit-size, telegram-video, instagram-reel), `media.mux`, `media.concat`, `media.ffmpeg` (escape hatch) |
 
-**Design rule: do not enforce.** Every tool is a primitive. Every opinion is a parameter or a named preset, and every default is neutral. Outputs are immutable and pinnable; deterministic tools are cached. New tools are folders with a manifest, written in any language, and can be mounted from outside the image.
+**Design rule: do not enforce.** Every tool is a primitive. Every opinion is a parameter or a named preset, and every default is neutral. Outputs are immutable and pinnable; deterministic tools are cached. New tools are folders with a manifest, written in any language, and can be mounted from outside the image. **One capability, several providers**: a contract such as `voice.speak` names the shared fields and result, and any tool can implement it (`{"tool": "voice.speak", "input": {"provider": "elevenlabs", ...}}`), so switching provider changes nothing downstream. See [`docs/providers.md`](docs/providers.md).
 
 The skill that teaches agents how to use it lives in [`skill/motionex/`](skill/motionex/SKILL.md). The service also serves it at `/v1/skill`. What real productions taught us is in [`docs/retro-2026-11.md`](docs/retro-2026-11.md); known open issues are in [`docs/backlog.md`](docs/backlog.md).
 

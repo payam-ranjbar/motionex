@@ -15,5 +15,5 @@ const registry = await loadRegistry({ config });
 const out = path.resolve(process.argv[2] ?? path.join(config.appRoot, 'skill', 'motionex', 'references', 'tools.md'));
 
 await mkdir(path.dirname(out), { recursive: true });
-await writeFile(out, renderToolDocs(registry.list()), 'utf8');
+await writeFile(out, renderToolDocs(registry.list(), { contracts: registry.listContracts() }), 'utf8');
 console.log(out);

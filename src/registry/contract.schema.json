@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:motionex:contract",
+  "title": "motionex provider contract (contracts/<name>.json)",
+  "description": "A contract is the shared shape of one capability (speak lines, list voices). Tools that implement it are its providers: they accept the contract's input fields with the same meaning, may add their own fields, and return a result that matches the contract's output_schema. A job may name the contract instead of a tool and pick the provider with input.provider.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "version", "title", "summary", "input_schema", "output_schema", "examples"],
+  "properties": {
+    "$comment": { "type": "string" },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$",
+      "description": "Dotted contract name, equal to the file name without .json, e.g. voice.speak. It shares the job namespace with tool names, so no tool may have the same name."
+    },
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+(?:[-+][\\w.-]+)?$" },
+    "title": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "summary": { "type": "string", "minLength": 1, "maxLength": 300 },
+    "description": { "type": "string" },
+    "outputs": { "type": "string", "description": "The files every provider writes, in words." },
+    "input_schema": {
+      "type": "object",
+      "description": "The fields every provider accepts. Must declare a string `provider` property. Providers may add fields, so do not set additionalProperties: false. No defaults: each provider applies its own."
+    },
+    "output_schema": {
+      "type": "object",
+      "description": "What every provider's result contains (providers may add fields)."
+    },
+    "examples": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "input"],
+        "properties": {
+          "title": { "type": "string" },
+          "input": { "type": "object" }
+        }
+      }
+    }
+  }
+}

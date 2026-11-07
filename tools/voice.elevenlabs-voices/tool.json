@@ -1,9 +1,9 @@
 {
   "name": "voice.elevenlabs-voices",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "title": "Voices (ElevenLabs)",
-  "summary": "List the ElevenLabs voices available to the key, optionally filtered by a search string. Optional provider: it needs an elevenlabs_api_key secret file and network access.",
-  "description": "Returns the ElevenLabs voices the key can use, with their ids, names and labels, so an agent can pick a voice_id for voice.elevenlabs. Reads the elevenlabs_api_key secret file; the key is never logged or returned. Retries 429, 5xx and network errors.",
+  "summary": "The ElevenLabs provider of voice.list: the voices the key can use, or a catalogue of premade voices when the key may not list them. Needs the elevenlabs_api_key secret file and network access.",
+  "description": "Returns ElevenLabs voices with their ids, names and labels, so an agent can pick the voice for voice.speak (provider elevenlabs). A key scoped to text-to-speech gets 401 from the voices API: the tool then returns the built-in catalogue of premade voices (source \"catalog\") with a warning. Reads the elevenlabs_api_key secret file; the key is never logged or returned. Retries 429, 5xx and network errors.",
   "kind": "node",
   "handler": "handler.mjs",
   "deterministic": false,
@@ -11,6 +11,7 @@
   "resources": { "class": "light", "slots": 0 },
   "timeout_s": 60,
   "requires": { "secrets": ["elevenlabs_api_key"] },
+  "implements": [{ "contract": "voice.list", "provider": "elevenlabs" }],
   "input_schema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
@@ -18,41 +19,40 @@
     "properties": {
       "search": {
         "type": "string",
-        "description": "Optional search term to filter voices by name or label; omit to list all available voices."
+        "minLength": 1,
+        "description": "Keep only voices whose id, name or labels contain this text (case-insensitive); omit to list all."
       }
     }
   },
   "output_schema": {
     "type": "object",
     "additionalProperties": false,
-    "required": ["voices"],
+    "required": ["voices", "source", "warnings"],
     "properties": {
       "voices": {
         "type": "array",
-        "description": "The voices available to the key, each with its id, name and labels.",
+        "description": "The voices, sorted by name.",
         "items": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["voice_id", "name", "labels"],
+          "required": ["id", "voice_id", "name", "labels"],
           "properties": {
-            "voice_id": { "type": "string", "description": "Voice id to pass to voice.elevenlabs." },
+            "id": { "type": "string", "description": "Voice id to pass as voice to voice.speak." },
+            "voice_id": { "type": "string", "description": "The same id under ElevenLabs' own name." },
             "name": { "type": "string", "description": "Human-readable voice name." },
             "labels": { "type": "object", "description": "Voice labels such as gender, age, accent or use case." }
           }
         }
-      }
+      },
+      "source": {
+        "enum": ["api", "catalog"],
+        "description": "api: listed by ElevenLabs for this key; catalog: the built-in premade list (the key may not list)."
+      },
+      "warnings": { "type": "array", "items": { "type": "string" }, "description": "Why the catalogue was used." }
     }
   },
   "examples": [
-    {
-      "title": "List all available voices",
-      "run": false,
-      "input": {}
-    },
-    {
-      "title": "Search for a narrator voice",
-      "run": false,
-      "input": { "search": "narrator" }
-    }
+    { "title": "List all available voices", "run": false, "input": {} },
+    { "title": "Search for a British voice", "run": false, "input": { "search": "british" } }
   ]
 }

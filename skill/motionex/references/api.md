@@ -11,7 +11,9 @@ Base URL: `MX=${MX_URL:-http://127.0.0.1:8095}`. JSON in and out. Errors are RFC
 | `GET /v1` | name, version, links |
 | `GET /v1/capabilities` | ffmpeg version, browser, python, **voices**, **presets** per kind, limits, offline flag |
 | `GET /v1/tools?brief=1` | every tool: name, title, summary, available, unavailable_reason |
-| `GET /v1/tools/{name}` | one tool: `input_schema` (with descriptions and defaults), `output_schema`, `examples`, `preset_names` |
+| `GET /v1/tools/{name}` | one tool: `input_schema` (with descriptions and defaults), `output_schema`, `examples`, `preset_names`, `implements` |
+| `GET /v1/contracts?brief=1` | every contract (one capability, several providers: `voice.speak`, `voice.list`) with its providers and whether each can run here |
+| `GET /v1/contracts/{name}` | one contract: the shared `input_schema` and `output_schema`, examples, providers |
 | `GET /v1/skill/references/tools.md` | all tools as readable markdown |
 
 ## Jobs
@@ -21,6 +23,7 @@ curl -s -X POST "$MX/v1/jobs?wait=120" -H 'content-type: application/json' \
   -H 'Idempotency-Key: teaser-voice-v1' --data @jobs/voice.json
 ```
 - **The body**: `{tool, input, cache?, label?, project?, note?, timeout_s?}`.
+  - `tool` may be a contract: `{"tool": "voice.speak", "input": {"provider": "elevenlabs", ...}}` runs the provider's tool (`voice.elevenlabs`) with the rest of the input. The job then has `tool` (the tool that ran), `contract` and `provider`. An unknown provider is a 422 that lists the installed ones.
   - `cache` is `auto` (the tool's default), `reuse` or `off`.
   - `label`, `project` and `note` are your own tags; filter on them later.
 - **`Idempotency-Key` is optional.** Re-sending the same key with the same body returns the same job, with the header `idempotent-replay: true`, so it is safe to retry. The same key with a different body gives a 422.
@@ -33,11 +36,11 @@ Follow, cancel, clean up:
 | `GET /v1/jobs/{id}/events?after=N&wait=60` | progress, log and state events after seq N (long-poll) |
 | `GET /v1/jobs/{id}/log` | the tool's stderr: why it failed, ffmpeg messages, page errors |
 | `POST /v1/jobs/{id}/cancel` | cancel; kills its processes, including browsers |
-| `GET /v1/jobs?tool=&status=&label=&project=&limit=` | newest first; `full=1` includes inputs |
+| `GET /v1/jobs?tool=&status=&label=&project=&limit=` | newest first; `tool` may be a contract name; `full=1` includes inputs |
 | `GET /v1/jobs/{id}/outputs/{name}` | download an output (Range supported) |
 | `DELETE /v1/jobs/{id}` | delete its output files (refused when pinned) |
 
-A job: `{id, tool, status, progress: {fraction, message}, input, inputs: [{pointer, ref, path, sha256}], result, outputs: [{name, ref, path, sha256, bytes, media_type}], error: {type, title, detail, retryable}, cached_from, created_at, started_at, finished_at}`.
+A job: `{id, tool, contract, provider, status, progress: {fraction, message}, input, inputs: [{pointer, ref, path, sha256}], result, outputs: [{name, ref, path, sha256, bytes, media_type}], error: {type, title, detail, retryable}, cached_from, created_at, started_at, finished_at}`.
 
 Job error types:
 - `invalid-input`: you sent something the tool cannot use; the detail says what.

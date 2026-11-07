@@ -21,6 +21,7 @@ const ROUTE_MODULES = [
   './routes/health.mjs',
   './routes/capabilities.mjs',
   './routes/tools.mjs',
+  './routes/contracts.mjs',
   './routes/jobs.mjs',
   './routes/files.mjs',
   './routes/pins.mjs',

@@ -1,7 +1,7 @@
 # motionex: agent guide (read all of it before you change anything)
 
 motionex is ONE service (one Docker image) that gives AI agents bare tools to make motion-graphics videos:
-voice (Piper TTS, optional ElevenLabs), picture (capture any HTML page that exposes `window.__motion` to video),
+voice (Piper TTS, optional ElevenLabs, behind one `voice.speak` contract), picture (capture any HTML page that exposes `window.__motion` to video),
 music (Strudel songs rendered by the vendored Mucavex engine), SFX synthesis, a mixer, loudness/analysis, and encoding.
 Agents drive it over HTTP (`/v1/jobs`, curl-friendly) or the `mx` CLI. Every tool is a folder under `tools/`.
 
@@ -13,7 +13,7 @@ limiter, no required voice/BPM/song/size, nothing snapped. A mixer with no optio
 - Edit/create ONLY the files your prompt lists. If you need a change elsewhere, say so in your Result instead.
 - NEVER run `npm install`, `npm ci`, `pip install` or anything that downloads. No network. Add no dependencies.
 - NEVER edit: `package.json`, `package-lock.json`, `AGENTS.md`, `biome.json`, `src/lib/{errors,problem,paths,config,hash,ids,canonical-json,media-types,wav,ffmpeg,audio-io,signal,presets,browser}.mjs`,
-  `src/registry/*`, `src/runner/{types,context,protocol,node-host}.mjs`, `test/helpers/*`, `scripts/test.mjs`, `vendor/**`.
+  `src/registry/*`, `contracts/*`, `src/runner/{types,context,protocol,node-host}.mjs`, `test/helpers/*`, `scripts/test.mjs`, `vendor/**`.
   These are shared contracts (owner: orchestrator).
 - A file marked `// STUB (owner: X)` is yours only if your prompt names it; replace the bodies, keep the exported names and signatures.
 - Do not commit. Do not touch git. Finish with the `## Result` section your prompt asks for.
@@ -48,9 +48,22 @@ A tool is a folder `tools/<name>/` with `tool.json` and code. Name = folder = `^
 handler ("handler.mjs", node) | command (["${MX_PYTHON}", "worker.py"], command; vars MX_PYTHON MX_NODE TOOL_DIR),
 deterministic, cache_default ("auto" requires deterministic:true | "reuse" | "off"), resources {class, slots?, memory_mb?},
 timeout_s (0 = none), presets? (preset kind folder under presets/), requires? {binaries: [ffmpeg|ffprobe|chromium|python], secrets: [...]},
-input_schema, output_schema?, examples (>=1: {title, input, fixtures?, run?})`.
+implements? ([{contract, provider}], see §4a), input_schema, output_schema?, examples (>=1: {title, input, fixtures?, run?})`.
 Resource classes: `light` (slots 0), `audio`, `voice`, `music`, `capture`, `encode`, `elevenlabs`. `slots` may be
 `{"from_input": "workers", "default": 4}`.
+
+### 4a. Contracts and providers (`docs/providers.md`)
+A contract (`contracts/<name>.json`, schema `src/registry/contract.schema.json`) is one capability with several
+providers, e.g. `voice.speak` (piper, elevenlabs). A job may name the contract as its tool and pick the provider with
+`input.provider`; the service runs the provider's tool with the rest of the input and records `contract`/`provider`.
+- A provider is a tool with `"implements": [{"contract": "voice.speak", "provider": "piper"}]`. Its `input_schema`
+  must have EVERY contract input field (same meaning; its own fields may follow) and must NOT declare `provider`.
+  It must have an `output_schema` with every field the contract's result requires; results of contract jobs are
+  validated against the contract too (`invalid-output` otherwise).
+- Contract input schemas: a required string `provider`, no `additionalProperties: false`, no defaults (each
+  provider applies its own). Every property has a description. Names must not equal any tool name.
+- Node voice providers use `src/lib/speech.mjs` (`normalizeLines`, `speechBounds`) to match voice.piper exactly.
+- Extensions may ship contracts in `<extension dir>/contracts/` (or `MX_CONTRACTS_DIRS`).
 
 ### input_schema rules (Ajv 2020, strict schema, useDefaults, allowUnionTypes)
 - Top level: `{"type":"object","additionalProperties":false,...}`. EVERY property (at every level) has a `description`.
@@ -108,9 +121,11 @@ Non-JSON stdout lines and stderr go to the job log. Exit 0 + result = success; o
 - `src/lib/loudness.mjs`: `ebur128(file)`, `measureAudio(audio)`, `parseEbur128Summary(stderr)`, `kWeight(audio)`, `integratedLufs(audio)`,
   `windowLufs(kw, sr, from_s, to_s)`, `loudnessCurve(audio, {window_s, step_s})`.
 - `src/lib/timespec.mjs`: `parseTimespec(spec)`, `resolveTime(spec, timeline, what)`.
+- `src/lib/speech.mjs`: `normalizeLines(lines)` -> `[{name, text}]` (line-001…, unique), `speechBounds(audio, {threshold_db})` -> `{seconds, speech_start_s, speech_end_s, speech_s}`.
 - `src/lib/presets.mjs`: `listPresets(kind, dirs)`, `loadPreset(kind, name, dirs)`, `deepMerge(base, over)`.
 - `src/lib/browser.mjs`: `launchBrowser(config, {args})`, `browserAvailable(config)`.
-- `src/registry/registry.mjs`: `loadRegistry({dirs?, config})` -> `{list(), get(name), info(name), invalid(), reload(), validate(name, input), validateResult(name, result)}`.
+- `src/registry/registry.mjs`: `loadRegistry({dirs?, config})` -> `{list(), get(name), info(name), invalid(), reload(), validate(name, input), validateResult(name, result),
+  contract(name), contractInfo(name), listContracts(), providersOf(name), resolveContract(name, input), validateContractResult(name, result)}`.
 - `src/runner/types.mjs`: JSDoc typedefs (Config, ToolManifest, ToolEntry, Job, JobOutput, JobInput, JobEvent, Ctx).
 - `src/runner/context.mjs` `makeContext(...)`; `protocol.mjs` `parseProtocolLine`, `writeRequestFile`, `interpolateCommand`, `commandEnv`.
 - `vendor/mucavex/src/*`: the Strudel renderer (engine.mjs `render`, encode.mjs `encode`, analyze.mjs `analyze`); import
@@ -130,16 +145,17 @@ Non-JSON stdout lines and stderr go to the job log. Exit 0 + result = success; o
 
 ## 7. Repo map (owner in brackets; O = orchestrator)
 ```
-bin/mx.mjs                       CLI: serve | healthcheck | tools | run | job | jobs | cancel | put | get | pin | skill  [P3c]
+bin/mx.mjs                       CLI: serve | healthcheck | tools | contracts | run | job | jobs | cancel | put | get | pin | skill  [P3c]
 src/lib/*.mjs                    shared libs [O]; loudness [W0b], timespec [W0b], static/capture [P10], biquad [P4b],
-                                 elevenlabs [P5b], strudel-markers [P8], voices [P9], tool-docs [P3d], dsp/kit [P7a],
+                                 elevenlabs [P5b], speech [O], strudel-markers [P8], voices [P9], tool-docs [P3d], dsp/kit [P7a],
                                  mix/{plan,clips,render} [P6a], mix/master [P6b], mix/dynamics [P14]
-src/registry/                    manifest schema, Ajv, registry [O]
+src/registry/                    manifest + contract schemas, Ajv, registry [O]
+contracts/<name>.json            provider contracts (voice.speak, voice.list) [O]
 src/runner/                      types/context/protocol/node-host [O]; store, refs [W0b]; scheduler [P1a]; service [P1b];
                                  execute, kill [P2a]; command [P2b]; pins [P3a]
 src/server/                      router [W0b]; app, main [P13a]; routes/{index,health,capabilities,tools} [P13a];
                                  routes/jobs [P13b]; routes/files [P3b]; routes/pins [P3a]; routes/skill [P3d];
-                                 routes/view [P10a]; routes/listen [O]
+                                 routes/view [P10a]; routes/listen [O]; routes/contracts [O]
 tools/<name>/                    one folder per tool
 presets/{encode,mix,timeline,audio-process}/   named presets (JSON, may carry "description")
 lib/browser/motion/              optional browser runtime (runtime.js, adapters.js) [P12b]; GSAP served from node_modules/gsap/dist

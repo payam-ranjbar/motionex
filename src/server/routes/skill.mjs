@@ -79,7 +79,7 @@ export function register(router, deps) {
       return {
         status: 200,
         headers: { 'Content-Type': MARKDOWN },
-        body: renderToolDocs(deps.registry.list()),
+        body: renderToolDocs(deps.registry.list(), { contracts: deps.registry.listContracts?.() ?? [] }),
       };
     }
     const file = await resolveSkillFile(skillDir, rel);

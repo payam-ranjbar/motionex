@@ -32,6 +32,7 @@ Commands:
   serve                                   start the motionex HTTP service
   healthcheck                             exit 0 when the service is ready (GET /readyz)
   tools [name] [--json]                   list tools, or show the full JSON of one tool
+  contracts [name] [--json]               list contracts (voice.speak...) and their providers, or show one
   run <tool> <input.json|-> [options]     create a job (input from a file or stdin)
   job <id> [--wait[=s]] [--json]          show one job
   jobs [--status S] [--tool T] [--limit N] [--json]
@@ -418,6 +419,24 @@ async function cmdTools(args) {
   return EXIT.ok;
 }
 
+async function cmdContracts(args) {
+  const a = parseArgs(args, { json: 'flag' });
+  if (a._.length > 1) throw new UsageError('contracts takes at most one contract name');
+  const name = a._[0];
+  const data = await apiJson('GET', name ? `/v1/contracts/${encodeURIComponent(name)}` : '/v1/contracts');
+  if (name || a.json) {
+    out(a.json ? JSON.stringify(data) : JSON.stringify(data, null, 2));
+    return EXIT.ok;
+  }
+  for (const c of data?.contracts ?? []) {
+    const providers = (c.providers ?? [])
+      .map((p) => `${p.provider} (${p.tool}${p.available ? '' : ', unavailable'})`)
+      .join(', ');
+    out(`${c.name}  ${providers || 'no providers'}  ${c.summary ?? ''}`);
+  }
+  return EXIT.ok;
+}
+
 /** Read a JSON object from a file or stdin ("-"). */
 async function readInputObject(where) {
   let text;
@@ -710,6 +729,8 @@ export async function main(argv) {
       return cmdHealthcheck();
     case 'tools':
       return cmdTools(rest);
+    case 'contracts':
+      return cmdContracts(rest);
     case 'run':
       return cmdRun(rest);
     case 'job':

@@ -272,6 +272,13 @@ export function createJobService({ config, registry, store, pins, executor, sche
             'the result does not match the output schema',
         );
       }
+      if (initial.contract && typeof registry.validateContractResult === 'function') {
+        const fits = registry.validateContractResult(initial.contract, result);
+        if (!fits.ok) {
+          const why = fits.errors.map((e) => `${e.field} ${e.message}`).join('; ');
+          throw new ToolError('invalid-output', `the result does not fit contract ${initial.contract}: ${why}`);
+        }
+      }
       const declared = new Map();
       for (const o of outcome?.outputs ?? []) {
         if (o && typeof o.name === 'string') declared.set(o.name, o.media_type);
@@ -355,6 +362,25 @@ export function createJobService({ config, registry, store, pins, executor, sche
   }
 
   /**
+   * Map a submitted tool name to the tool that runs. A plain tool name runs as itself; a contract name
+   * (voice.speak) runs as its provider's tool, with `provider` taken out of the input.
+   * @param {string} tool
+   * @param {object} input
+   * @returns {{tool: string, input: object, contract: string|null, provider: string|null}}
+   */
+  function routeContract(tool, input) {
+    if (typeof registry.contract !== 'function' || !registry.contract(tool)) {
+      return { tool, input, contract: null, provider: null };
+    }
+    const r = registry.resolveContract(tool, input);
+    if (!r.ok) {
+      const described = describeErrors(r.errors);
+      throw problem('invalid-input', `input does not match contract ${tool}: ${described}`, { errors: r.errors });
+    }
+    return { tool: r.tool, input: r.input, contract: tool, provider: r.provider };
+  }
+
+  /**
    * Look up a job or throw 404 not-found.
    * @param {string} id
    * @returns {Job}
@@ -412,18 +438,23 @@ export function createJobService({ config, registry, store, pins, executor, sche
         }
       }
 
-      const entry = registry.get(tool);
-      if (!entry) throw problem('unknown-tool', `no tool named ${JSON.stringify(tool)}`);
+      // A contract name (voice.speak) runs as the tool of the provider named in input.provider.
+      const routed = routeContract(tool, input);
+      const entry = registry.get(routed.tool);
+      if (!entry) throw problem('unknown-tool', `no tool named ${JSON.stringify(routed.tool)}`);
       if (!entry.available) {
-        throw problem('tool-unavailable', entry.unavailableReason ?? `tool ${tool} cannot run here`);
+        throw problem('tool-unavailable', entry.unavailableReason ?? `tool ${routed.tool} cannot run here`);
       }
 
-      const v = registry.validate(tool, input);
+      const v = registry.validate(routed.tool, routed.input);
       if (!v.ok) {
         const described = describeErrors(v.errors);
+        const what = routed.contract
+          ? `${routed.tool} (provider ${routed.provider} of ${routed.contract})`
+          : routed.tool;
         throw problem(
           'invalid-input',
-          described ? `input does not match ${tool}: ${described}` : `input does not match ${tool}`,
+          described ? `input does not match ${what}: ${described}` : `input does not match ${what}`,
           {
             errors: v.errors,
           },
@@ -432,7 +463,7 @@ export function createJobService({ config, registry, store, pins, executor, sche
 
       // Problems (unknown ref, file not found, path outside the workspace) propagate unchanged.
       const resolved = await resolveRefs(v.input, v.refPointers);
-      const key = cacheKey(tool, entry.toolHash, v.input, resolved.inputs);
+      const key = cacheKey(routed.tool, entry.toolHash, v.input, resolved.inputs);
       const manifest = entry.manifest;
 
       // ---- cache lookup ----
@@ -446,7 +477,9 @@ export function createJobService({ config, registry, store, pins, executor, sche
           /** @type {Job} */
           const job = {
             id,
-            tool,
+            tool: routed.tool,
+            contract: routed.contract,
+            provider: routed.provider,
             tool_version: manifest.version,
             tool_hash: entry.toolHash,
             status: 'succeeded',
@@ -482,7 +515,9 @@ export function createJobService({ config, registry, store, pins, executor, sche
       /** @type {Job} */
       const job = {
         id,
-        tool,
+        tool: routed.tool,
+        contract: routed.contract,
+        provider: routed.provider,
         tool_version: manifest.version,
         tool_hash: entry.toolHash,
         status: 'queued',

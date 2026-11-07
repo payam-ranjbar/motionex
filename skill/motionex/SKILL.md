@@ -16,13 +16,14 @@ motionex is a toolbox, not a pipeline. It is one service holding bare tools for 
   - `curl -s "$MX/v1/tools?brief=1"` lists every tool.
   - `curl -s $MX/v1/tools/<name>` gives the full input schema and examples.
   - `curl -s $MX/v1/capabilities` lists voices, presets, the browser and limits.
+  - `curl -s "$MX/v1/contracts?brief=1"` lists the **contracts**: one capability with several providers, such as `voice.speak` (piper or elevenlabs). Submit the contract as the tool and pick the provider in the input; the result has the same fields whichever provider speaks.
   - `references/tools.md` (or `GET $MX/v1/skill/references/tools.md`) has every tool's fields, live from the service.
 
 ## Call a tool
 Write the job to a FILE. Shell-quoting JSON is how mistakes happen.
 ```bash
 cat > jobs/voice.json <<'EOF'
-{"tool": "voice.piper", "input": {"voice": "en_US-john-medium", "length_scale": 1.1,
+{"tool": "voice.speak", "input": {"provider": "piper", "voice": "en_US-john-medium", "speed": 0.9,
   "lines": [{"name": "intro", "text": "They called it a glitch."}]}}
 EOF
 curl -s -X POST "$MX/v1/jobs?wait=120" -H 'content-type: application/json' --data @jobs/voice.json
@@ -32,7 +33,7 @@ curl -s -X POST "$MX/v1/jobs?wait=120" -H 'content-type: application/json' --dat
   - `?wait=N` holds the request up to N seconds (at most 300). If the job is still running you get 202; poll with `curl -s "$MX/v1/jobs/<id>?wait=300"`. Never sleep-loop.
 - **Outputs are files** at `outputs[].path`, for example `.mx/jobs/<id>/out/intro.wav`. Read them directly in the workspace, or with `GET $MX/v1/jobs/<id>/outputs/<name>`.
 - **Errors** are `application/problem+json` with `errors[]` naming the bad field. A failed job has `error.type` and `error.detail`, and `GET $MX/v1/jobs/<id>/log` gives the tool's log.
-- **The `mx` CLI** does the same, with less typing: `mx run voice.piper jobs/voice-input.json --wait`, `mx job <id> --wait`, `mx get job:<id>/intro.wav ./intro.wav`, `mx tools`.
+- **The `mx` CLI** does the same, with less typing: `mx run voice.piper jobs/voice-input.json --wait`, `mx job <id> --wait`, `mx get job:<id>/intro.wav ./intro.wav`, `mx tools`, `mx contracts`.
   - Inside the container: `docker exec motionex mx ...`.
   - From a checkout of the repo: `node bin/mx.mjs ...`.
 
@@ -63,7 +64,7 @@ Your "ears" are `audio.loudness`, `audio.levels`, `audio.speech-ratio`, `audio.s
 
 ## One way to make a film (an example path, not a rule)
 1. **Brief**: the story, the length, the platform (16:9 or 9:16, any size cap) and the look. Ask at most 2–3 questions, then sketch.
-2. **Voice drafts**: `voice.phonemize` names and odd words first, then `voice.piper` (or `voice.elevenlabs`), and `audio.process` for character (pitch, EQ, speed).
+2. **Voice drafts**: `voice.phonemize` names and odd words first, then `voice.speak` with provider `piper` (local, free) or `elevenlabs` (acted, paid), and `audio.process` for character (pitch, EQ, speed). Changing provider keeps the file names and timing fields, so nothing downstream changes.
 3. **Timing**: `timeline.layout` turns the takes into scene times and cues (`timeline.json`). It is optional; you may also hand-write absolute times.
 4. **Picture**: HTML pages that expose `window.__motion`. Review with `picture.stills` and `image.contact-sheet` BEFORE a full render.
 5. **Music**: look sound names up with `music.sounds`, then write a Strudel song for `music.render`, with markers for the sections, checked with `audio.stats` or `audio.levels`.
@@ -80,7 +81,7 @@ Every step is replaceable. A music-only piece, a silent loop, a title card or a 
 - **Music**: a 60–90 s score takes 3–12 minutes to render. Run it while you work on picture.
 - **Piper**: seconds per line.
 - **Mix and encode**: seconds to a minute; a two-pass delivery encode takes 1–2 minutes.
-- **ElevenLabs**: about 1 credit per character. Identical requests reuse the earlier take for free.
+- **ElevenLabs**: about 1 credit per character on `eleven_v3` (half on `eleven_flash_v2_5`); `result.credits` reports what a job spent. Identical requests reuse the earlier take for free.
 
 ## Gotchas
 - **Pronunciation**: Piper voices read espeak phonemes, and the `john` voice is British phonemes read by an American speaker. If a name comes out wrong, check it with `voice.phonemize`, then write raw IPA in the text: `"My name is [[ʃˈɒpˌuːə.]]"`. The final punctuation goes INSIDE the brackets.
@@ -97,7 +98,7 @@ Every step is replaceable. A music-only piece, a silent loop, a title card or a 
 - `references/api.md`: endpoints, job lifecycle, refs, pins, files, errors, and curl and CLI recipes.
 - `references/tools.md`: every tool, with fields, defaults and examples (generated live).
 - `references/picture.md`: the `__motion` contract, the optional Motion runtime and GSAP, adapters, stills review, fonts, lip sync, "juice".
-- `references/voice.md`: voices, speed, IPA and pronunciation, character fx, ElevenLabs direction.
+- `references/voice.md`: providers (`voice.speak`, `voice.list`), voices, speed, IPA and pronunciation, character fx, ElevenLabs direction.
 - `references/music.md`: a Strudel cheat sheet, section markers, polyphony, reading the analysis.
 - `references/sound.md`: mix options and what real listeners accepted or rejected, loudness targets, SFX synthesis.
 - `references/pacing.md`: held beats, hits in the silences, comedy timing, cutting on the beat, impacts vs landings, cues on the frame, the rule of three.

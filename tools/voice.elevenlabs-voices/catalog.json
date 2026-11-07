@@ -1,0 +1,30 @@
+{
+  "$comment": "ElevenLabs premade voices, used when the key may not list voices (a text-to-speech-only key lacks voices_read). Premade voice ids are the same for every account. Each one has been used in a real production.",
+  "voices": [
+    {
+      "voice_id": "nPczCjzI2devNBz1zQrb",
+      "name": "Brian",
+      "labels": { "gender": "male", "accent": "american", "description": "deep, resonant and comforting" }
+    },
+    {
+      "voice_id": "JBFqnCBsd6RMkjVDRZzb",
+      "name": "George",
+      "labels": { "gender": "male", "accent": "british", "description": "warm storyteller, announcer" }
+    },
+    {
+      "voice_id": "FGY2WhTYpPnrIDTdsKH5",
+      "name": "Laura",
+      "labels": { "gender": "female", "accent": "american", "description": "upbeat and quirky" }
+    },
+    {
+      "voice_id": "TX3LPaxmHKxFdv7VOQHJ",
+      "name": "Liam",
+      "labels": { "gender": "male", "accent": "american", "description": "energetic, social media" }
+    },
+    {
+      "voice_id": "bIHbv24MWmeRgasZH58o",
+      "name": "Will",
+      "labels": { "gender": "male", "accent": "american", "description": "young and relaxed" }
+    }
+  ]
+}

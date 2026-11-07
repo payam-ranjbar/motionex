@@ -1,7 +1,15 @@
 # Voice
 
+## One contract, several providers
+`voice.speak` is a contract, not a single tool: `{"tool": "voice.speak", "input": {"provider": "piper" | "elevenlabs", "voice", "lines", "speed"?, ...}}`.
+- **Every provider** takes `voice` (its own voice id), `lines` (strings or `{text, name}`), `speed` (1 = the voice's pace) and `speech_end_threshold_db`, and writes `<name>.wav` per line with the same result: `{voice, sample_rate, lines: [{name, file, text, seconds, speech_start_s, speech_end_s, speech_s}], warnings}`. So a draft in Piper and a final in ElevenLabs use the same refs (`job:<id>/intro.wav`) and the same timing fields.
+- **Provider extras** pass straight through: Piper's `length_scale`, `noise_scale`, `speaker`; ElevenLabs' `model`, `stability`, `similarity`, `style`, `seed`, `language`, `output_format`. Each provider's tool (`voice.piper`, `voice.elevenlabs`) documents them.
+- **List voices** with `voice.list {provider, search?}`: `{voices: [{id, name, language, labels}]}`. Pass an `id` as `voice`.
+- **Which providers can run here**: `GET /v1/contracts/voice.speak` (or `capabilities.contracts`). ElevenLabs needs its key file.
+- You can still call `voice.piper` or `voice.elevenlabs` by name; the contract only routes.
+
 ## Piper (local, free, fast)
-`voice.piper {voice, lines: [{name, text}] or ["text", ...], length_scale?, noise_scale?, noise_w_scale?}` writes one WAV per line. Each line's result has `speech_start_s` and `speech_end_s`: Piper leaves 0.1–0.25 s of silence around each line, so place lines by their speech, not the file. `timeline.layout` does this for you. `result.warnings` flags a line whose length is far beyond its text (Piper babbling; `norman` did it twice on one-word lines).
+`voice.speak` with `provider: "piper"`, or `voice.piper {voice, lines: [{name, text}] or ["text", ...], speed? or length_scale?, noise_scale?, noise_w_scale?}`, writes one WAV per line. Each line's result has `speech_start_s` and `speech_end_s`: Piper leaves 0.1–0.25 s of silence around each line, so place lines by their speech, not the file. `timeline.layout` does this for you. `result.warnings` flags a line whose length is far beyond its text (Piper babbling; `norman` did it twice on one-word lines).
 
 **Voices** (see `GET /v1/capabilities`). The four shipped voices have commercially safe training data:
 
@@ -15,8 +23,8 @@
 Extra voices can be mounted at `/voices`. Avoid `ryan` and `lessac` for commercial work; their licences restrict it.
 
 **Speed and feel**:
-- `length_scale` 1.1–1.15 gives gravitas;
-- 0.8–0.92 gives energy;
+- `length_scale` 1.1–1.15 (`speed` about 0.9) gives gravitas;
+- 0.8–0.92 (`speed` about 1.1–1.25) gives energy; `speed` sets `length_scale = 1/speed`, so give one or the other;
 - for a very fast read (a legal disclaimer, for example), speed it up afterwards with `audio.process {steps: [{tempo: 1.8}]}`, which keeps the pitch.
 
 **Piper is non-deterministic.** Two runs never sound the same. Generate 2–3 takes of important lines, let the human pick, and PIN the pick.
@@ -42,11 +50,22 @@ Short lines, treated like instruments. Raw IPA keeps non-English words right, e.
 Measure `onset_s` on the processed clip and place it that much early when it must land on a frame.
 
 ## ElevenLabs (optional, paid, acted reads)
-It is available when the operator put a key file in the service's secrets. `voice.elevenlabs {voice_id, text, model: "eleven_v3", stability}`:
-- **Direction**: v3 takes audio tags in the text, such as `[whispers]`, `[excited]`, `[sighs]` or `[laughs]`.
-- **Stability**: 0 is creative, 0.5 natural, 1 robust.
-- **Cost**: about 1 credit per character. Identical requests reuse the earlier take (`cache: reuse`) and cost nothing. `result.chars` reports the use.
+Available when the operator put a key file in the service's secrets (`secrets/elevenlabs_api_key`).
+`voice.speak {provider: "elevenlabs", voice: "<voice id>", lines, model: "eleven_v3", stability?, seed?}` writes `<name>.wav` and keeps ElevenLabs' original `<name>.mp3` beside it.
+- **Direction**: v3 performs audio tags in the text, such as `[whispers]`, `[excited]`, `[sighs]` or `[laughs]`; CAPS stress a word and "..." adds a beat. Other models may read the tags out loud (the result warns).
+- **Stability**: 0 is creative, 0.5 natural, 1 robust. **Speed** 0.7–1.2 only; go further with `audio.process` `tempo`.
+- **Cost**: about 1 credit per character on `eleven_v3`, half on `eleven_flash_v2_5`. `result.chars` and `result.credits` report the spend. Identical requests reuse the earlier take (`cache: reuse`) and cost nothing; send `"cache": "off"` for a new take.
+- **Voices**: a key scoped to text-to-speech cannot list voices, so `voice.list` returns a catalogue of premade voices that worked in real productions:
+
+| Voice | id | Character |
+|---|---|---|
+| Brian | `nPczCjzI2devNBz1zQrb` | deep, resonant and comforting (a trustworthy Santa; fast and hyped, an influencer) |
+| George | `JBFqnCBsd6RMkjVDRZzb` | warm British storyteller, the classic announcer; at stability 1 and ×1.8 tempo, a legal read |
+| Laura | `FGY2WhTYpPnrIDTdsKH5` | upbeat and quirky; +2 semitones made an elf |
+| Liam | `TX3LPaxmHKxFdv7VOQHJ` | energetic, social media |
+| Will | `bIHbv24MWmeRgasZH58o` | young and relaxed |
+
+  Any other premade or library voice id works too.
 - **Acted takes run long**: tighten them with `audio.process` `tighten_pauses` and `tempo`.
-- **When to use which**: an acted voice won for a comedy ad, but lost for a moody film, where the user preferred the original Piper voice: "it has the charm and character". Offer both rather than swapping.
-- **Keys**: some keys are scoped to text-to-speech only, so listing voices fails. Then pass a known `voice_id`.
+- **When to use which**: an acted voice won for a comedy ad, but lost for a moody film, where the user preferred the original Piper voice: "it has the charm and character". Offer both rather than swapping; with `voice.speak` the two takes are drop-in replacements.
 - **Licence**: the free tier is non-commercial and needs attribution.

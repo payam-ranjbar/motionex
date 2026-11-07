@@ -1,42 +1,73 @@
 {
   "name": "voice.elevenlabs",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "title": "Voice (ElevenLabs)",
-  "summary": "Synthesize one line of speech with ElevenLabs and write take.mp3 plus take.wav. Optional provider: it needs an elevenlabs_api_key secret file and network access.",
-  "description": "Performs a scripted line with an ElevenLabs voice, supporting v3 audio tags such as [whispers] or [excited] inside the text. It writes the raw MP3 response as take.mp3 and always also decodes it to take.wav. The API key is read from the elevenlabs_api_key secret file and never appears in results or logs. Requests are retried on 429, 5xx and network errors.",
+  "summary": "The ElevenLabs provider of voice.speak: speak lines with an ElevenLabs voice to one WAV per line (plus the original MP3), with speech-start/end times. Needs the elevenlabs_api_key secret file and network access.",
+  "description": "Performs each line in `lines` with one ElevenLabs voice and writes <name>.wav plus the provider's original <name>.mp3 (pcm_* formats write only the WAV). The result has the same fields as voice.piper (voice.speak contract), plus the model, per-line request ids, the characters billed and, when ElevenLabs reports it, the credits spent. eleven_v3 performs audio tags such as [whispers], [excited] or [laughs] inside the text. Lines are spoken one at a time; requests are retried on 429, 5xx and network errors. Identical requests reuse the earlier take by default (cache \"reuse\") to save credits: submit with cache \"off\" for a new take. The API key is read from a secret file and never appears in results or logs. A text-to-speech-only key cannot list voices: voice.list with provider elevenlabs then returns a catalogue of premade voices.",
   "kind": "node",
   "handler": "handler.mjs",
   "deterministic": false,
   "cache_default": "reuse",
   "resources": { "class": "elevenlabs", "slots": 0 },
-  "timeout_s": 300,
+  "timeout_s": 1800,
   "requires": { "binaries": ["ffmpeg"], "secrets": ["elevenlabs_api_key"] },
+  "implements": [{ "contract": "voice.speak", "provider": "elevenlabs" }],
   "input_schema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
     "additionalProperties": false,
-    "required": ["voice_id", "text"],
+    "required": ["voice", "lines"],
     "properties": {
-      "voice_id": {
-        "type": "string",
-        "description": "ElevenLabs voice id (for example 21m00Tcm4TlvDq8ikWAM). Use voice.elevenlabs-voices to list ids."
-      },
-      "text": {
+      "voice": {
         "type": "string",
         "minLength": 1,
-        "maxLength": 5000,
-        "description": "The line to speak. May contain v3 audio tags such as [whispers], [excited] or [laughs], which the eleven_v3 model performs."
+        "description": "ElevenLabs voice id, for example JBFqnCBsd6RMkjVDRZzb (George). voice.list with provider elevenlabs lists ids."
+      },
+      "lines": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 200,
+        "description": "The lines to speak, in order; each becomes <name>.wav. A line is a plain string (named line-001, line-002, ...) or {text, name}.",
+        "items": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 5000,
+              "description": "A line to speak, shorthand for {\"text\": \"<this string>\"}."
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["text"],
+              "description": "A line with an explicit text and an optional output name.",
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 5000,
+                  "description": "What to say. eleven_v3 performs audio tags such as [whispers], [excited] or [laughs]; CAPS stress a word and \"...\" adds a beat."
+                },
+                "name": {
+                  "type": "string",
+                  "pattern": "^[\\w.-]{1,64}$",
+                  "description": "Output file name without extension, e.g. who-0 writes who-0.wav and who-0.mp3. Unique inside one call."
+                }
+              }
+            }
+          ]
+        }
       },
       "model": {
         "type": "string",
         "default": "eleven_v3",
-        "description": "ElevenLabs model id; eleven_v3 acts the tags in the text."
+        "description": "ElevenLabs model id. eleven_v3 acts audio tags; eleven_multilingual_v2 is steadier; eleven_flash_v2_5 is the cheapest (about half the credits per character)."
       },
       "stability": {
         "type": "number",
         "minimum": 0,
         "maximum": 1,
-        "description": "Voice stability; eleven_v3 likes 0 (creative), 0.5 (natural) or 1 (robust)."
+        "description": "Voice stability; eleven_v3 takes 0 (creative), 0.5 (natural) or 1 (robust)."
       },
       "similarity": {
         "type": "number",
@@ -54,50 +85,99 @@
         "type": "number",
         "minimum": 0.7,
         "maximum": 1.2,
-        "description": "Speaking rate (maps to voice_settings.speed)."
+        "description": "Speaking rate, 1 = the voice's own pace (maps to voice_settings.speed). ElevenLabs accepts 0.7 to 1.2; for more, change the tempo with audio.process."
       },
       "seed": {
         "type": "integer",
-        "description": "Seed for deterministic generation when the model supports it; omit for varied takes."
+        "minimum": 0,
+        "maximum": 4294967295,
+        "description": "Seed for repeatable generation when the model supports it; the same seed is used for every line. Omit for varied takes."
       },
       "language": {
         "type": "string",
-        "description": "Optional ISO language code (maps to language_code), for example en."
+        "description": "ISO 639-1 language code (maps to language_code), for example en. Omit to let the model detect it."
       },
       "output_format": {
         "type": "string",
+        "pattern": "^(mp3_\\d+_\\d+|pcm_\\d+)$",
         "default": "mp3_44100_128",
-        "description": "Requested output format; mp3_44100_128 is the best the ElevenLabs Free tier allows."
+        "description": "ElevenLabs output format: mp3_<rate>_<kbps> keeps the MP3 and decodes it to WAV; pcm_<rate> (paid tiers) writes the WAV directly. mp3_44100_128 is the best the Free tier allows."
+      },
+      "speech_end_threshold_db": {
+        "type": "number",
+        "minimum": -120,
+        "maximum": 0,
+        "default": -40,
+        "description": "Level (dBFS) below which a sample counts as silence when measuring speech_start_s and speech_end_s."
       }
     }
   },
   "output_schema": {
     "type": "object",
     "additionalProperties": false,
-    "required": ["chars", "seconds", "request_id", "model", "voice_id"],
+    "required": ["voice", "model", "sample_rate", "lines", "chars", "credits", "warnings"],
     "properties": {
-      "chars": { "type": "integer", "description": "Number of characters billed (length of the text)." },
-      "seconds": { "type": "number", "description": "Duration of the decoded take in seconds." },
-      "request_id": {
-        "type": ["string", "null"],
-        "description": "ElevenLabs request-id response header, or null when absent."
-      },
+      "voice": { "type": "string", "description": "The voice id that spoke." },
       "model": { "type": "string", "description": "The model id that was used." },
-      "voice_id": { "type": "string", "description": "The voice id that was used." }
+      "sample_rate": { "type": "integer", "description": "Sample rate of the WAV files in Hz." },
+      "lines": {
+        "type": "array",
+        "description": "One entry per line, in input order.",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "file",
+            "text",
+            "seconds",
+            "speech_start_s",
+            "speech_end_s",
+            "speech_s",
+            "original",
+            "request_id",
+            "chars"
+          ],
+          "properties": {
+            "name": { "type": "string", "description": "The line's name." },
+            "file": { "type": "string", "description": "The WAV output." },
+            "text": { "type": "string", "description": "The text as given." },
+            "seconds": { "type": "number", "description": "Length of the WAV file." },
+            "speech_start_s": { "type": "number", "description": "Where audible speech starts." },
+            "speech_end_s": { "type": "number", "description": "Where audible speech ends (plus a 30 ms tail)." },
+            "speech_s": { "type": "number", "description": "speech_end_s - speech_start_s." },
+            "original": {
+              "type": ["string", "null"],
+              "description": "The provider's original file (<name>.mp3), or null for pcm formats."
+            },
+            "request_id": { "type": ["string", "null"], "description": "ElevenLabs request-id header." },
+            "chars": { "type": "integer", "description": "Characters billed for this line." }
+          }
+        }
+      },
+      "chars": { "type": "integer", "description": "Characters billed for all lines." },
+      "credits": {
+        "type": ["number", "null"],
+        "description": "Credits spent, from ElevenLabs' character-cost header; null when it was not reported."
+      },
+      "warnings": { "type": "array", "items": { "type": "string" }, "description": "Lines worth a second listen." }
     }
   },
   "examples": [
     {
-      "title": "One line with the eleven_v3 model",
-      "run": false,
-      "input": { "voice_id": "21m00Tcm4TlvDq8ikWAM", "text": "Hello from motionex." }
-    },
-    {
-      "title": "Acted line with an audio tag",
+      "title": "Two lines with George on eleven_v3",
       "run": false,
       "input": {
-        "voice_id": "21m00Tcm4TlvDq8ikWAM",
-        "text": "[whispers] Meet me at midnight.",
+        "voice": "JBFqnCBsd6RMkjVDRZzb",
+        "lines": ["Hello from motionex.", { "text": "[whispers] Meet me at midnight.", "name": "midnight" }]
+      }
+    },
+    {
+      "title": "Acted line, natural stability, fixed seed",
+      "run": false,
+      "input": {
+        "voice": "nPczCjzI2devNBz1zQrb",
+        "lines": [{ "text": "[excited] What's up, everyone!", "name": "opener" }],
         "model": "eleven_v3",
         "stability": 0.5,
         "seed": 7

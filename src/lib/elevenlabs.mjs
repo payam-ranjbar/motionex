@@ -91,7 +91,8 @@ export function createClient({
    * @param {{voice_id: string, text: string, model_id?: string, output_format?: string,
    *   voice_settings?: object, seed?: number, language_code?: string}} req
    * @param {{signal?: AbortSignal}} [opts]
-   * @returns {Promise<{audio: Buffer, request_id: string|null}>}
+   * @returns {Promise<{audio: Buffer, request_id: string|null, chars: number|null, credits: number|null}>}
+   *   chars and credits come from the x-character-count and character-cost headers (null when absent).
    */
   async function synthesize(req, { signal } = {}) {
     const route = `/v1/text-to-speech/${encodeURIComponent(req.voice_id)}`;
@@ -107,7 +108,16 @@ export function createClient({
       accept: 'audio/mpeg',
       signal,
     });
-    return { audio: Buffer.from(await res.arrayBuffer()), request_id: res.headers.get('request-id') ?? null };
+    const num = (name) => {
+      const v = res.headers.get(name);
+      return v === null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v);
+    };
+    return {
+      audio: Buffer.from(await res.arrayBuffer()),
+      request_id: res.headers.get('request-id') ?? null,
+      chars: num('x-character-count'),
+      credits: num('character-cost'),
+    };
   }
 
   /**

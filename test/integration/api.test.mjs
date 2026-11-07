@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { loadConfig } from '../../src/lib/config.mjs';
 import { createApp } from '../../src/server/app.mjs';
 import { serve } from '../../src/server/main.mjs';
+import { needs } from '../helpers/needs.mjs';
 import { mkTmp, rmTmp } from '../helpers/tmp.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -364,3 +365,60 @@ test('a job left "running" by a crash comes back as failed/interrupted', async (
     await rmTmp(ws);
   }
 });
+
+test(
+  'contracts: listed with their providers, and a voice.speak job runs as the provider tool',
+  needs('python', 'piper-voice'),
+  async () => {
+    await withServer(async ({ base }) => {
+      const index = await (await fetch(`${base}/v1`)).json();
+      assert.equal(index.links.contracts, '/v1/contracts');
+
+      const list = await (await fetch(`${base}/v1/contracts?brief=1`)).json();
+      const speak = list.contracts.find((c) => c.name === 'voice.speak');
+      assert.ok(speak, 'voice.speak is listed');
+      assert.equal(speak.input_schema, undefined, 'brief drops the schemas');
+      assert.deepEqual(
+        speak.providers.map((p) => p.provider),
+        ['elevenlabs', 'piper'],
+      );
+      const one = await (await fetch(`${base}/v1/contracts/voice.list`)).json();
+      assert.equal(one.input_schema.properties.provider.type, 'string');
+      assert.equal((await fetch(`${base}/v1/contracts/nope.nope`)).status, 404);
+
+      const caps = await (await fetch(`${base}/v1/capabilities`)).json();
+      assert.ok(caps.contracts['voice.speak'].some((p) => p.provider === 'piper' && p.available));
+
+      const post = (body) =>
+        fetch(`${base}/v1/jobs?wait=60`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+      const res = await post({
+        tool: 'voice.speak',
+        input: { provider: 'piper', voice: 'en_US-john-medium', lines: [{ text: 'Hello.', name: 'hi' }], speed: 1.1 },
+      });
+      assert.equal(res.status, 200);
+      const job = await res.json();
+      assert.equal(job.status, 'succeeded', JSON.stringify(job.error));
+      assert.equal(job.tool, 'voice.piper');
+      assert.equal(job.contract, 'voice.speak');
+      assert.equal(job.provider, 'piper');
+      assert.equal(job.result.lines[0].file, 'hi.wav');
+      assert.ok(job.outputs.some((o) => o.name === 'hi.wav'));
+
+      const voices = await (await post({ tool: 'voice.list', input: { provider: 'piper', search: 'john' } })).json();
+      assert.equal(voices.status, 'succeeded', JSON.stringify(voices.error));
+      assert.deepEqual(
+        voices.result.voices.map((v) => v.id),
+        ['en_US-john-medium'],
+      );
+
+      const bad = await post({ tool: 'voice.speak', input: { provider: 'nobody', voice: 'x', lines: ['hi'] } });
+      assert.equal(bad.status, 422);
+      const problem = await bad.json();
+      assert.match(problem.detail, /no provider "nobody" \(providers: elevenlabs, piper\)/);
+    });
+  },
+);

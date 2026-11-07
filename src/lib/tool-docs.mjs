@@ -110,9 +110,53 @@ function metaLine(info) {
     `version ${info.version ?? '0.0.0'}`,
   ];
   if (info.available === false) parts.push(`unavailable: ${oneLine(info.unavailable_reason ?? 'unknown reason')}`);
+  if (Array.isArray(info.implements) && info.implements.length > 0)
+    parts.push(
+      `implements: ${info.implements.map((i) => `${oneLine(i.contract)} (provider ${oneLine(i.provider)})`).join(', ')}`,
+    );
   if (Array.isArray(info.preset_names) && info.preset_names.length > 0)
     parts.push(`presets: ${info.preset_names.map(oneLine).join(', ')}`);
   return parts.join(' · ');
+}
+
+/** The input table rows of a schema as markdown lines. */
+function inputTable(schema) {
+  const lines = ['| field | type | required | default | description |', '| --- | --- | --- | --- | --- |'];
+  for (const row of flattenSchema(schema)) {
+    lines.push(
+      `| ${cell(row.field)} | ${cell(row.type)} | ${row.required ? 'yes' : ''} | ${cell(row.default)} | ${cell(row.description)} |`,
+    );
+  }
+  return lines;
+}
+
+/**
+ * Markdown for one contract (contractInfo): heading, summary, providers, the shared input table, examples.
+ * @param {object} info
+ * @returns {string}
+ */
+export function renderContractDoc(info) {
+  const lines = [`## ${info.name} (contract)`, ''];
+  if (info.title || info.summary) lines.push(`**${oneLine(info.title || info.name)}**: ${oneLine(info.summary)}`, '');
+  if (info.description) lines.push(oneLine(info.description), '');
+  const providers = (info.providers ?? []).map(
+    (p) =>
+      `${oneLine(p.provider)} → ${oneLine(p.tool)}${p.available ? '' : ` (unavailable: ${oneLine(p.unavailable_reason ?? 'unknown reason')})`}`,
+  );
+  lines.push(
+    `providers: ${providers.length ? providers.join(' · ') : 'none installed'} · version ${info.version ?? '0.0.0'}`,
+    '',
+  );
+  if (info.outputs) lines.push(`outputs: ${oneLine(info.outputs)}`, '');
+  lines.push(...inputTable(info.input_schema));
+  for (const ex of info.examples ?? []) {
+    const job = { tool: info.name, input: ex.input ?? {} };
+    lines.push('', `### Example: ${oneLine(ex.title)}`, '', '```json', JSON.stringify(job, null, 2), '```');
+  }
+  return `${lines
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trimEnd()}\n`;
 }
 
 /**
@@ -125,12 +169,7 @@ export function renderToolDoc(info) {
   if (info.title || info.summary) lines.push(`**${oneLine(info.title || info.name)}**: ${oneLine(info.summary)}`, '');
   if (info.description) lines.push(oneLine(info.description), '');
   lines.push(metaLine(info), '');
-  lines.push('| field | type | required | default | description |', '| --- | --- | --- | --- | --- |');
-  for (const row of flattenSchema(info.input_schema)) {
-    lines.push(
-      `| ${cell(row.field)} | ${cell(row.type)} | ${row.required ? 'yes' : ''} | ${cell(row.default)} | ${cell(row.description)} |`,
-    );
-  }
+  lines.push(...inputTable(info.input_schema));
   for (const ex of info.examples ?? []) {
     lines.push('', `### Example: ${oneLine(ex.title)}`, '', '```json', JSON.stringify(ex.input ?? {}, null, 2), '```');
   }
@@ -147,17 +186,27 @@ const REFS_INTRO =
   'write outputs through the tool that produces them. Tools enforce nothing beyond their own parameters: defaults are ' +
   'neutral, and every opinion (ducking, loudness target, fps, size, codec) is an explicit field or a named preset.';
 
+const CONTRACTS_INTRO =
+  'A contract is one capability with several providers (voice.speak: piper or elevenlabs). Submit a job with the ' +
+  'contract as the tool and pick the provider in the input: `{"tool": "voice.speak", "input": {"provider": "piper", ' +
+  '...}}`. Every provider takes the contract fields below with the same meaning and returns the same result fields, ' +
+  "so switching provider changes nothing downstream; each provider's own tool (listed) documents its extra fields.";
+
 /**
- * Markdown for a whole registry: title, refs intro, index, then every tool sorted by name.
+ * Markdown for a whole registry: title, refs intro, index, contracts, then every tool sorted by name.
  * @param {import('../runner/types.mjs').ToolInfo[]} infos
- * @param {{title?: string}} [opts]
+ * @param {{title?: string, contracts?: object[]}} [opts] contracts: registry.listContracts()
  * @returns {string}
  */
-export function renderToolDocs(infos, { title = 'motionex tools' } = {}) {
+export function renderToolDocs(infos, { title = 'motionex tools', contracts = [] } = {}) {
   const sorted = [...(infos ?? [])].sort((a, b) => String(a.name).localeCompare(String(b.name)));
   const lines = [`# ${title}`, '', REFS_INTRO, '', '## Index', ''];
   if (sorted.length === 0) lines.push('(no tools registered)');
+  for (const c of contracts) lines.push(`- **${c.name}** (contract) — ${oneLine(c.summary)}`);
   for (const info of sorted) lines.push(`- **${info.name}** — ${oneLine(info.summary)}`);
+  if (contracts.length > 0) lines.push('', '# Contracts', '', CONTRACTS_INTRO);
+  for (const c of contracts) lines.push('', renderContractDoc(c).trimEnd());
+  if (contracts.length > 0) lines.push('', '# Tools');
   for (const info of sorted) lines.push('', renderToolDoc(info).trimEnd());
   return `${lines.join('\n')}\n`;
 }

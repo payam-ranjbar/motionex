@@ -41,6 +41,13 @@ export function register(router, deps) {
       python: { path: config.python, available: existsSync(config.python) },
       voices: listVoices(config.voicesDirs),
       providers: { elevenlabs: { enabled: Boolean(deps.registry.get('voice.elevenlabs')?.available) } },
+      // contract -> its providers and whether each can run here (GET /v1/contracts has the schemas)
+      contracts: Object.fromEntries(
+        (deps.registry.listContracts?.() ?? []).map((c) => [
+          c.name,
+          c.providers.map(({ provider, tool, available }) => ({ provider, tool, available })),
+        ]),
+      ),
       presets,
       limits: {
         cpu_slots: config.cpuSlots,

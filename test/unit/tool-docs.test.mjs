@@ -4,7 +4,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from '../../src/lib/config.mjs';
-import { flattenSchema, renderToolDoc, renderToolDocs } from '../../src/lib/tool-docs.mjs';
+import { flattenSchema, renderContractDoc, renderToolDoc, renderToolDocs } from '../../src/lib/tool-docs.mjs';
 import { loadRegistry } from '../../src/registry/registry.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -154,4 +154,18 @@ test('renderToolDocs: title, refs intro, index and every tool sorted by name', a
     ['Index', 'fake.cmd', 'fake.echo', 'fake.fail', 'fake.linger', 'fake.sleep'],
   );
   assert.match(renderToolDocs(infos, { title: 'custom title' }), /^# custom title$/m);
+});
+
+test('renderToolDocs: contracts get their own section, and providers say what they implement', async () => {
+  const registry = await loadRegistry({ config: loadConfig({ ...process.env, MX_EXTENSIONS_DIR: '' }) });
+  const md = renderToolDocs(registry.list(), { contracts: registry.listContracts() });
+  assert.match(md, /^- \*\*voice\.speak\*\* \(contract\) — /m);
+  assert.match(md, /^# Contracts$/m);
+  assert.match(md, /^## voice\.speak \(contract\)$/m);
+  assert.match(md, /^providers: elevenlabs → voice\.elevenlabs.* · piper → voice\.piper/m);
+  assert.match(md, /"tool": "voice\.speak"/);
+  assert.match(md, /implements: voice\.speak \(provider piper\)/);
+  assert.ok(md.indexOf('# Contracts') < md.indexOf('# Tools'));
+  const doc = renderContractDoc(registry.contractInfo('voice.list'));
+  assert.match(doc, /\| provider \| string \| yes \|/);
 });

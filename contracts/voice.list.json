@@ -1,0 +1,52 @@
+{
+  "name": "voice.list",
+  "version": "1.0.0",
+  "title": "List voices (any voice provider)",
+  "summary": "List the voices one voice provider can speak with, as {id, name} plus whatever else the provider knows. Pass an id as voice to voice.speak with the same provider.",
+  "description": "Submit {\"tool\": \"voice.list\", \"input\": {\"provider\": \"piper\"}}. Piper lists the installed voice files; ElevenLabs asks the API and, when the key may not list voices (a text-to-speech-only key), returns the built-in catalogue of premade voices with a warning.",
+  "input_schema": {
+    "type": "object",
+    "required": ["provider"],
+    "properties": {
+      "provider": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]*$",
+        "description": "Which provider's voices: piper, elevenlabs, or a provider an extension adds."
+      },
+      "search": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Keep only voices whose id, name or labels contain this text (case-insensitive)."
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["voices"],
+    "properties": {
+      "voices": {
+        "type": "array",
+        "description": "The voices, sorted by name.",
+        "items": {
+          "type": "object",
+          "required": ["id", "name"],
+          "properties": {
+            "id": { "type": "string", "description": "Pass this as voice to voice.speak." },
+            "name": { "type": "string", "description": "A human name for the voice." },
+            "language": { "type": ["string", "null"], "description": "Language code when known, e.g. en_US." },
+            "labels": { "type": "object", "description": "Provider labels such as gender, accent or use." }
+          }
+        }
+      },
+      "warnings": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "For example: the list is a catalogue because the key may not read voices."
+      }
+    }
+  },
+  "examples": [
+    { "title": "Installed Piper voices", "input": { "provider": "piper" } },
+    { "title": "ElevenLabs voices named like George", "input": { "provider": "elevenlabs", "search": "george" } }
+  ]
+}

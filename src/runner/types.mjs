@@ -11,6 +11,7 @@ export {};
  * @property {string} stateDir        absolute, default <workspace>/.mx
  * @property {string} scratchDir      absolute
  * @property {{path: string, origin: 'builtin'|'extension'}[]} toolsDirs
+ * @property {string[]} contractsDirs   folders of contract files (<name>.json); extension tool dirs add <dir>/contracts
  * @property {string[]} presetsDirs
  * @property {string[]} voicesDirs
  * @property {string} secretsDir
@@ -58,6 +59,7 @@ export {};
  * @property {object} input_schema     JSON Schema 2020-12
  * @property {object} [output_schema]  JSON Schema for `result`
  * @property {{title: string, input: object, fixtures?: Record<string, object>}[]} examples
+ * @property {{contract: string, provider: string}[]} [implements]  contracts this tool is a provider of
  */
 
 /**
@@ -114,6 +116,8 @@ export {};
  * @typedef {object} Job
  * @property {string} id                  "job_<32 hex>"
  * @property {string} tool
+ * @property {string|null} [contract]    the contract the job was submitted as (e.g. voice.speak), else null
+ * @property {string|null} [provider]    the provider picked for that contract (e.g. piper), else null
  * @property {string} tool_version
  * @property {string} tool_hash
  * @property {JobStatus} status

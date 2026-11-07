@@ -70,6 +70,19 @@
         "secrets": { "type": "array", "items": { "type": "string", "pattern": "^[a-z0-9_]+$" } }
       }
     },
+    "implements": {
+      "type": "array",
+      "description": "Contracts (contracts/<name>.json) this tool is a provider of. A job may then name the contract and pick this tool with input.provider.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["contract", "provider"],
+        "properties": {
+          "contract": { "type": "string", "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$" },
+          "provider": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" }
+        }
+      }
+    },
     "input_schema": { "type": "object" },
     "output_schema": { "type": "object" },
     "examples": {

@@ -60,6 +60,10 @@ export function loadConfig(env = process.env) {
     stateDir: path.resolve(env.MX_STATE_DIR || path.join(workspace, '.mx')),
     scratchDir: path.resolve(env.MX_SCRATCH_DIR || path.join(os.tmpdir(), 'motionex-scratch')),
     toolsDirs,
+    contractsDirs: [
+      path.join(APP_ROOT, 'contracts'),
+      ...list(env.MX_CONTRACTS_DIRS, path.delimiter).map((d) => path.resolve(d)),
+    ],
     presetsDirs: [
       path.join(APP_ROOT, 'presets'),
       ...list(env.MX_PRESETS_DIRS, path.delimiter).map((d) => path.resolve(d)),

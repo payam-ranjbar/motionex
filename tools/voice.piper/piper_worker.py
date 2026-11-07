@@ -184,6 +184,11 @@ def main():
 
     model_path, config_path, voice_name = resolve_voice(request)
     lines = [line if isinstance(line, dict) else {"text": line} for line in inp["lines"]]
+    if inp.get("speed") is not None:
+        # voice.speak's provider-neutral rate: 1.1 = 10% faster = a 1/1.1 length scale.
+        if inp.get("length_scale") is not None:
+            raise InputError("give speed or length_scale, not both (speed sets length_scale = 1/speed)")
+        inp = {**inp, "length_scale": 1.0 / float(inp["speed"])}
     syn_config = synthesis_config(inp)
     threshold_db = float(inp.get("speech_end_threshold_db", -40))
     length_scale = float(inp["length_scale"]) if inp.get("length_scale") is not None else 1.0

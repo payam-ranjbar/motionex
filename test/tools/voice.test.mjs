@@ -246,3 +246,51 @@ test('voice.piper: length_scale 1.3 is slower than 0.8', needs('python', 'piper-
     await rmTmp(ws);
   }
 });
+
+test(
+  'voice.piper: speed 1.25 is faster than 0.8, and speed with length_scale is refused',
+  needs('python', 'piper-voice'),
+  async () => {
+    const ws = await mkTmp();
+    try {
+      const text = 'The quick brown fox jumps.';
+      const quick = await runTool('voice.piper', { voice: NORMAN, speed: 1.25, lines: [text] }, { workspace: ws });
+      const slow = await runTool('voice.piper', { voice: NORMAN, speed: 0.8, lines: [text] }, { workspace: ws });
+      assert.ok(
+        quick.result.lines[0].seconds < slow.result.lines[0].seconds,
+        `speed 1.25 gave ${quick.result.lines[0].seconds} s, 0.8 gave ${slow.result.lines[0].seconds} s`,
+      );
+      await assert.rejects(
+        runTool('voice.piper', { voice: NORMAN, speed: 1.1, length_scale: 1, lines: [text] }, { workspace: ws }),
+        (e) => {
+          assert.equal(e.type, 'invalid-input');
+          assert.match(e.detail, /speed or length_scale/);
+          return true;
+        },
+      );
+    } finally {
+      await rmTmp(ws);
+    }
+  },
+);
+
+test('voice.piper-voices: lists the installed voices as voice.list entries', needs('piper-voice'), async () => {
+  const ws = await mkTmp();
+  try {
+    const { result } = await runTool('voice.piper-voices', {}, { workspace: ws });
+    const ids = result.voices.map((v) => v.id);
+    assert.ok(ids.includes(NORMAN) && ids.includes(JOHN), ids.join(', '));
+    const norman = result.voices.find((v) => v.id === NORMAN);
+    assert.equal(norman.name, NORMAN);
+    assert.equal(norman.language, 'en_US');
+    assert.equal(norman.labels.quality, 'medium');
+    assert.deepStrictEqual(result.warnings, []);
+    const john = await runTool('voice.piper-voices', { search: 'JOHN' }, { workspace: ws });
+    assert.deepStrictEqual(
+      john.result.voices.map((v) => v.id),
+      [JOHN],
+    );
+  } finally {
+    await rmTmp(ws);
+  }
+});
