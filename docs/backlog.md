@@ -24,7 +24,8 @@ how to reproduce it, and a suggested fix. Items fixed since are removed from thi
 ## voice.piper
 
 5. **A one-word line can babble.** `en_US-norman-medium` with `"Hey!"` returned 3.3 s (speech_end 3.0 s) while the other voices
-   returned ~0.6 s. Suggested fix: warn when `seconds` is far above the text's expected length (e.g. > 0.5 s per syllable).
+   returned ~0.6 s. Reproduced again with the raw-IPA line `[[hˈɑː!]]`: 3.5 s from norman, 0.58 s from john. Suggested
+   fix: warn when `seconds` is far above the text's expected length (e.g. > 0.5 s per syllable).
 
 ## media.encode
 
