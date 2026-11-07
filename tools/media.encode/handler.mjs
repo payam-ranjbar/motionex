@@ -14,7 +14,7 @@ const TWO_PASS_CODECS = new Set(['libx264', 'libx265']);
  * @param {string} file absolute path
  * @param {AbortSignal} signal
  * @returns {Promise<{duration_s: number|null, width: number|null, height: number|null, video_bitrate_k: number|null,
- *   audio_bitrate_k: number|null}>}
+ *   audio_bitrate_k: number|null, audio_duration_s: number|null, has_audio: boolean}>}
  */
 async function probeMedia(file, signal) {
   const { stdout } = await runFfprobe(['-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', file], {
@@ -26,6 +26,7 @@ async function probeMedia(file, signal) {
   const a = streams.find((s) => s.codec_type === 'audio') ?? null;
   const num = (x) => (x === undefined || x === null || x === '' || x === 'N/A' ? null : Number(x));
   const duration = num(data.format?.duration) ?? num(v?.duration);
+  const audioDuration = num(a?.duration);
   const videoBitrate = num(v?.bit_rate);
   const audioBitrate = num(a?.bit_rate);
   return {
@@ -34,7 +35,35 @@ async function probeMedia(file, signal) {
     height: v?.height ?? null,
     video_bitrate_k: videoBitrate != null ? Math.round(videoBitrate / 1000) : null,
     audio_bitrate_k: audioBitrate != null ? Math.round(audioBitrate / 1000) : null,
+    audio_duration_s: Number.isFinite(audioDuration) ? audioDuration : null,
+    has_audio: a != null,
   };
+}
+
+/**
+ * The real bitrate of a file's first audio stream, in kbit/s, for budgeting a stream copy. Uses ffprobe's
+ * stream `bit_rate`; when a container omits it (e.g. some WAVs), sums the audio packet sizes and divides by
+ * the stream's duration.
+ * @param {string} file absolute path
+ * @param {{audio_bitrate_k: number|null, audio_duration_s: number|null, duration_s: number|null}} probe a probeMedia result
+ * @param {AbortSignal} signal
+ * @returns {Promise<number|null>} kbit/s, or null when it cannot be determined
+ */
+async function sourceAudioBitrateK(file, probe, signal) {
+  if (probe.audio_bitrate_k != null) return probe.audio_bitrate_k;
+  const duration = probe.audio_duration_s ?? probe.duration_s;
+  if (!duration) return null;
+  const { stdout } = await runFfprobe(
+    ['-v', 'error', '-select_streams', 'a:0', '-show_entries', 'packet=size', '-of', 'csv=p=0', file],
+    { signal },
+  );
+  let bytes = 0;
+  for (const token of stdout.toString().split(/\s+/)) {
+    const n = Number(token);
+    if (Number.isFinite(n)) bytes += n;
+  }
+  if (bytes <= 0) return null;
+  return Math.round((bytes * 8) / duration / 1000);
 }
 
 /**
@@ -103,12 +132,22 @@ export default async function run(input, ctx) {
   const inProbe = await probeMedia(input.input, ctx.signal);
   const videoFilter = buildVideoFilter({ scale: input.scale, color, pixFmt, inW: inProbe.width, inH: inProbe.height });
 
+  // Audio that consumes the byte budget. A copied stream is not re-encoded, so its real source bitrate
+  // (not audio.bitrate_k) is what the target-size budget has to reserve for it. No audio stream -> zero.
+  let budgetAudioKbps = audioKbps;
+  if (audio.codec === 'copy') {
+    const audioSource = replacePath ?? input.input;
+    const audioProbe = audioSource === input.input ? inProbe : await probeMedia(audioSource, ctx.signal);
+    if (!audioProbe.has_audio) budgetAudioKbps = 0;
+    else budgetAudioKbps = (await sourceAudioBitrateK(audioSource, audioProbe, ctx.signal)) ?? audioKbps;
+  }
+
   // Fit-to-size: derive the video bitrate from the duration and the audio budget.
   let baseBitrate = video.bitrate_k ?? null;
   if (targetMb != null) {
     const duration = inProbe.duration_s;
     if (!duration) throw new ToolError('invalid-input', 'could not determine the input duration for target_size_mb');
-    baseBitrate = Math.floor(((targetMb * 8e6) / duration / 1000 - audioKbps) * (1 - sizeMargin));
+    baseBitrate = Math.floor(((targetMb * 8e6) / duration / 1000 - budgetAudioKbps) * (1 - sizeMargin));
     if (baseBitrate < 100) throw new ToolError('invalid-input', 'target too small for this duration');
   }
   let crf = video.crf;
@@ -215,6 +254,7 @@ export default async function run(input, ctx) {
       size_bytes: sizeBytes,
       duration_s: outProbe.duration_s,
       video_bitrate_k: videoBitrateK,
+      audio_bitrate_k: Math.round(budgetAudioKbps),
       passes,
       attempts,
       width: outProbe.width,

@@ -8,7 +8,11 @@ import { mkTmp, rmTmp } from '../helpers/tmp.mjs';
 import { runTool } from '../helpers/tool-harness.mjs';
 
 // A 640x360 30 fps testsrc2 with BT.709 tags and a sine audio track. Colour is the point, so the tags matter.
-async function makeBt709Testsrc(ws, rel, { seconds = 4 } = {}) {
+async function makeBt709Testsrc(
+  ws,
+  rel,
+  { seconds = 4, audioBitrateK = 128, audioChannels = 1, audioSampleRate = 44100 } = {},
+) {
   const abs = path.join(ws, rel);
   await runFfmpeg([
     '-hide_banner',
@@ -45,7 +49,11 @@ async function makeBt709Testsrc(ws, rel, { seconds = 4 } = {}) {
     '-c:a',
     'aac',
     '-b:a',
-    '128k',
+    `${audioBitrateK}k`,
+    '-ac',
+    String(audioChannels),
+    '-ar',
+    String(audioSampleRate),
     abs,
   ]);
   return abs;
@@ -280,6 +288,64 @@ test('media.encode: target too small is invalid-input', needs('ffmpeg', 'ffprobe
     assert.ok(err, 'expected an error');
     assert.equal(err.type, 'invalid-input');
     assert.match(err.message, /target too small for this duration/);
+  } finally {
+    await rmTmp(ws);
+  }
+});
+
+test('media.encode: fit-size with audio copy budgets the real source bitrate', needs('ffmpeg', 'ffprobe'), async () => {
+  const ws = await mkTmp();
+  try {
+    // Audio that is already AAC at the delivery rate. The fit-size budget must reserve its real bitrate,
+    // not the preset's 128 kbit/s, or the copy makes the output overshoot the target.
+    const src = await makeBt709Testsrc(ws, 'src.mp4', {
+      seconds: 4,
+      audioBitrateK: 320,
+      audioChannels: 2,
+      audioSampleRate: 48000,
+    });
+    const audioStream = async (file) => {
+      const { stdout } = await runFfprobe([
+        '-v',
+        'error',
+        '-select_streams',
+        'a:0',
+        '-show_entries',
+        'stream=codec_name,bit_rate',
+        '-of',
+        'json',
+        file,
+      ]);
+      return JSON.parse(stdout.toString()).streams[0];
+    };
+    const srcAudio = await audioStream(src);
+    const srcAudioBps = Number(srcAudio.bit_rate);
+    assert.ok(srcAudioBps > 200_000, `source audio bit_rate ${srcAudio.bit_rate} is not a high delivery rate`);
+
+    const { result, outputs } = await runTool(
+      'media.encode',
+      { input: 'src.mp4', preset: 'fit-size', target_size_mb: 0.2, audio: { codec: 'copy' } },
+      { workspace: ws },
+    );
+    const out = outAbs(outputs, 'video.mp4');
+    assert.ok(out, `expected video.mp4, got ${outputs.map((o) => o.name).join(', ')}`);
+
+    const outAudio = await audioStream(out);
+    assert.equal(outAudio.codec_name, srcAudio.codec_name, 'the audio codec changed');
+    // A copy can change the container's reported stream duration by a hair, so compare the rate closely.
+    assert.ok(
+      Math.abs(Number(outAudio.bit_rate) - srcAudioBps) / srcAudioBps < 0.01,
+      `the audio bitrate changed: ${srcAudioBps} -> ${outAudio.bit_rate}`,
+    );
+    const audioMd5 = async (file) =>
+      (await runFfmpeg(['-v', 'error', '-i', file, '-map', '0:a:0', '-c', 'copy', '-f', 'md5', '-'])).stdout
+        .toString()
+        .trim();
+    assert.equal(await audioMd5(out), await audioMd5(src), 'the audio stream was re-encoded');
+
+    assert.equal(result.passes, 2);
+    assert.ok(result.size_bytes <= 200_000, `size ${result.size_bytes} > 200 kB target`);
+    assert.equal(result.audio_bitrate_k, Math.round(srcAudioBps / 1000));
   } finally {
     await rmTmp(ws);
   }
