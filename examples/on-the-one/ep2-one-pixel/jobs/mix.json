@@ -1,0 +1,212 @@
+{
+  "tool": "audio.mix",
+  "input": {
+    "duration_s": 25.5738,
+    "tracks": [
+      {
+        "name": "dialogue",
+        "clips": [
+          {
+            "src": "job:job_01a1b2e0450273e096bb678c1ceef87a/l1.wav",
+            "at": 0.5,
+            "fade_in_s": 0.01,
+            "fade_out_s": 0.06
+          },
+          {
+            "src": "job:job_01a1b2e0450273e096bb678c1ceef87a/l2.wav",
+            "at": 4.15,
+            "fade_in_s": 0.01,
+            "fade_out_s": 0.06
+          },
+          {
+            "src": "job:job_01a1b2e0450273e096bb678c1ceef87a/l3.wav",
+            "at": 8.05,
+            "fade_in_s": 0.01,
+            "fade_out_s": 0.06
+          },
+          {
+            "src": "job:job_01a1b2e0450273e096bb678c1ceef87a/l4.wav",
+            "at": 17.95,
+            "fade_in_s": 0.01,
+            "fade_out_s": 0.06
+          },
+          {
+            "src": "job:job_01a1b2e0450273e096bb678c1ceef87a/l5.wav",
+            "at": 21.85,
+            "fade_in_s": 0.01,
+            "fade_out_s": 0.06
+          }
+        ],
+        "gain_db": 4
+      },
+      {
+        "name": "music",
+        "gain_db": -4,
+        "clips": [
+          {
+            "src": "pin:onthe1/ep2-one-pixel/music",
+            "at": 0,
+            "fade_out_s": 0.6
+          }
+        ],
+        "fx": "equalizer=f=1000:t=q:w=1.4:g=-2,equalizer=f=1900:t=q:w=2.0:g=-4.5,equalizer=f=3600:t=q:w=1.4:g=-2.5,acompressor=threshold=-10dB:ratio=2.2:attack=6:release=220"
+      },
+      {
+        "name": "sfx",
+        "gain_db": -12,
+        "clips": [
+          {
+            "src": "job:job_01a1b2e268df7308a21042698732853a/blink.wav",
+            "at": 0.9836,
+            "gain_db": -4
+          },
+          {
+            "src": "job:job_01a1b2e268df7308a21042698732853a/hop1.wav",
+            "at": 1.9672
+          },
+          {
+            "src": "job:job_01a1b2e268df7308a21042698732853a/hop2.wav",
+            "at": 2.459
+          },
+          {
+            "src": "job:job_01a1b2e268df7308a21042698732853a/hop3.wav",
+            "at": 2.9508
+          },
+          {
+            "src": "job:job_01a1b2e268df7308a21042698732853a/hop4.wav",
+            "at": 3.4426
+          },
+          {
+            "src": "job:job_01a1b2e268df7308a21042698732853a/assemble.wav",
+            "at": 3.9344,
+            "gain_db": -2
+          },
+          {
+            "src": "job:job_01a1b2e268df7308a21042698732853a/assemble.wav",
+            "at": 5.9016,
+            "gain_db": -2
+          },
+          {
+            "src": "job:job_01a1b2e268df7308a21042698732853a/assemble.wav",
+            "at": 7.8689,
+            "gain_db": -2
+          },
+          {
+            "src": "job:job_01a1b2e268df7308a21042698732853a/hop1.wav",
+            "at": 7.8689
+          },
+          {
+            "src": "job:job_01a1b2e268df7308a21042698732853a/hop2.wav",
+            "at": 8.3607
+          },
+          {
+            "src": "job:job_01a1b2e268df7308a21042698732853a/hop3.wav",
+            "at": 8.8525
+          },
+          {
+            "src": "job:job_01a1b2e268df7308a21042698732853a/hop4.wav",
+            "at": 9.3443
+          },
+          {
+            "src": "job:job_01a1b2e268df7308a21042698732853a/hop1.wav",
+            "at": 9.8361
+          },
+          {
+            "src": "job:job_01a1b2e268df7308a21042698732853a/hop2.wav",
+            "at": 10.3279
+          },
+          {
+            "src": "job:job_01a1b2e268df7308a21042698732853a/hop3.wav",
+            "at": 10.8197
+          },
+          {
+            "src": "job:job_01a1b2e268df7308a21042698732853a/hop4.wav",
+            "at": 11.3115
+          },
+          {
+            "src": "job:job_01a1b2e268df7308a21042698732853a/swish_in.wav",
+            "at": 11.34,
+            "gain_db": 2
+          },
+          {
+            "src": "job:job_01a1b2e268df7308a21042698732853a/land.wav",
+            "at": 11.8033,
+            "gain_db": 2
+          },
+          {
+            "src": "job:job_01a1b2e268df7308a21042698732853a/assemble.wav",
+            "at": 12.2951,
+            "gain_db": -8
+          },
+          {
+            "src": "job:job_01a1b2e268df7308a21042698732853a/assemble.wav",
+            "at": 12.7869,
+            "gain_db": -8
+          },
+          {
+            "src": "job:job_01a1b2e268df7308a21042698732853a/assemble.wav",
+            "at": 13.2787,
+            "gain_db": -8
+          },
+          {
+            "src": "job:job_01a1b2e268df7308a21042698732853a/assemble.wav",
+            "at": 17.7049,
+            "gain_db": -2
+          },
+          {
+            "src": "job:job_01a1b2e268df7308a21042698732853a/assemble.wav",
+            "at": 19.6721,
+            "gain_db": -2
+          },
+          {
+            "src": "job:job_01a1b2e268df7308a21042698732853a/scatter.wav",
+            "at": 21.6393,
+            "gain_db": 1
+          },
+          {
+            "src": "job:job_01a1b2e268df7308a21042698732853a/bow.wav",
+            "at": 22.1393,
+            "gain_db": 1
+          },
+          {
+            "src": "job:job_01a1b2e268df7308a21042698732853a/final.wav",
+            "at": 23.6066,
+            "gain_db": 2
+          },
+          {
+            "src": "job:job_01a1b2e268df7308a21042698732853a/assemble.wav",
+            "at": 23.4466,
+            "gain_db": -8
+          },
+          {
+            "src": "job:job_01a1b2e268df7308a21042698732853a/assemble.wav",
+            "at": 23.6666,
+            "gain_db": -8
+          },
+          {
+            "src": "job:job_01a1b2e268df7308a21042698732853a/assemble.wav",
+            "at": 23.8866,
+            "gain_db": -8
+          },
+          {
+            "src": "job:job_01a1b2e268df7308a21042698732853a/assemble.wav",
+            "at": 24.1066,
+            "gain_db": -8
+          }
+        ]
+      }
+    ],
+    "master": {
+      "loudness": {
+        "target_lufs": -14,
+        "true_peak_db": -2.2,
+        "method": "gain+limiter"
+      }
+    },
+    "output": {
+      "stems": true,
+      "preview_mp3": true,
+      "format": "wav"
+    }
+  }
+}

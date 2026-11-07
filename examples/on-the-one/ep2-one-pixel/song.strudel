@@ -1,0 +1,108 @@
+// ON THE ONE - EP2 "ONE PIXEL"
+// deep house, 122 bpm, warm and bouncy. One cycle = one bar (setcpm(122/4) => 1.9672 s).
+// 13 bars = 25.5738 s. Bar 7 (cycle 6) is the DROP, bar 13 (cycle 12) is the endcard hit.
+//
+// Markers (each works over a small range, so the edit can move):
+//   INTRO 0..1   kick + hats + blip lead
+//   BASS  2..3   sub bassline enters
+//   CHORD 4..5   e-piano stabs + claps
+//   DROP  5..8   full groove, the low-pass opens
+//   BREAK 10..11 breakdown, the filter closes again
+//   END   12     final downbeat, everything rings out
+setcpm(122/4)
+
+let INTRO = 0;
+let BASS  = 2;
+let CHORD = 4;
+let DROP  = 6;
+let BREAK = 11;
+let END   = 12;
+
+// on/off section masks. Kept at 0/1 numbers so mask() reads them as binary.
+const span  = (a, b) => cat(...Array(a).fill(0), ...Array(b - a).fill(1), ...Array(128).fill(0))
+const after = (a) => span(a, 128)
+
+// the low-pass door: shut at the start, wide open at the drop, shut for the breakdown
+const LPK = "<2200 2200 2400 2600 3000 3600 5400 6400 6400 6400 4200 2400 4800>"
+const LP  = "<700 700 1000 1600 2400 3200 5200 6200 6200 6200 3400 1100 3800>"
+
+// ------------------------------------------------------------------ drums
+$: s("bd*4").bank("RolandTR909").gain(.90).lpf(LPK).lpq(1.2)
+
+$: s("~ ~ oh ~").bank("RolandTR909").gain(.28).hpf(5600).room(.18).size(.4)
+
+$: s("~ hh ~ [hh hh]").bank("RolandTR909").gain(.24).hpf(7200)
+   .pan(sine.range(.35,.65).slow(5))
+
+$: s("~ cp ~ cp").bank("RolandTR909").gain(.46).room(.32).size(.5).mask(after(CHORD))
+
+$: s("~ rim ~ rim").bank("RolandTR909").gain(.20).pan(.62).mask(after(DROP))
+
+$: s("cr").bank("RolandTR909").gain(.45).room(.55).size(.8)
+   .mask("<0 0 0 0 0 0 1 0 0 0 0 1 1>")
+
+// ------------------------------------------------------------------ sub bass
+// Am9 - Dm9 - Gmaj7 - Cmaj7, two bars each, then home. Pushes on the offbeat.
+$: note("<[a1 ~ ~ a1 ~ a1 ~ a1] [a1 ~ ~ a1 ~ a1 ~ a1] [d2 ~ ~ d2 ~ d2 ~ d2] [d2 ~ ~ d2 ~ d2 ~ d2] [g1 ~ ~ g1 ~ g1 ~ g1] [g1 ~ ~ g1 ~ g1 ~ g1] [c2 ~ ~ c2 ~ c2 ~ c2] [c2 ~ ~ c2 ~ c2 ~ c2] [a1 ~ ~ a1 ~ a1 ~ a1] [a1 ~ ~ a1 ~ a1 ~ a1] [d2 ~ ~ d2 ~ d2 ~ d2] [g1 ~ ~ g1 ~ g1 ~ g1] [a1 ~ ~ a1 ~ a1 ~ a1]>")
+   .s("sine").gain(.85).lpf(LP).lpq(3)
+   .attack(.006).decay(.30).sustain(.45).release(.10)
+   .mask(after(BASS))
+
+// ------------------------------------------------------------------ chords
+const CHORDS = "<Am9 Am9 Dm9 Dm9 Gmaj7 Gmaj7 Cmaj7 Cmaj7 Am9 Am9 Dm9 Gmaj7 Am9>"
+
+// warm e-piano stabs on the offbeat
+$: chord(CHORDS).struct("~ x ~ x ~ x ~ x").voicing()
+   .s("gm_epiano1").gain(.40).hpf(190).lpf(LP).room(.45).size(.7)
+   .mask(after(CHORD))
+
+// string pad underneath, from the chord section on
+$: chord(CHORDS).voicing()
+   .s("gm_string_ensemble_1").gain(.16).hpf(260).attack(.45).release(.9)
+   .lpf(LP).room(.6).size(.9)
+   .mask(after(CHORD))
+
+// ------------------------------------------------------------------ pixel blip lead
+$: note("<[a5 a5 e5 c5 a5 a5 e5 c5] [a5 a5 e5 c5 a5 a5 e5 c5] [d5 d5 a5 f5 d5 d5 a5 f5] [d5 d5 a5 f5 d5 d5 a5 f5] [g5 g5 d5 b4 g5 g5 d5 b4] [g5 g5 d5 b4 g5 g5 d5 b4] [c5 c5 g5 e5 c5 c5 g5 e5] [c5 c5 g5 e5 c5 c5 g5 e5] [a5 a5 e5 c5 a5 a5 e5 c5] [a5 a5 e5 c5 a5 a5 e5 c5] [d5 d5 a5 f5 d5 d5 a5 f5] [g5 g5 d5 b4 g5 g5 d5 b4] [a5 a5 e5 c5 a5 a5 e5 c5]>")
+   .s("square").gain(.11).hpf(320).lpf(3800)
+   .room(.35).size(.4).delay(.30).delaytime(.246).delayfeedback(.35)
+   .mask(after(INTRO))
+
+// ------------------------------------------------------------------ drop stab
+// the vocal-chop-style e-piano stab that only exists between the drop and the breakdown
+$: chord("<Cmaj7 Cmaj7 Am9 Am9 Dm9 Gmaj7 Am9>")
+   .struct("x ~ x x ~ x x ~").voicing()
+   .s("gm_epiano1").gain(.44).hpf(280).lpf(6400).room(.40).size(.5)
+   .mask(span(DROP, BREAK))
+
+// ------------------------------------------------------------------ drop impact
+// the money shot: a crash and a sub hit land on the downbeat of bar 7
+$: s("cr").bank("RolandTR909").gain(.68).room(.75).size(.92)
+   .mask(span(DROP, DROP + 1))
+
+$: note("<a1>").s("sine").gain(.90).attack(.004).decay(.9).sustain(.12).release(.30)
+   .mask(span(DROP, DROP + 1))
+
+// ------------------------------------------------------------------ breakdown (bar 12)
+$: chord("<Gmaj7>").voicing()
+   .s("gm_string_ensemble_1").gain(.22).hpf(240).attack(.50).release(1.2)
+   .lpf(1300).room(.85).size(.95)
+   .mask(span(BREAK, END))
+
+$: note("<g1>").s("sine").gain(.55).lpf(900)
+   .attack(.01).decay(1.0).sustain(.3).release(.6)
+   .mask(span(BREAK, END))
+
+// ------------------------------------------------------------------ final bar (bar 13)
+$: chord("<Am9>").voicing()
+   .s("gm_epiano1").gain(.42).attack(.008).release(2.6)
+   .room(.70).size(.9)
+   .mask(span(END, END + 1))
+
+$: s("cr").bank("RolandTR909").gain(.46).room(.70).size(.9)
+   .mask(span(END, END + 1))
+
+// ------------------------------------------------------------------ master trim
+// The render peaked at +4.7 dBFS. This is a flat trim, not a balance change:
+// the loudness work happens in audio.mix.
+all(x => x.postgain(0.5))

@@ -1,0 +1,5 @@
+{"tool":"media.mux","input":{
+  "video":"job:job_01a1b2ecc0d97513a0ef575aba0e95ae/video.mp4",
+  "audio":"job:job_01a1b2ed85537531b0053a7c26ccebf3/mix.wav",
+  "audio_codec":"aac","audio_bitrate_k":192,"audio_sample_rate":48000,
+  "name":"ep5-sun-swallower.mp4"}}

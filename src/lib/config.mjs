@@ -1,4 +1,4 @@
-// Process settings, all from MX_* environment variables (contavex style). Secrets are files, never env.
+// Process settings, all from MX_* environment variables. Secrets are files, never env.
 import { existsSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';

@@ -1,0 +1,9 @@
+{
+  "tool": "picture.stills",
+  "input": {
+    "page": "episodes/ep2-one-pixel/scene.html",
+    "times": [0.0, 0.7, 2.2, 4.2, 6.0, 8.5, 10.5, 11.9, 13.9, 17.9, 21.7, 24.2],
+    "format": "jpeg",
+    "quality": 88
+  }
+}

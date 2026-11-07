@@ -1,5 +1,5 @@
 // RFC 9457 problem details for the HTTP API (application/problem+json),
-// mirroring contavex: type urn:motionex:problem:<code>, title, status, detail, request_id.
+// with type urn:motionex:problem:<code>, title, status, detail, request_id.
 
 /** code -> [status, title] */
 export const PROBLEMS = Object.freeze({

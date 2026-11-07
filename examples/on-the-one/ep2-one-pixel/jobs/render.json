@@ -1,0 +1,23 @@
+{
+  "tool": "picture.render",
+  "input": {
+    "page": "episodes/ep2-one-pixel/scene.html",
+    "fps": 30,
+    "from_s": 0,
+    "to_s": 25.5738,
+    "workers": 4,
+    "intermediate": "jpeg",
+    "jpeg_quality": 95,
+    "audio": "job:job_01a1b2ecd7d2751096c7281b2b19cf08/mix.wav",
+    "audio_codec": "aac",
+    "audio_bitrate_k": 256,
+    "video": {
+      "codec": "libx264",
+      "preset": "medium",
+      "crf": 17,
+      "pix_fmt": "yuv420p",
+      "color": "bt709"
+    },
+    "name": "video.mp4"
+  }
+}

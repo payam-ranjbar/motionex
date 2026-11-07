@@ -1,0 +1,9 @@
+{
+  "tool": "sfx.synth",
+  "input": {
+    "recipe": "episodes/ep4-run-loop/sfx.mjs",
+    "sounds": ["tear", "stamp", "tick", "splat"],
+    "seed": 4,
+    "format": "wav24"
+  }
+}

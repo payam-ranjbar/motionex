@@ -1,0 +1,669 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ON THE ONE &middot; EP2 &middot; ONE PIXEL</title>
+<style>
+  html,body{margin:0;padding:0;background:#F2EEE6;overflow:hidden}
+  canvas{display:block;width:1080px;height:1920px}
+</style>
+</head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+(function () {
+'use strict';
+
+// ===========================================================================
+// ON THE ONE - EP2 "ONE PIXEL"
+// One coral pixel in a flat pixel-art grid: it hops, it bounces, and at the
+// drop it becomes the eye of a big smiling picture. Deep house, 122 bpm.
+//
+// Every frame is a pure function of t (seeded PRNG, no Date, no free-running
+// animation), so picture.render can seek in any order across parallel pages.
+// ===========================================================================
+
+const W = 1080, H = 1920;
+const BPM = 122;
+const SPB = 60 / BPM;              // 0.491803 s per beat
+const BAR = 4 * SPB;               // 1.967213 s per bar
+const TOTAL = 13 * BAR;            // 25.5738 s = 13 bars
+const T_DROP  = 6 * BAR;           // 11.8033 s - bar 7, the drop
+const T_BREAK = 11 * BAR;          // 21.6393 s - bar 12, the picture explodes
+const T_END   = 12 * BAR;          // 23.6066 s - bar 13, endcard
+
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+
+// --------------------------------------------------------------- helpers
+const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
+const lerp = (a, b, x) => a + (b - a) * x;
+const smooth = (x) => { x = clamp01(x); return x * x * (3 - 2 * x); };
+const easeOut = (x) => 1 - Math.pow(1 - clamp01(x), 3);
+const easeIn = (x) => { x = clamp01(x); return x * x; };
+
+/** Deterministic value hash -> [0,1). Used instead of Math.random(). */
+function rnd(i) {
+  let x = (i | 0) + 0x9e3779b9 | 0;
+  x = Math.imul(x ^ (x >>> 16), 0x21f0aaad);
+  x = Math.imul(x ^ (x >>> 15), 0x735a2d97);
+  return ((x ^ (x >>> 15)) >>> 0) / 4294967296;
+}
+
+/** Kick pulse: 1 on the beat, decaying fast. */
+const kickPulse = (t) => { const f = t / SPB; return Math.exp(-(f - Math.floor(f)) * 11); };
+/** Offbeat pulse: 1 halfway between two beats. */
+const offPulse = (t) => { const f = t / SPB; return Math.exp(-Math.abs((f - Math.floor(f)) - 0.5) * 13); };
+const beatAt = (t) => t / SPB;
+
+// --------------------------------------------------------------- 5x7 pixel font
+const GLYPH_H = 7, GLYPH_W = 5, GLYPH_ADV = 6;
+const FONT = {
+  A: ['.###.', '#...#', '#...#', '#####', '#...#', '#...#', '#...#'],
+  B: ['####.', '#...#', '#...#', '####.', '#...#', '#...#', '####.'],
+  C: ['.###.', '#...#', '#....', '#....', '#....', '#...#', '.###.'],
+  D: ['####.', '#...#', '#...#', '#...#', '#...#', '#...#', '####.'],
+  E: ['#####', '#....', '#....', '####.', '#....', '#....', '#####'],
+  F: ['#####', '#....', '#....', '####.', '#....', '#....', '#....'],
+  G: ['.###.', '#...#', '#....', '#.###', '#...#', '#...#', '.###.'],
+  H: ['#...#', '#...#', '#...#', '#####', '#...#', '#...#', '#...#'],
+  I: ['#####', '..#..', '..#..', '..#..', '..#..', '..#..', '#####'],
+  J: ['..###', '...#.', '...#.', '...#.', '...#.', '#..#.', '.##..'],
+  K: ['#...#', '#..#.', '#.#..', '##...', '#.#..', '#..#.', '#...#'],
+  L: ['#....', '#....', '#....', '#....', '#....', '#....', '#####'],
+  M: ['#...#', '##.##', '#.#.#', '#...#', '#...#', '#...#', '#...#'],
+  N: ['#...#', '##..#', '#.#.#', '#..##', '#...#', '#...#', '#...#'],
+  O: ['.###.', '#...#', '#...#', '#...#', '#...#', '#...#', '.###.'],
+  P: ['####.', '#...#', '#...#', '####.', '#....', '#....', '#....'],
+  Q: ['.###.', '#...#', '#...#', '#...#', '#.#.#', '#..#.', '.##.#'],
+  R: ['####.', '#...#', '#...#', '####.', '#.#..', '#..#.', '#...#'],
+  S: ['.####', '#....', '#....', '.###.', '....#', '....#', '####.'],
+  T: ['#####', '..#..', '..#..', '..#..', '..#..', '..#..', '..#..'],
+  U: ['#...#', '#...#', '#...#', '#...#', '#...#', '#...#', '.###.'],
+  V: ['#...#', '#...#', '#...#', '#...#', '#...#', '.#.#.', '..#..'],
+  W: ['#...#', '#...#', '#...#', '#.#.#', '#.#.#', '##.##', '#...#'],
+  X: ['#...#', '#...#', '.#.#.', '..#..', '.#.#.', '#...#', '#...#'],
+  Y: ['#...#', '#...#', '.#.#.', '..#..', '..#..', '..#..', '..#..'],
+  Z: ['#####', '....#', '...#.', '..#..', '.#...', '#....', '#####'],
+  0: ['.###.', '#...#', '#..##', '#.#.#', '##..#', '#...#', '.###.'],
+  1: ['..#..', '.##..', '..#..', '..#..', '..#..', '..#..', '.###.'],
+  2: ['.###.', '#...#', '....#', '...#.', '..#..', '.#...', '#####'],
+  3: ['####.', '....#', '....#', '.###.', '....#', '....#', '####.'],
+  4: ['#..#.', '#..#.', '#..#.', '#####', '...#.', '...#.', '...#.'],
+  5: ['#####', '#....', '#....', '####.', '....#', '#...#', '.###.'],
+  6: ['.###.', '#....', '#....', '####.', '#...#', '#...#', '.###.'],
+  7: ['#####', '....#', '...#.', '..#..', '.#...', '.#...', '.#...'],
+  8: ['.###.', '#...#', '#...#', '.###.', '#...#', '#...#', '.###.'],
+  9: ['.###.', '#...#', '#...#', '.####', '....#', '....#', '.###.'],
+  '.': ['.....', '.....', '.....', '.....', '.....', '.##..', '.##..'],
+  ',': ['.....', '.....', '.....', '.....', '.##..', '.##..', '.#...'],
+  '!': ['..#..', '..#..', '..#..', '..#..', '..#..', '.....', '..#..'],
+  '?': ['.###.', '#...#', '....#', '...#.', '..#..', '.....', '..#..'],
+  "'": ['..#..', '..#..', '.....', '.....', '.....', '.....', '.....'],
+  '-': ['.....', '.....', '.....', '#####', '.....', '.....', '.....'],
+  ':': ['.....', '.##..', '.##..', '.....', '.##..', '.##..', '.....'],
+  '\u00b7': ['.....', '.....', '.....', '.##..', '.##..', '.....', '.....'],
+  ' ': ['.....', '.....', '.....', '.....', '.....', '.....', '.....'],
+};
+const glyph = (ch) => FONT[ch] || FONT['?'];
+const lineUnits = (s) => s.length * GLYPH_ADV - 1;
+
+// --------------------------------------------------------------- palettes
+// bar 7 paper / bars 8-11 cycle / bar 12+ paper again
+const PAL = [
+  { bg: '#F2EEE6', ink: '#16171A', acc: '#FF5A4E', hero: '#FF5A4E' }, // paper, ink picture
+  { bg: '#16171A', ink: '#F2EEE6', acc: '#FF5A4E', hero: '#FF5A4E' }, // inverted
+  { bg: '#F2EEE6', ink: '#FF5A4E', acc: '#16171A', hero: '#16171A' }, // coral picture
+  { bg: '#1E2A5A', ink: '#F2EEE6', acc: '#FF5A4E', hero: '#FF5A4E' }, // night blue
+];
+function palAt(t) {
+  if (t >= T_DROP && t < T_DROP + 5 * BAR) return PAL[Math.floor((t - T_DROP) / BAR) % 4];
+  return PAL[0];
+}
+
+// --------------------------------------------------------------- the grid
+// The camera gag: the grid gets finer (more, smaller cells) so the hero can
+// become tiny in a huge grid, then it snaps back for the drop.
+function gridN(t) {
+  if (t < 4.9180) return 27;                                          // bars 1-2, bar 3 beats 1-2
+  if (t < 6.3934) return lerp(27, 77, smooth((t - 4.9180) / 1.4754)); // bar 3 beat 3 -> bar 4 beat 2: pull out
+  if (t < 7.8689) return 77;                                          // tiny in a huge grid
+  if (t < 8.2189) return lerp(77, 27, smooth((t - 7.8689) / 0.35));   // bar 5 beat 1: snap back in
+  return 27;
+}
+const csAt = (t) => W / gridN(t);
+
+// --------------------------------------------------------------- the picture
+// A big smiling head with a dancing crowd under it, built on the 27x48 grid.
+// The RIGHT eye is not here: that cell is the hero itself.
+const N0 = 27, CS0 = W / N0;
+const FACE_CX = 13.5, FACE_CY = 19.5, FACE_R = 10.2;
+const headCells = [], crowdCells = [], smileCells = [], confettiCells = [];
+(function buildPicture() {
+  for (let r = 0; r < 48; r++) {
+    for (let c = 0; c < N0; c++) {
+      const dx = c + 0.5 - FACE_CX, dy = r + 0.5 - FACE_CY;
+      if (Math.hypot(dx, dy) > FACE_R) continue;
+      if (r >= 15 && r <= 17 && c >= 15 && c <= 17) continue;      // the hero's eye
+      if (r >= 15 && r <= 17 && c >= 9 && c <= 11) { headCells.push({ c, r, kind: 'eyeL' }); continue; }
+      const x = c + 0.5;
+      if (x >= 9 && x <= 18) {
+        const smY = 24.5 + 3.0 * (1 - Math.pow((x - FACE_CX) / 4.0, 2));
+        if (Math.abs(r + 0.5 - smY) < 0.85) { smileCells.push({ c, r, kind: 'smile' }); continue; }
+      }
+      headCells.push({ c, r, kind: 'ink' });
+    }
+  }
+  // the crowd: eight little pixel people, two rows of heads
+  for (let k = 0; k < 8; k++) {
+    const c0 = 2 + k * 3;
+    for (let rr = 0; rr < 2; rr++) {
+      for (let cc = 0; cc < 2; cc++) {
+        crowdCells.push({ c: c0 + cc, r: 31 + rr, kind: 'crowdHead', fig: k });
+        crowdCells.push({ c: c0 + cc, r: 33 + rr, kind: 'crowdBody', fig: k });
+      }
+    }
+  }
+  // coral sparkles above the head, so the top of the frame is not dead air
+  for (let k = 0; k < 11; k++) {
+    confettiCells.push({
+      c: 1 + Math.floor(rnd(700 + k * 3) * 25),
+      r: 6 + Math.floor(rnd(701 + k * 3) * 3),
+      kind: 'confetti',
+      fig: k,
+    });
+  }
+})();
+
+const FACE_CELLS = headCells.concat(crowdCells, confettiCells);
+const cellFill = (f, pal) =>
+  f.kind === 'crowdHead' || f.kind === 'confetti'
+    ? pal.acc
+    : f.kind === 'eyeL' || f.kind === 'smile'
+      ? pal.bg
+      : pal.ink;
+// per-cell stable randomness + which rain wave it arrives in
+FACE_CELLS.forEach((f, i) => {
+  f.seed = i * 7 + 13;
+  f.h1 = rnd(f.seed), f.h2 = rnd(f.seed + 1), f.h3 = rnd(f.seed + 2), f.h4 = rnd(f.seed + 3);
+  f.px = (f.c + 0.5) * CS0;
+  f.py = (f.r + 0.5) * CS0;
+  if (f.kind === 'eyeL' || f.kind === 'smile') f.wave = 2;
+  else if (f.kind === 'crowdHead' || f.kind === 'crowdBody' || f.kind === 'confetti') f.wave = 3;
+  else f.wave = f.r <= 21 ? 0 : 1;  // explode velocity, away from the head centre
+  const ax = f.px - FACE_CX * CS0, ay = f.py - FACE_CY * CS0;
+  const m = Math.hypot(ax, ay) || 1;
+  const sp = 620 + f.h1 * 900;
+  f.vx = (ax / m) * sp;
+  f.vy = (ay / m) * sp - 180;
+});
+smileCells.forEach((s, i) => { s.px = (s.c + 0.5) * CS0; s.py = (s.r + 0.5) * CS0; });
+
+// --------------------------------------------------------------- words
+const STAG = SPB / 2;             // one wave every eighth note
+function makeWord(lines, cx, cy, fs, waves, stagger, seed) {
+  const lh = GLYPH_H * fs, gap = 3 * fs;
+  const totalH = lines.length * lh + (lines.length - 1) * gap;
+  let top = cy - totalH / 2;
+  const shards = [];
+  for (let li = 0; li < lines.length; li++) {
+    const line = lines[li];
+    const left = cx - (lineUnits(line) * fs) / 2;
+    for (let ci = 0; ci < line.length; ci++) {
+      const g = glyph(line[ci]);
+      for (let r = 0; r < GLYPH_H; r++) {
+        for (let c = 0; c < GLYPH_W; c++) {
+          if (g[r][c] !== '#') continue;
+          shards.push({ x: left + (ci * GLYPH_ADV + c) * fs, y: top + r * fs, i: shards.length });
+        }
+      }
+    }
+    top += lh + gap;
+  }
+  shards.forEach((s) => {
+    const k = seed + s.i * 5;
+    s.sx = rnd(k) * W;
+    s.sy = rnd(k + 1) * H * 0.9;
+    s.wave = Math.min(waves - 1, Math.floor(rnd(k + 2) * waves));
+    s.f1 = rnd(k + 3); s.f2 = rnd(k + 4); s.f3 = rnd(k + 5);
+    s.coral = rnd(k + 6) < 0.055;
+  });
+  return { lines, cx, cy, fs, waves, stagger, shards };
+}
+
+/** Font size that fits the safe box, capped. */
+function fitFs(lines, maxW, maxH, cap) {
+  let w = 0;
+  for (const l of lines) w = Math.max(w, lineUnits(l));
+  const h = lines.length * GLYPH_H + (lines.length - 1) * 3;
+  return Math.min(cap, maxW / w, maxH / h);
+}
+
+const SAFE_W = 994, SAFE_Y0 = 250, SAFE_Y1 = 1520;
+const WORDS = [
+  { key: 'hi',   lines: ['HI.'],      y: 0.295, cap: 58, tIn: -1.10, tOut: 2.4590, seed: 1101, waves: 4 },
+  { key: 'nob',  lines: ['NOBODY'],   y: 0.275, cap: 34, tOut: 4.5500, seed: 2203, waves: 4 },
+  { key: 'see',  lines: ['SEES ME.'], y: 0.275, cap: 30, tOut: 6.5500, seed: 3307, waves: 4 },
+  { key: 'beat', lines: ['A BEAT.'],  y: 0.275, cap: 34, tOut: 11.3000, seed: 4409, waves: 4 },
+  { key: 'part', lines: ['PART OF'],  y: 0.275, cap: 34, tOut: 18.3000, seed: 5501, waves: 4 },
+  { key: 'all',  lines: ['IT ALL.'],  y: 0.275, cap: 34, tOut: 21.1500, seed: 6607, waves: 4 },
+  { key: 'big',  lines: ['BIG.'],     y: 0.295, cap: 58, tOut: 23.3500, seed: 7703, waves: 4 },
+];
+WORDS.forEach((w) => {
+  const fs = fitFs(w.lines, SAFE_W, SAFE_Y1 - SAFE_Y0, w.cap);
+  const bar = { hi: 1, nob: 3, see: 4, beat: 5, part: 10, all: 11, big: 12 }[w.key];
+  if (w.tIn === undefined) w.tIn = (bar - 1) * BAR - (w.waves - 1) * STAG; // complete on the downbeat
+  const o = makeWord(w.lines, 540, w.y * H, fs, w.waves, STAG, w.seed);
+  Object.assign(w, o);
+  w.plate = true;
+});
+
+// endcard. Lines are spaced so nothing collides: heights are 7*fs each.
+const ENDCARD = [];
+(function buildEndcard() {
+  const spec = [
+    { lines: ['ON'],        y: 400,  fs: 32, t: T_END - 0.16 },
+    { lines: ['THE'],       y: 650,  fs: 32, t: T_END + 0.06 },
+    { lines: ['ONE'],       y: 900,  fs: 32, t: T_END + 0.28 },
+    { lines: ['EP 2'],      y: 1230, fs: 20, t: T_END + 0.50 },
+    { lines: ['ONE PIXEL'], y: 1390, fs: 18, t: T_END + 0.50 },
+  ];
+  spec.forEach((s, i) => {
+    const w = makeWord(s.lines, 540, s.y, s.fs, 3, 0.095, 9001 + i * 401);
+    w.tIn = s.t;
+    w.plate = false;
+    ENDCARD.push(w);
+  });
+})();
+
+// --------------------------------------------------------------- the hero
+const HERO_HOME = { x: 540, y: 883 };
+const EYE_POS = { x: (15 + 1.5) * CS0, y: (15 + 1.5) * CS0 };  // centre of the 3x3 right eye
+
+/** Hero position + size (in cells) at time t. Pure. */
+function heroAt(t) {
+  // bars 1-2: sit, then hop one cell per kick
+  if (t < 2 * BAR) {
+    if (t < 4 * SPB) return { x: HERO_HOME.x, y: HERO_HOME.y, scale: 1 };
+    const b = (t - 4 * SPB) / SPB;
+    const k = Math.min(3, Math.floor(b)), f = b - k;
+    const dirs = [[1, 0], [0, -1], [-1, 0], [0, 1]];
+    let x = HERO_HOME.x, y = HERO_HOME.y;
+    for (let i = 0; i < k; i++) { x += dirs[i % 4][0] * CS0; y += dirs[i % 4][1] * CS0; }
+    x += dirs[k % 4][0] * CS0 * f;
+    y += dirs[k % 4][1] * CS0 * f;
+    return { x, y: y - Math.sin(Math.PI * f) * CS0 * 1.05, scale: 1 };
+  }
+  // bars 3-4: it grows 2x to be seen, while the camera pulls out
+  if (t < 4 * BAR) {
+    const grow = easeOut((t - 2 * BAR) / 0.16);
+    return { x: HERO_HOME.x, y: HERO_HOME.y, scale: 1 + grow };
+  }
+  // bars 5-6: it bounces across the whole grid, leaving a trail
+  if (t < 6 * BAR) {
+    const u = (t - 4 * BAR) / (2 * BAR);
+    const bt = (t - 4 * BAR) / SPB;
+    return { x: 150 + u * (W - 300), y: 900 - Math.abs(Math.sin(bt * Math.PI)) * 175, scale: 1 };
+  }
+  // bars 7-11: it streaks to the right eye and becomes it
+  if (t < T_BREAK) {
+    const p = clamp01((t - T_DROP) / 0.34);
+    const e = easeOut(p);
+    return {
+      x: lerp(HERO_HOME.x, EYE_POS.x, e),
+      y: lerp(HERO_HOME.y, EYE_POS.y, e),
+      scale: 1 + 2 * e,
+      eye: p >= 1,
+    };
+  }
+  // bar 12: back to the middle, then it bows
+  const dt = t - T_BREAK;
+  let x = HERO_HOME.x, y = HERO_HOME.y, scale = 1;
+  if (dt < 0.42) {
+    const e = easeOut(dt / 0.42);
+    x = lerp(EYE_POS.x, HERO_HOME.x, e);
+    y = lerp(EYE_POS.y, HERO_HOME.y, e);
+    scale = lerp(3, 1, e);
+  }
+  // bar 13: it drops down to sit beside the title
+  if (t > T_END - 0.55) {
+    const e = smooth((t - (T_END - 0.55)) / 0.55);
+    y = lerp(HERO_HOME.y, 1090, e);
+  }
+  return { x, y, scale: t >= T_END ? 2.2 : scale, bow: dt > 0.45 && dt < 1.35 };
+}
+
+/** The bounce trail of bars 5-6: a waveform made of pixels. */
+const TRAIL_T0 = 4 * BAR, TRAIL_STEP = SPB / 8;
+function trailAt(t) {
+  const pts = [];
+  if (t < TRAIL_T0) return pts;
+  const max = Math.floor((6 * BAR - TRAIL_T0) / TRAIL_STEP);
+  const n = Math.min(max, Math.floor((t - TRAIL_T0) / TRAIL_STEP));
+  for (let i = 0; i <= n; i++) {
+    const tt = TRAIL_T0 + i * TRAIL_STEP;
+    if (tt > t) break;
+    const p = heroAt(tt);
+    // snap to the 27x48 grid so the waveform stays chunky and uniform
+    pts.push({ x: Math.floor(p.x / CS0) * CS0, y: Math.floor(p.y / CS0) * CS0, s: CS0, i });
+  }
+  return pts;
+}
+
+// --------------------------------------------------------------- drawing
+function drawGridLines(pal, cs) {
+  ctx.save();
+  ctx.globalAlpha = 0.10;
+  ctx.strokeStyle = pal.ink;
+  ctx.lineWidth = Math.max(1, Math.round(cs / 26));
+  ctx.beginPath();
+  for (let x = 0; x <= W + cs; x += cs) { ctx.moveTo(Math.round(x) + 0.5, 0); ctx.lineTo(Math.round(x) + 0.5, H); }
+  for (let y = 0; y <= H + cs; y += cs) { ctx.moveTo(0, Math.round(y) + 0.5); ctx.lineTo(W, Math.round(y) + 0.5); }
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawWord(w, t, pal) {
+  const done = w.tIn + (w.waves - 1) * w.stagger + 0.30;
+  const falling = t >= w.tOut;
+  // a small kick bounce while the word is held
+  const k = kickPulse(t);
+  const sc = falling ? 1 : 1 + 0.035 * k;
+  const fs = w.fs;
+  ctx.save();
+  ctx.translate(w.cx, w.cy);
+  ctx.scale(sc, sc);
+  ctx.translate(-w.cx, -w.cy);
+
+  // the plate: a flat sticker so the words always read against the picture
+  if (w.plate) {
+    const plateA = falling ? clamp01(1 - (t - w.tOut) / 0.35) : smooth((t - w.tIn) / 0.35);
+    if (plateA > 0.01) {
+      const lh = GLYPH_H * fs, gap = 3 * fs;
+      const totalH = w.lines.length * lh + (w.lines.length - 1) * gap;
+      let maxW = 0;
+      for (const l of w.lines) maxW = Math.max(maxW, lineUnits(l) * fs);
+      const pad = fs * 0.85, bd = Math.max(4, fs * 0.16);
+      const bw = maxW + pad * 2, bh = totalH + pad * 2;
+      const x0 = w.cx - bw / 2, y0 = w.cy - bh / 2;
+      ctx.globalAlpha = plateA;
+      ctx.fillStyle = pal.bg;
+      ctx.fillRect(x0, y0, bw, bh);
+      ctx.fillStyle = pal.ink;
+      ctx.fillRect(x0, y0, bw, bd);
+      ctx.fillRect(x0, y0 + bh - bd, bw, bd);
+      ctx.fillRect(x0, y0, bd, bh);
+      ctx.fillRect(x0 + bw - bd, y0, bd, bh);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  for (const s of w.shards) {
+    let x, y, rot = 0, alpha = 1;
+    if (t < done) {
+      const arrive = w.tIn + s.wave * w.stagger;
+      const p = clamp01((t - (arrive - 0.30)) / 0.30);
+      if (p <= 0) continue;
+      const e = easeOut(p);
+      x = lerp(s.sx, s.x, e);
+      y = lerp(s.sy, s.y, e);
+      rot = (1 - e) * (s.f1 - 0.5) * 3.2;
+    } else if (!falling) {
+      x = s.x; y = s.y;
+    } else {
+      const dt = t - w.tOut;
+      const vy = -230 - s.f1 * 300;
+      x = s.x + (s.f2 - 0.5) * 240 * dt;
+      y = s.y + vy * dt + 0.5 * 2200 * dt * dt;
+      rot = (s.f3 - 0.5) * 6.5 * dt;
+      alpha = clamp01(1 - Math.max(0, dt - 0.10) / 0.30);
+      if (alpha <= 0 || y > H + 120) continue;
+    }
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(x + fs / 2, y + fs / 2);
+    if (rot) ctx.rotate(rot);
+    ctx.fillStyle = s.coral ? pal.acc : pal.ink;
+    ctx.fillRect(-fs / 2, -fs / 2, fs, fs);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function drawFaceCell(x, y, size, fill) {
+  ctx.fillStyle = fill;
+  ctx.fillRect(x - size / 2, y - size / 2, size, size);
+}
+
+function drawPicture(t, pal) {
+  const cs = CS0;
+  const dt = t - T_DROP;
+  const beat = beatAt(t);
+  const off = offPulse(t);
+  const kick = kickPulse(t);
+  const explode = t >= T_BREAK;
+  const edt = t - T_BREAK;
+  const faceY = FACE_CY * cs;
+
+  // ---- the rain (bar 7 only)
+  if (dt < 4 * SPB + 0.5) {
+    for (const f of FACE_CELLS) {
+      const arrive = f.wave * SPB;
+      const start = arrive - 0.42;
+      const p = (dt - start) / 0.42;
+      if (p <= 0) continue;
+      const e = easeIn(p);
+      const sx = f.px + (f.h1 - 0.5) * 520;
+      const sy = -180 - f.h2 * 620;
+      const x = lerp(sx, f.px, e);
+      const y = lerp(sy, f.py, e);
+      const sq = 1 + 0.5 * Math.exp(-Math.max(0, dt - arrive) * 12) * (p >= 1 ? 1 : 0);
+      drawFaceCell(x, y + (1 - 1 / sq) * cs * 0.5, cs * Math.min(1, 0.45 + 0.55 * e) * sq, cellFill(f, pal));
+    }
+  } else if (!explode) {
+    // ---- the dance (bars 8-11)
+    for (const f of FACE_CELLS) {
+      let x = f.px, y = f.py;
+      const rowDir = f.r % 2 ? 1 : -1;
+      x += rowDir * off * cs * 0.85;
+      y += Math.sin(beat * Math.PI - f.c * 0.35) * off * cs * 0.28;
+      if (f.kind === 'crowdHead' || f.kind === 'crowdBody') {
+        y -= Math.abs(Math.sin((beat + f.fig * 0.13) * Math.PI)) * cs * 0.95;
+      } else if (f.kind === 'confetti') {
+        y -= Math.abs(Math.sin((beat * 0.5 + f.fig * 0.21) * Math.PI)) * cs * 0.7;
+      }
+      drawFaceCell(x, y, cs + 0.5, cellFill(f, pal));
+    }
+  } else {
+    // ---- the explosion (bar 12)
+    for (const f of FACE_CELLS) {
+      const x = f.px + f.vx * edt;
+      const y = f.py + f.vy * edt + 0.5 * 1500 * edt * edt;
+      const alpha = clamp01(1 - Math.max(0, edt - 0.35) / 0.55);
+      if (alpha <= 0) continue;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.translate(x, y);
+      ctx.rotate((f.h4 - 0.5) * 5.5 * edt);
+      ctx.fillStyle = cellFill(f, pal);
+      ctx.fillRect(-cs / 2, -cs / 2, cs, cs);
+      ctx.restore();
+    }
+  }
+}
+
+function drawSmileFromTrail(t, pal) {
+  // bars 5-6: the trail is the waveform. bar 7: it flies up and becomes the smile.
+  const pts = trailAt(t);
+  if (!pts.length) return;
+  const S = smileCells.length;
+  if (t < T_DROP) {
+    for (const p of pts) { ctx.fillStyle = pal.ink; ctx.fillRect(p.x, p.y, p.s, p.s); }
+    return;
+  }
+  const fade = clamp01(1 - (t - T_DROP) / 0.45);
+  for (const p of pts) {
+    if (p.i < S) {
+      const cell = smileCells[p.i];
+      const arrive = T_DROP + SPB + (p.i / Math.max(1, S - 1)) * 2 * SPB;
+      const e = easeOut((t - (arrive - 0.36)) / 0.36);
+      if (e <= 0) { ctx.fillStyle = pal.ink; ctx.fillRect(p.x, p.y, p.s, p.s); continue; }
+      const x = lerp(p.x, cell.px - CS0 / 2, e);
+      const y = lerp(p.y, cell.py - CS0 / 2, e);
+      ctx.fillStyle = e >= 1 ? pal.bg : pal.ink;
+      ctx.fillRect(x, y, CS0, CS0);
+    } else if (fade > 0) {
+      ctx.save();
+      ctx.globalAlpha = fade;
+      ctx.fillStyle = pal.ink;
+      ctx.fillRect(p.x, p.y, p.s, p.s);
+      ctx.restore();
+    }
+  }
+}
+
+function drawHero(t, pal) {
+  const h = heroAt(t);
+  const cs = csAt(t);
+  const size = h.scale * cs;
+  const k = kickPulse(t);
+  const sqx = 1 + 0.26 * k, sqy = 1 - 0.22 * k;
+  const beat = beatAt(t);
+
+  ctx.save();
+  ctx.translate(h.x, h.y);
+  if (h.bow) ctx.rotate(Math.sin(Math.PI * clamp01((t - T_BREAK - 0.45) / 0.9)) * 0.42);
+
+  // the "look at me" flash of bars 3-4
+  if (t >= 2 * BAR && t < 4 * BAR && k > 0.35) {
+    ctx.globalAlpha = (k - 0.35) * 0.55;
+    ctx.fillStyle = '#FFFFFF';
+    const r = size * (1.6 + (1 - k) * 2.4);
+    ctx.fillRect(-r / 2, -r / 2, r, r);
+    ctx.globalAlpha = 1;
+  }
+  // the pop-in shockwave on frame 1 and on the drop
+  const ringAt = (a) => {
+    const p = (t - a) / 0.5;
+    if (p <= 0 || p >= 1) return;
+    ctx.save();
+    ctx.globalAlpha = (1 - p) * 0.55;
+    ctx.strokeStyle = pal.hero;
+    ctx.lineWidth = Math.max(2, 10 * (1 - p));
+    ctx.strokeRect(-size * (1 + p * 5) / 2, -size * (1 + p * 5) / 2, size * (1 + p * 5), size * (1 + p * 5));
+    ctx.restore();
+  };
+  ringAt(-0.02);
+  ringAt(T_DROP);
+
+  ctx.scale(sqx, sqy);
+  // a small offset shadow so one tiny cell still pops off the page
+  ctx.fillStyle = 'rgba(22,23,26,0.16)';
+  ctx.fillRect(-size / 2 + size * 0.12, -size / 2 + size * 0.12, size, size);
+  ctx.fillStyle = pal.hero;
+  ctx.fillRect(-size / 2, -size / 2, size, size);
+
+  // the little face - only while it is itself, not while it is the eye
+  if (!h.eye && t < T_BREAK) {
+    const blinkPhase = t % (2 * SPB);
+    let open = 1;
+    if (blinkPhase < 0.10) open = 0;
+    // a wink on beat 3 of bar 9
+    const wink = t > 13.7705 + 2 * SPB && t < 13.7705 + 2 * SPB + 0.16;
+    const e = size * 0.16, gap = size * 0.22;
+    ctx.fillStyle = pal.bg === pal.hero ? '#16171A' : '#16171A';
+    if (open > 0) {
+      ctx.fillRect(-gap - e / 2, -e * 1.6, e, e * (wink ? 0.34 : open));
+      ctx.fillRect(gap - e / 2, -e * 1.6, e, e);
+    } else {
+      ctx.fillRect(-gap - e / 2, -e * 0.4, e, e * 0.34);
+      ctx.fillRect(gap - e / 2, -e * 0.4, e, e * 0.34);
+    }
+  }
+  ctx.restore();
+
+  // the eye blinks by squashing, once it is the eye
+  if (h.eye && t < T_BREAK) {
+    const ph = t % (4 * SPB);
+    if (ph < 0.11) {
+      ctx.save();
+      ctx.globalAlpha = 0.55;
+      ctx.fillStyle = pal.bg;
+      ctx.fillRect(h.x - size / 2, h.y - size * 0.12, size, size * 0.24);
+      ctx.restore();
+    }
+  }
+}
+
+// --------------------------------------------------------------- main draw
+function draw(t) {
+  const pal = palAt(t);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = pal.bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // shake on the drop and on the explosion
+  const shake = (a, amp) => {
+    const p = (t - a) / 0.55;
+    if (p <= 0 || p >= 1) return 0;
+    return Math.sin(p * 46) * amp * (1 - p);
+  };
+  const sh = shake(T_DROP, 26) + shake(T_BREAK, 20);
+
+  // global kick pulse: the whole stage breathes up on every kick
+  const k = kickPulse(t);
+  const sy = 1 + 0.013 * k;
+  ctx.save();
+  ctx.translate(sh, 0);
+  ctx.translate(W / 2, H / 2);
+  ctx.scale(1, sy);
+  ctx.translate(-W / 2, -H / 2);
+
+  const cs = csAt(t);
+  drawGridLines(pal, cs);
+  drawSmileFromTrail(t, pal);
+  if (t >= T_DROP) drawPicture(t, pal);
+  drawHero(t, pal);
+
+  for (const w of WORDS) {
+    if (t < w.tIn) continue;
+    if (t > w.tOut + 1.05) continue;
+    drawWord(w, t, pal);
+  }
+  if (t > T_END - 0.30) {
+    for (const w of ENDCARD) {
+      if (t < w.tIn) continue;
+      drawWord(w, t, pal);
+    }
+  }
+  ctx.restore();
+
+  // flashes: a coral impact on frame 1, white on the drop and on the explosion
+  const flash = (a, amp, dur) => {
+    const p = (t - a) / dur;
+    if (p <= 0 || p >= 1) return 0;
+    return (1 - p) * amp;
+  };
+  const flC = flash(-0.005, 0.26, 0.085);
+  const flW = Math.max(flash(T_DROP, 0.60, 0.16), flash(T_BREAK, 0.50, 0.14));
+  if (flC > 0 || flW > 0) {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = flW > 0 ? 'rgba(255,255,255,' + flW.toFixed(3) + ')' : 'rgba(255,90,78,' + flC.toFixed(3) + ')';
+    ctx.fillRect(0, 0, W, H);
+  }
+}
+
+// --------------------------------------------------------------- contract
+window.__motion = {
+  ready: false,
+  duration: TOTAL,
+  size: { width: W, height: H },
+  seek(t) { draw(t); },
+};
+// fonts are all canvas-drawn: nothing to load
+requestAnimationFrame(() => { draw(0); window.__motion.ready = true; });
+})();
+</script>
+</body>
+</html>

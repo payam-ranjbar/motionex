@@ -1,0 +1,19 @@
+{
+  "tool": "audio.process",
+  "input": {
+    "inputs": [
+      "job:job_01a1b2ded3b0728297affb263015a805/v1.wav",
+      "job:job_01a1b2ded3b0728297affb263015a805/v2.wav",
+      "job:job_01a1b2ded3b0728297affb263015a805/v3.wav",
+      "job:job_01a1b2ded3b0728297affb263015a805/v4.wav",
+      "job:job_01a1b2ded3b0728297affb263015a805/v5.wav",
+      "job:job_01a1b2ded3b0728297affb263015a805/v6.wav"
+    ],
+    "steps": [
+      { "filter": "highpass=f=280,lowpass=f=3600,acompressor=threshold=0.09:ratio=6:attack=4:release=70:makeup=2,aecho=0.9:0.8:38:0.22" },
+      { "normalize_peak_db": -3 }
+    ],
+    "channels": 1,
+    "sample_rate": 48000
+  }
+}

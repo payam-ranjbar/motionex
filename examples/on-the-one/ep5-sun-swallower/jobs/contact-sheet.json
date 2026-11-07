@@ -1,0 +1,26 @@
+{
+ "tool": "image.contact-sheet",
+ "input": {
+  "images": [
+   "job:job_01a1b2ec18eb74c0b7d0fb2d52d82427/frame-0000.100.jpg",
+   "job:job_01a1b2ec18eb74c0b7d0fb2d52d82427/frame-0001.500.jpg",
+   "job:job_01a1b2ec18eb74c0b7d0fb2d52d82427/frame-0004.000.jpg",
+   "job:job_01a1b2ec18eb74c0b7d0fb2d52d82427/frame-0006.200.jpg",
+   "job:job_01a1b2ec18eb74c0b7d0fb2d52d82427/frame-0008.000.jpg",
+   "job:job_01a1b2ec18eb74c0b7d0fb2d52d82427/frame-0010.200.jpg",
+   "job:job_01a1b2ec18eb74c0b7d0fb2d52d82427/frame-0012.000.jpg",
+   "job:job_01a1b2ec18eb74c0b7d0fb2d52d82427/frame-0013.600.jpg",
+   "job:job_01a1b2ec18eb74c0b7d0fb2d52d82427/frame-0015.000.jpg",
+   "job:job_01a1b2ec18eb74c0b7d0fb2d52d82427/frame-0018.500.jpg",
+   "job:job_01a1b2ec18eb74c0b7d0fb2d52d82427/frame-0020.500.jpg",
+   "job:job_01a1b2ec18eb74c0b7d0fb2d52d82427/frame-0022.500.jpg",
+   "job:job_01a1b2ec18eb74c0b7d0fb2d52d82427/frame-0024.500.jpg",
+   "job:job_01a1b2ec18eb74c0b7d0fb2d52d82427/frame-0026.900.jpg"
+  ],
+  "columns": 7,
+  "cell_width": 260,
+  "gap_px": 6,
+  "labels": "auto",
+  "format": "jpeg"
+ }
+}

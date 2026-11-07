@@ -1,0 +1,8 @@
+{
+  "tool": "picture.stills",
+  "input": {
+    "page": "episodes/ep4-run-loop/scene.html",
+    "times": [0.0, 0.1, 15.0, 15.1, 15.25, 15.9, 26.6],
+    "format": "jpeg", "quality": 90, "frame_timeout_s": 40, "query": "render", "offline": true
+  }
+}

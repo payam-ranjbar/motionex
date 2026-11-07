@@ -1,6 +1,6 @@
 // Picture capture: serve a workspace page over http, drive `window.__motion.seek(t)` in a headless browser
-// and pull the pixels back. Ported from motion-studio build.mjs:480-575 (openPage, frameAt with retry, the
-// ordered flush to ffmpeg). The page contract:
+// and pull the pixels back. Ported from an earlier in-house build script (openPage, frameAt with
+// retry, the ordered flush to ffmpeg). The page contract:
 //   window.__motion = { ready: true, seek(t) -> void | Promise, duration?, size?: {width, height} }
 //
 // Headless Chromium stalls for ~15 s on the first screenshot of a fresh page, so every worker page is

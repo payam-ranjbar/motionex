@@ -1,6 +1,6 @@
 // Optional ElevenLabs voice provider: a tiny client for text-to-speech and voice listing.
 // The API key is read from a secret FILE by the tool handlers and passed in here; it must never be
-// logged, returned in a result, or included in an error detail. Ported from motion-studio/eleven.mjs.
+// logged, returned in a result, or included in an error detail.
 import { ToolError } from './errors.mjs';
 
 const BODY_SNIPPET = 300;

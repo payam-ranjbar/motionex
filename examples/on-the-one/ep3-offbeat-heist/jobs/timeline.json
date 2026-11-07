@@ -1,0 +1,15 @@
+{"tool": "timeline.layout", "input": {
+  "grid": {"bpm": 110, "beats_per_bar": 4, "offset_s": 0},
+  "scenes": [
+    {"id": "in", "duration_s": 2.1818181818, "lines": [{"audio": "job:job_01a1b2de02227773a56b3f1c68be6abd/l1.wav", "text": "And they're in!", "who": "comm"}]},
+    {"id": "plan", "duration_s": 4.3636363636, "lead_s": 0.1, "lines": [{"audio": "job:job_01a1b2de02227773a56b3f1c68be6abd/l2.wav", "text": "Rocco on lookout, Pip on the locks, and Big Tuna on... snacks?", "who": "comm"}]},
+    {"id": "laser", "duration_s": 4.3636363636, "lead_s": 2.1818181818, "lines": [{"audio": "job:job_01a1b2de02227773a56b3f1c68be6abd/l3.wav", "text": "Three seconds on the clock!", "who": "comm"}]},
+    {"id": "drop", "duration_s": 4.3636363636, "lead_s": 0.04, "lines": [{"audio": "job:job_01a1b2de02227773a56b3f1c68be6abd/l4.wav", "text": "The vault is open!", "who": "comm"}]},
+    {"id": "escape", "duration_s": 4.3636363636},
+    {"id": "getaway", "duration_s": 4.3636363636, "lead_s": 0.08, "lines": [{"audio": "job:job_01a1b2de02227773a56b3f1c68be6abd/l5.wav", "text": "They're gone. Unbelievable.", "who": "comm"}]},
+    {"id": "endcard", "duration_s": 2.1818181818}
+  ],
+  "markers": {"DROP": {"scene": "drop", "align": "bar"}},
+  "align_to": "DROP",
+  "extra": {"name": "ep3-offbeat-heist", "fps": 30, "bpm": 110, "size": {"width": 1080, "height": 1920}}
+}}

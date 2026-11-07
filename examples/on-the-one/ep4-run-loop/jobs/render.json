@@ -1,0 +1,24 @@
+{
+  "tool": "picture.render",
+  "input": {
+    "page": "episodes/ep4-run-loop/scene.html",
+    "fps": 30,
+    "workers": 4,
+    "query": "render",
+    "offline": true,
+    "intermediate": "jpeg",
+    "jpeg_quality": 94,
+    "audio": "job:job_01a1b2ff38a3729f8406db81e0af8c1c/mix.wav",
+    "audio_codec": "aac",
+    "audio_bitrate_k": 192,
+    "video": {
+      "codec": "libx264",
+      "crf": 20,
+      "preset": "medium",
+      "pix_fmt": "yuv420p",
+      "color": "bt709"
+    },
+    "frame_timeout_s": 30,
+    "name": "ep4-run-loop.mp4"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "tool": "audio.process",
+  "input": {
+    "inputs": [
+      "job:job_01a1b2e02a9473c486bae075f2d124be/l1.wav",
+      "job:job_01a1b2e02a9473c486bae075f2d124be/l2.wav",
+      "job:job_01a1b2e02a9473c486bae075f2d124be/l3.wav",
+      "job:job_01a1b2e02a9473c486bae075f2d124be/l4.wav",
+      "job:job_01a1b2e02a9473c486bae075f2d124be/l5.wav"
+    ],
+    "steps": [
+      { "filter": "highpass=f=95,acompressor=threshold=-26dB:ratio=3.5:attack=4:release=150,acompressor=threshold=-13dB:ratio=2:attack=10:release=220,bass=g=3:f=200,treble=g=2:f=7000" },
+      { "pitch_semitones": 0.6 },
+      { "fade_in_s": 0.006 },
+      { "normalize_peak_db": -3 }
+    ],
+    "format": "wav",
+    "sample_rate": 48000,
+    "channels": 1
+  }
+}

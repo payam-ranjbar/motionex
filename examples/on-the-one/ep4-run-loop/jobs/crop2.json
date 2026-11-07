@@ -1,0 +1,8 @@
+{
+  "tool": "media.ffmpeg",
+  "input": {
+    "args": ["-i", "{in:a}", "-vf", "crop=300:180:130:580,scale=1200:-1:flags=neighbor", "-y", "{out:crop2.png}"],
+    "inputs": { "a": ".mx/jobs/job_01a1b2e9ba1a72ca802cbfc0251194b8/out/still-0026.400.jpg" },
+    "outputs": ["crop2.png"]
+  }
+}

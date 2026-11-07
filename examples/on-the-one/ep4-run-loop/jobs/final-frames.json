@@ -1,0 +1,4 @@
+{ "tool": "media.frames",
+  "input": { "video": "episodes/ep4-run-loop/out/ep4-run-loop.mp4",
+             "times": [0.0, 1.9, 7.6, 13.4, 15.05, 15.6, 17.0, 19.4, 22.0, 26.4, 28.0],
+             "format": "jpeg", "width": 480 } }

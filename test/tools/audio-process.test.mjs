@@ -227,7 +227,7 @@ test('audio.process: gain_db warns about clipping in wav, not in wav32f', needs(
   }
 });
 
-test('audio.process: the deep-hero preset runs the SHAPUR chain', needs('ffmpeg'), async () => {
+test('audio.process: the deep-hero preset runs its chain', needs('ffmpeg'), async () => {
   const ws = await mkTmp();
   try {
     await writeFixture(ws, 'take.wav', {

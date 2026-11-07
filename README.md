@@ -1,6 +1,24 @@
 # motionex
 
-Bare motion-graphics tools for AI agents, in one Docker service. An agent writes HTML scenes, Strudel songs and SFX recipes into a shared workspace, then calls tools over HTTP:
+Bare motion-graphics tools for AI agents, in one Docker service. An agent writes HTML scenes, Strudel songs and SFX recipes into a shared workspace, then calls tools over HTTP to voice, score, mix, render and check a finished video.
+
+## Made with it: ON THE ONE
+
+Five vertical music videos, each made end to end by one autonomous coding agent from a one-page brief: song, voice, sound effects, mix, picture and render. **[Watch them with sound →](https://payam-ranjbar.github.io/motionex/)**
+
+<table>
+<tr>
+<td align="center"><a href="https://payam-ranjbar.github.io/motionex/#ep1"><img src="site/media/ep1-preview.webp" width="150" alt="EP1 Kickdrum Kaiju: a wireframe speaker-cone giant in a neon city"></a><br><b>Kickdrum Kaiju</b><br><sub>hard techno · 132 bpm</sub></td>
+<td align="center"><a href="https://payam-ranjbar.github.io/motionex/#ep2"><img src="site/media/ep2-preview.webp" width="150" alt="EP2 One Pixel: pixels rain in and form a smiling face"></a><br><b>One Pixel</b><br><sub>deep house · 122 bpm</sub></td>
+<td align="center"><a href="https://payam-ranjbar.github.io/motionex/#ep3"><img src="site/media/ep3-preview.webp" width="150" alt="EP3 Heist on the Offbeat: a comic-book vault bursts open"></a><br><b>Heist on the Offbeat</b><br><sub>funk breakbeat · 110 bpm</sub></td>
+<td align="center"><a href="https://payam-ranjbar.github.io/motionex/#ep4"><img src="site/media/ep4-preview.webp" width="150" alt="EP4 Run Loop: two-colour risograph ink and a torn sheet"></a><br><b>Run Loop</b><br><sub>driving techno · 128 bpm</sub></td>
+<td align="center"><a href="https://payam-ranjbar.github.io/motionex/#ep5"><img src="site/media/ep5-preview.webp" width="150" alt="EP5 The Sun Swallower: a jewelled serpent spits out a smiling sun"></a><br><b>The Sun Swallower</b><br><sub>Persian techno · 124 bpm</sub></td>
+</tr>
+</table>
+
+Five [pi](https://pi.dev) agents (DeepSeek V4.1 Flash) ran in parallel against one service: 20–62 minutes and under $1 of model time per episode. Their briefs, scenes, songs, SFX recipes, every job they submitted and their own production notes are in [`examples/on-the-one/`](examples/on-the-one/).
+
+## Tools
 
 | Area | Tools |
 |---|---|
@@ -14,7 +32,7 @@ Bare motion-graphics tools for AI agents, in one Docker service. An agent writes
 
 **Design rule: do not enforce.** Every tool is a primitive. Every opinion is a parameter or a named preset, and every default is neutral. Outputs are immutable and pinnable; deterministic tools are cached. New tools are folders with a manifest, written in any language, and can be mounted from outside the image.
 
-The skill that teaches agents how to use it lives in `skill/motionex/`. The service also serves it at `/v1/skill`.
+The skill that teaches agents how to use it lives in [`skill/motionex/`](skill/motionex/SKILL.md). The service also serves it at `/v1/skill`. What real productions taught us is in [`docs/retro-2026-11.md`](docs/retro-2026-11.md); known open issues are in [`docs/backlog.md`](docs/backlog.md).
 
 ## Run it
 ```bash
@@ -47,5 +65,5 @@ docker exec motionex mx tools        # the same API through the CLI
 - `node scripts/test.mjs docker` runs the opt-in Docker tests. `node scripts/test.mjs e2e` (with `MX_E2E_URL`) runs the acceptance film.
 - `AGENTS.md` is the contract for coding agents: the tool manifest, handler and command protocol, shared modules, tests.
 
-## Licences
-AGPL-3.0-or-later, because the image includes the AGPL Mucavex/Strudel renderer. See `NOTICE.md` for Piper (GPL), ffmpeg (GPL), Chromium, GSAP and the voices.
+## Licence
+[AGPL-3.0-or-later](LICENSE), because the image includes the AGPL Mucavex/Strudel renderer. See [`NOTICE.md`](NOTICE.md) for Piper (GPL), ffmpeg (GPL), Chromium, GSAP and the voices.

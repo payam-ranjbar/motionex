@@ -1,0 +1,201 @@
+{
+  "tool": "audio.mix",
+  "input": {
+    "duration_s": 28.125,
+    "tracks": [
+      {
+        "name": "dialogue",
+        "clips": [
+          {
+            "src": "job:job_01a1b2de21537316b900ca8593a990fd/again.wav",
+            "at": 0.04
+          },
+          {
+            "src": "job:job_01a1b2de21537316b900ca8593a990fd/again.wav",
+            "at": 3.79,
+            "gain_db": -9,
+            "pan": -0.25,
+            "fx": "lowpass=f=3600"
+          },
+          {
+            "src": "job:job_01a1b2de21537316b900ca8593a990fd/faster.wav",
+            "at": 7.52
+          },
+          {
+            "src": "job:job_01a1b2de21537316b900ca8593a990fd/whatif.wav",
+            "at": 11.32
+          },
+          {
+            "src": "job:job_01a1b2de21537316b900ca8593a990fd/notaloop.wav",
+            "at": 16.93
+          },
+          {
+            "src": "job:job_01a1b2de21537316b900ca8593a990fd/groove.wav",
+            "at": 18.42
+          }
+        ],
+        "gain_db": 3,
+        "fx": "acompressor=threshold=0.22:ratio=2.5:attack=4:release=120"
+      },
+      {
+        "name": "music",
+        "gain_db": -6,
+        "clips": [
+          {
+            "src": "job:job_01a1b2dedb9c74fbbf6359f5e38404c5/music.wav",
+            "at": 0,
+            "fade_out_s": 0.35
+          }
+        ],
+        "fx": "equalizer=f=1100:t=q:w=1.2:g=-2.5,equalizer=f=2300:t=q:w=1.5:g=-4.5,equalizer=f=3600:t=q:w=1.4:g=-2"
+      },
+      {
+        "name": "sfx",
+        "gain_db": -10,
+        "clips": [
+          {
+            "src": "job:job_01a1b2fc60fe75239afc7f4af7ef24ba/stamp.wav",
+            "at": 0.0,
+            "gain_db": -2
+          },
+          {
+            "src": "job:job_01a1b2fc60fe75239afc7f4af7ef24ba/stamp.wav",
+            "at": 3.75,
+            "gain_db": -4
+          },
+          {
+            "src": "job:job_01a1b2fc60fe75239afc7f4af7ef24ba/stamp.wav",
+            "at": 7.5,
+            "gain_db": -3
+          },
+          {
+            "src": "job:job_01a1b2fc60fe75239afc7f4af7ef24ba/stamp.wav",
+            "at": 16.875,
+            "gain_db": -4
+          },
+          {
+            "src": "job:job_01a1b2fc60fe75239afc7f4af7ef24ba/stamp.wav",
+            "at": 18.75,
+            "gain_db": -2
+          },
+          {
+            "src": "job:job_01a1b2fc60fe75239afc7f4af7ef24ba/stamp.wav",
+            "at": 26.25,
+            "gain_db": -2
+          },
+          {
+            "src": "job:job_01a1b2fc60fe75239afc7f4af7ef24ba/tick.wav",
+            "at": 0.0
+          },
+          {
+            "src": "job:job_01a1b2fc60fe75239afc7f4af7ef24ba/tick.wav",
+            "at": 0.469,
+            "pan": -0.2
+          },
+          {
+            "src": "job:job_01a1b2fc60fe75239afc7f4af7ef24ba/tick.wav",
+            "at": 0.9375,
+            "pan": 0.2
+          },
+          {
+            "src": "job:job_01a1b2fc60fe75239afc7f4af7ef24ba/tick.wav",
+            "at": 1.4063,
+            "pan": -0.2
+          },
+          {
+            "src": "job:job_01a1b2fc60fe75239afc7f4af7ef24ba/tick.wav",
+            "at": 1.875,
+            "pan": 0.2
+          },
+          {
+            "src": "job:job_01a1b2fc60fe75239afc7f4af7ef24ba/tick.wav",
+            "at": 2.3438,
+            "pan": -0.2
+          },
+          {
+            "src": "job:job_01a1b2fc60fe75239afc7f4af7ef24ba/tick.wav",
+            "at": 2.8125,
+            "pan": 0.2
+          },
+          {
+            "src": "job:job_01a1b2fc60fe75239afc7f4af7ef24ba/tick.wav",
+            "at": 3.2813,
+            "pan": -0.2
+          },
+          {
+            "src": "job:job_01a1b2fcbae870f58cf51d4f2200a981/whoosh_by.wav",
+            "at": 14.12,
+            "gain_db": -3
+          },
+          {
+            "src": "job:job_01a1b2fc60fe75239afc7f4af7ef24ba/tear.wav",
+            "at": 15.0,
+            "gain_db": 3
+          },
+          {
+            "src": "job:job_01a1b2fcbae870f58cf51d4f2200a981/glitch_cut.wav",
+            "at": 15.0,
+            "gain_db": -8
+          },
+          {
+            "src": "job:job_01a1b2fc60fe75239afc7f4af7ef24ba/splat.wav",
+            "at": 16.875,
+            "pan": -0.35
+          },
+          {
+            "src": "job:job_01a1b2fc60fe75239afc7f4af7ef24ba/splat.wav",
+            "at": 17.8125,
+            "pan": 0.35,
+            "gain_db": -2
+          },
+          {
+            "src": "job:job_01a1b2fc60fe75239afc7f4af7ef24ba/splat.wav",
+            "at": 18.75,
+            "pan": -0.3
+          },
+          {
+            "src": "job:job_01a1b2fc60fe75239afc7f4af7ef24ba/splat.wav",
+            "at": 19.6875,
+            "pan": 0.4,
+            "gain_db": -3
+          },
+          {
+            "src": "job:job_01a1b2fc60fe75239afc7f4af7ef24ba/splat.wav",
+            "at": 20.625,
+            "pan": -0.4,
+            "gain_db": -2
+          },
+          {
+            "src": "job:job_01a1b2fc60fe75239afc7f4af7ef24ba/splat.wav",
+            "at": 21.5625,
+            "pan": 0.3,
+            "gain_db": -4
+          },
+          {
+            "src": "job:job_01a1b2fc60fe75239afc7f4af7ef24ba/splat.wav",
+            "at": 22.5,
+            "pan": -0.3,
+            "gain_db": -2
+          },
+          {
+            "src": "job:job_01a1b2fc60fe75239afc7f4af7ef24ba/splat.wav",
+            "at": 23.4375,
+            "pan": 0.35,
+            "gain_db": -4
+          }
+        ]
+      }
+    ],
+    "master": {
+      "loudness": {
+        "target_lufs": -14,
+        "true_peak_db": -2.2,
+        "method": "gain+limiter"
+      }
+    },
+    "output": {
+      "stems": true,
+      "preview_mp3": true
+    }
+  }
+}

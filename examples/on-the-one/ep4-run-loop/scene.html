@@ -1,0 +1,853 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ON THE ONE - EP4 RUN LOOP</title>
+<style>
+  html,body{margin:0;padding:0;background:#151312;overflow:hidden}
+  canvas{display:block;margin:0 auto}
+</style>
+</head>
+<body>
+<canvas id="view" width="1080" height="1920"></canvas>
+<script>
+/* =====================================================================================
+   ON THE ONE · EP 4 "RUN LOOP"  ·  two-colour risograph print, 1080x1920
+   --- the loop ---
+   128 bpm, one bar = 1.875 s (4 beats).  BARS: 1-2 L1 blue only · 3-4 L2 pink layer in ·
+   5-6 L3 bass, speed · 7-8 L4 glitch, he looks at us, kick drops out on the last beat ·
+   9 DROP the paper tears, the world overprints to purple · 10-13 free dance-run ·
+   14-15 endcard, the two plates snap into register on the final downbeat (26.250 s).
+   Everything is a pure function of t. Every frame: paper + blue plate + pink plate,
+   multiplied together, misregistered a few pixels and jittering on the hats.
+   ===================================================================================== */
+(async () => {
+const W = 1080, H = 1920;
+const BPM = 128, BEAT = 60 / BPM, BAR = BEAT * 4;   // 0.46875 s, 1.875 s
+const DURATION = 15 * BAR;                          // 28.125 s
+const CREAM = '#F1E7D6', BLUE = '#2B3BD4', PINK = '#FF48B0';
+const GROUND = 1430;                                // the feet line
+const HIPH = 340, SLOT = [340, 480, 620];           // word baselines (safe zone)
+
+const clamp = (x, a, b) => x < a ? a : x > b ? b : x;
+const lerp = (a, b, u) => a + (b - a) * u;
+const smooth = (x) => { const u = clamp(x, 0, 1); return u * u * (3 - 2 * u); };
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+const view = document.getElementById('view');
+const ctx = view.getContext('2d', { alpha: false });
+function off(w, h) { const c = document.createElement('canvas'); c.width = w || W; c.height = h || H; return c; }
+const paperC = off(), blueC = off(), pinkC = off(), sheetC = off();
+const pctx = paperC.getContext('2d'), bctx = blueC.getContext('2d'), kctx = pinkC.getContext('2d'), sctx = sheetC.getContext('2d');
+
+/* ------------------------------------------------------------------ timing model */
+function world(t) {                       // bars, beats and the loop index
+  const beat = t / BEAT, bar = t / BAR;
+  const loopIdx = clamp(Math.floor(bar / 2), 0, 3);
+  return { beat, bar, barN: Math.floor(bar) + 1, loopIdx, loopT: bar - loopIdx * 2 };
+}
+// kick pulse: 1 on the beat, decaying fast.  hat pulse: 1 on the 8th.
+const pulse = (x, k) => { const f = x - Math.floor(x); return Math.max(0, 1 - f * k); };
+
+// world distance (px) - the street speed.  One post every beat in L1 = 480 px/s.
+const SPEED = [[0, 3.75, 480], [3.75, 7.5, 528], [7.5, 11.25, 648], [11.25, 15, 816],
+               [15, 15.55, 2500], [15.55, 16.875, 300], [16.875, 1e9, 760]];
+function dist(t) { let d = 0; for (const [a, b, v] of SPEED) { if (t <= a) break; d += (Math.min(t, b) - a) * v; } return d; }
+function speedAt(t) { for (const [a, b, v] of SPEED) if (t <= b) return v; return 760; }
+
+// L4 stutter: the loop repeats the last 8th note for a few frames on the offbeat
+function worldT(t) {
+  if (t < 11.25 || t > 15) return t;
+  const half = BEAT / 2, n = Math.floor(t / half);
+  const f = t / half - n;
+  const onOff = n % 2 === 1;                    // offbeats
+  if (onOff && f < 0.22) return n * half;
+  return t;
+}
+
+/* ------------------------------------------------------------------ static textures */
+function makePaper() {
+  const c = off(), g = c.getContext('2d');
+  g.fillStyle = CREAM; g.fillRect(0, 0, W, H);
+  let grd = g.createLinearGradient(0, 0, W, H);
+  grd.addColorStop(0, 'rgba(255,252,244,.65)'); grd.addColorStop(.45, 'rgba(255,255,255,0)');
+  grd.addColorStop(1, 'rgba(168,146,112,.22)');
+  g.fillStyle = grd; g.fillRect(0, 0, W, H);
+  const r = mulberry32(7);
+  for (let i = 0; i < 3000; i++) {
+    const x = r() * W, y = r() * H, l = 5 + r() * 46, a = r() * Math.PI * 2;
+    g.strokeStyle = 'rgba(' + (r() < .5 ? '148,128,100' : '255,253,247') + ',' + (0.04 + r() * 0.10).toFixed(3) + ')';
+    g.lineWidth = 0.6 + r() * 1.5;
+    g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); g.stroke();
+  }
+  // faint blotches, like uneven paper pulp
+  for (let i = 0; i < 90; i++) {
+    g.globalAlpha = 0.012 + r() * 0.022; g.fillStyle = '#9c8a6c';
+    g.beginPath(); g.ellipse(r() * W, r() * H, 40 + r() * 150, 30 + r() * 110, r() * 3, 0, 6.283); g.fill();
+  }
+  g.globalAlpha = 1;
+  return c;
+}
+function makeSpeckle() {                     // riso dot / missing ink
+  const w = 540, h = 960, c = off(w, h), g = c.getContext('2d');
+  const r = mulberry32(21);
+  for (let i = 0; i < 5200; i++) {
+    const x = r() * w, y = r() * h, s = r() < .72 ? (0.6 + r() * 1.2) : (1.2 + r() * 2.6);
+    g.globalAlpha = 0.35 + r() * 0.65; g.fillStyle = '#000';
+    g.beginPath(); g.arc(x, y, s, 0, 6.283); g.fill();
+  }
+  g.globalAlpha = 1; return c;
+}
+function makeGrain() {                       // static overlay grain (identical every frame)
+  const w = 256, h = 256, c = off(w, h), g = c.getContext('2d');
+  const img = g.createImageData(w, h); const r = mulberry32(5);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const v = 128 + (r() - 0.5) * 190;
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 26 + r() * 30;
+  }
+  g.putImageData(img, 0, 0); return c;
+}
+const PAPER = makePaper(), SPECK = makeSpeckle(), GRAIN = makeGrain();
+const grainPat = ctx.createPattern(GRAIN, 'repeat');
+
+/* ------------------------------------------------------------------ ink primitives */
+// a tapered brush stroke: a chain of jittered discs along a polyline
+function taper(g, pts, w0, w1, seed, jit, step) {
+  const r = mulberry32(seed >>> 0);
+  jit = jit === undefined ? 1.7 : jit; step = step || 3.2;
+  const seg = [];
+  let total = 0;
+  for (let i = 1; i < pts.length; i++) { const d = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); seg.push(d); total += d; }
+  if (total < 0.01) { g.beginPath(); g.arc(pts[0][0], pts[0][1], w0 / 2, 0, 6.283); g.fill(); return; }
+  const N = Math.max(2, Math.ceil(total / step));
+  const jx = (r() - 0.5) * jit, jy = (r() - 0.5) * jit;   // one offset per stroke: a steady hand
+  for (let i = 0; i <= N; i++) {
+    const s = i / N; let d = s * total, k = 0;
+    while (k < seg.length - 1 && d > seg[k]) { d -= seg[k]; k++; }
+    const u = seg[k] > 0 ? d / seg[k] : 0;
+    const x = pts[k][0] + (pts[k + 1][0] - pts[k][0]) * u;
+    const y = pts[k][1] + (pts[k + 1][1] - pts[k][1]) * u;
+    const rad = (w0 + (w1 - w0) * s) / 2 * (1 + (r() - 0.5) * 0.34);
+    g.beginPath(); g.arc(x + jx + (r() - 0.5) * jit, y + jy + (r() - 0.5) * jit, Math.max(0.7, rad), 0, 6.283); g.fill();
+  }
+}
+function blob(g, cx, cy, rad, seed, spikes, inner) {   // a ragged ink splash
+  const r = mulberry32(seed >>> 0), n = spikes || 18;
+  const I = inner === undefined ? 0.55 : inner;
+  g.beginPath();
+  for (let i = 0; i <= n * 2; i++) {
+    const a = i / (n * 2) * Math.PI * 2;
+    const rr = rad * (i % 2 ? (I + r() * 0.32) : (0.94 + r() * 0.3));
+    const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr;
+    i ? g.lineTo(x, y) : g.moveTo(x, y);
+  }
+  g.closePath(); g.fill();
+}
+function raggedRect(g, x, y, w, h, seed, amp) {        // a torn / printed panel edge
+  const r = mulberry32(seed >>> 0), a = amp === undefined ? 7 : amp, n = 14;
+  g.beginPath();
+  const edge = (x0, y0, x1, y1) => { for (let i = 0; i <= n; i++) { const u = i / n; g.lineTo(lerp(x0, x1, u) + (r() - .5) * a, lerp(y0, y1, u) + (r() - .5) * a); } };
+  g.moveTo(x + (r() - .5) * a, y + (r() - .5) * a);
+  edge(x, y, x + w, y); edge(x + w, y, x + w, y + h);
+  edge(x + w, y + h, x, y + h); edge(x, y + h, x, y);
+  g.closePath(); g.fill();
+}
+function segDigit(g, x, y, w, h, digit, seed, thick, broken) {
+  const S = { 0: 'abcdef', 1: 'bc', 2: 'abdeg', 3: 'abcdg', 4: 'bcfg', 5: 'acdfg', 6: 'acdefg', 7: 'abc', 8: 'abcdefg', 9: 'abcdfg' };
+  const on = S[digit] || '', t = thick || Math.max(6, h * 0.13);
+  const r = mulberry32((seed >>> 0) + digit);
+  const q = t * 0.55;                                   // just enough gap to read as a 7-seg
+  const segs = {
+    a: [x + q, y, x + w - q, y], b: [x + w, y + q, x + w, y + h / 2 - q], c: [x + w, y + h / 2 + q, x + w, y + h - q],
+    d: [x + q, y + h, x + w - q, y + h], e: [x, y + h / 2 + q, x, y + h - q], f: [x, y + q, x, y + h / 2 - q],
+    g: [x + q, y + h / 2, x + w - q, y + h / 2],
+  };
+  g.save(); g.lineCap = 'round'; g.lineWidth = t; g.strokeStyle = g.__ink;
+  for (const k in segs) {
+    if (on.indexOf(k) < 0) continue;
+    const s = segs[k], b = broken ? broken[k] : 0;
+    if (b && r() < 0.3) continue;                    // a segment falls off the shattered clock
+    const dx = b ? (r() - .5) * b * 2.2 : 0, dy = b ? (r() - .5) * b * 2.2 : 0;
+    g.beginPath(); g.moveTo(s[0] + dx, s[1] + dy); g.lineTo(s[2] + dx, s[3] + dy); g.stroke();
+  }
+  g.restore();
+}
+
+/* ------------------------------------------------------------------ type */
+const STACK = '"Liberation Sans","Noto Sans","DejaVu Sans",Arial,Helvetica,sans-serif';
+const font = (size) => '900 ' + size.toFixed(1) + 'px ' + STACK;
+const maskCache = new Map();
+let tC = null, tCtx = null;
+function tinted(img, col) {                        // the mask, printed in one ink
+  if (!tC || tC.width !== img.width || tC.height !== img.height) { tC = off(img.width, img.height); tCtx = tC.getContext('2d'); }
+  tCtx.setTransform(1, 0, 0, 1, 0, 0);
+  tCtx.globalCompositeOperation = 'source-over'; tCtx.globalAlpha = 1;
+  tCtx.clearRect(0, 0, tC.width, tC.height);
+  tCtx.drawImage(img, 0, 0);
+  tCtx.globalCompositeOperation = 'source-in'; tCtx.fillStyle = col;
+  tCtx.fillRect(0, 0, tC.width, tC.height);
+  tCtx.globalCompositeOperation = 'source-over';
+  return tC;
+}
+// a word baked once into two masks: the ink shape and the knockout halo around it
+function buildMask(text, size, maxW, seed) {
+  const key = text + '|' + size + '|' + maxW + '|' + seed;
+  const hit = maskCache.get(key);
+  if (hit) return hit;
+  const probe = pctx;
+  probe.font = font(size);
+  const chars = Array.from(text);
+  let w = chars.map((ch) => probe.measureText(ch).width);
+  let track = size * 0.018;
+  let s = size;
+  let total = w.reduce((a, b) => a + b, 0) + track * Math.max(0, chars.length - 1);
+  if (total > maxW) {
+    s = size * (maxW / total); track = s * 0.018;
+    probe.font = font(s);
+    w = chars.map((ch) => probe.measureText(ch).width);
+    total = w.reduce((a, b) => a + b, 0) + track * Math.max(0, chars.length - 1);
+  }
+  const pad = Math.ceil(s * 0.30);
+  const cw = Math.ceil(total + pad * 2), chh = Math.ceil(s * 1.55);
+  const ink = off(cw, chh), halo = off(cw, chh);
+  const ik = ink.getContext('2d'), hc = halo.getContext('2d');
+  const R = mulberry32((seed >>> 0) * 7919 + 3);
+  let x = pad;
+  const base = s * 1.10;                            // baseline inside the mask
+  for (let i = 0; i < chars.length; i++) {
+    const gx = x + w[i] / 2, rot = (R() - .5) * 0.045, dy = (R() - .5) * s * 0.035, dx = (R() - .5) * s * 0.018;
+    const pair = [[ik, 'fill'], [hc, 'stroke']];
+    for (const pairItem of pair) {
+      const c2 = pairItem[0], how = pairItem[1];
+      c2.save();
+      c2.font = font(s); c2.textAlign = 'center'; c2.textBaseline = 'alphabetic';
+      c2.fillStyle = '#000'; c2.strokeStyle = '#000';
+      c2.translate(gx + dx, base + dy); c2.rotate(rot);
+      if (how === 'fill') c2.fillText(chars[i], 0, 0);
+      else { c2.lineWidth = s * 0.15; c2.lineJoin = 'round'; c2.lineCap = 'round'; c2.strokeText(chars[i], 0, 0); }
+      c2.restore();
+    }
+    x += w[i] + track;
+  }
+  const m = { ink: ink, halo: halo, w: cw, h: chh, pad: pad, base: base, total: total, size: s };
+  maskCache.set(key, m);
+  return m;
+}
+// one kinetic line.  mode 'ink' prints it, mode 'punch' knocks it out of the flood.
+function drawLine(g, text, size, xLeft, cy, bornT, t, mode, seed, opt) {
+  opt = opt || {};
+  const alpha = opt.alpha === undefined ? 1 : opt.alpha;
+  if (alpha <= 0.004) return;
+  const m = buildMask(text, size, opt.maxW === undefined ? 960 : opt.maxW, seed);
+  const left = opt.align === 'center' ? (W - m.total) / 2 : xLeft;
+  const x0 = left - m.pad, y0 = cy - m.base;
+  const u = clamp((t - bornT) / 0.13, 0, 1);
+  const pop = 1 + 0.26 * (1 - u) * (1 - u);
+  const wipe = 0.46 + 0.54 * smooth(u);
+  const ax = left, ay = cy - 0.28 * m.size;
+  const place = (img, gco, a, dk, doWipe) => {
+    g.save();
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.globalCompositeOperation = gco;
+    g.globalAlpha = a;
+    g.translate(ax + dk * m.size * 0.055, ay + dk * m.size * 0.032);
+    g.scale(pop, pop);
+    g.translate(-ax, -ay);
+    if (doWipe && wipe < 0.999) {
+      g.beginPath();
+      g.rect(left - m.size * 0.3, cy - m.size * 1.35, (m.total + m.size * 0.3) * wipe, m.size * 1.9);
+      g.clip();
+    }
+    g.drawImage(img, x0, y0);
+    g.restore();
+  };
+  const echoes = opt.echoes === undefined ? (mode === 'ink' ? 2 : 1) : opt.echoes;
+  for (let k = echoes; k >= 1; k--) {
+    const a = alpha * (mode === 'ink' ? 0.26 / k : 0.55 / k);
+    if (mode === 'ink') place(tinted(m.ink, opt.ink || '#000'), 'source-over', a, k, false);
+    else place(m.halo, 'destination-out', a, k, false);
+  }
+  place(m.halo, 'destination-out', alpha * (mode === 'punch' ? 1 : 0.94), 0, true);
+  if (mode === 'punch') place(m.ink, 'destination-out', alpha, 0, true);
+  else place(tinted(m.ink, opt.ink || '#000'), 'source-over', alpha, 0, true);
+  g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+}
+
+/* the word stack: each loop the same slot gets a new word, the old one becomes ghost ink */
+const LX = 104;                       // the print's left margin
+const WORDS = [
+  { text: 'AGAIN.',        t0: 0,        t1: 24.375, slot: 0, size: 128, maxW: 566, seed: 3, erase: true },
+  { text: 'AGAIN.',        t0: BAR * 2,  t1: 24.375, slot: 1, size: 134, maxW: 900, seed: 4, erase: true },
+  { text: 'FASTER.',       t0: BAR * 4,  t1: 24.375, slot: 2, size: 150, maxW: 900, seed: 5 },
+  { text: 'WHAT IF I',     t0: BAR * 6,  t1: 24.375, slot: 1, size: 104, maxW: 760, seed: 6, tick: true },
+  { text: "DON'T STOP?",   t0: BAR * 6 + 0.36, t1: 24.375, slot: 2, size: 118, maxW: 900, seed: 7 },
+  { text: "IT'S NOT",      t0: BAR * 9,  t1: 22.5,   slot: 1, size: 132, maxW: 860, seed: 8, flip: true },
+  { text: 'A LOOP.',       t0: BAR * 9 + 0.30, t1: 22.5, slot: 2, size: 132, maxW: 860, seed: 9, flip: true },
+  { text: "IT'S A",        t0: BAR * 10, t1: 24.375, slot: 0, size: 130, maxW: 566, seed: 10, flip: true },
+  { text: 'GROOVE.',       t0: BAR * 10, t1: 24.375, slot: 1, size: 208, maxW: 900, seed: 11, flip: true },
+];
+// after the drop the type is knocked out of the flood: cream letters, blue/pink fringes
+const isFree = (t) => t >= BAR * 8 + 0.72;
+function wordAlpha(w, t) {
+  if (t < w.t0 || t > w.t1) return 0;
+  const age = t - w.t0;
+  let a = 0.62 + 0.38 * smooth(age / 0.07);
+  if (age > 0.5) a = lerp(1, 0.17, smooth((age - 0.5) / 0.7));      // ghost ink
+  const rest = w.t1 - t;
+  if (rest < 0.35) a *= smooth(rest / 0.35);
+  return a;
+}
+function drawType(g, t, mode) {
+  if (t >= 24.375) {                        // endcard: out of register, then it snaps in
+    drawLine(g, 'ON THE ONE', 128, 0, 700, 24.375, t, mode, 900, { ink: g.__ink, align: 'center', maxW: 920, alpha: 1 });
+    drawLine(g, 'EP 4 - RUN LOOP', 76, 0, 822, BAR * 14 - 0.22, t, mode, 901, { ink: g.__ink, align: 'center', maxW: 920, alpha: t < BAR * 14 ? 0 : 1 });
+    return;
+  }
+  for (let wi = 0; wi < WORDS.length; wi++) {
+    const w = WORDS[wi];
+    let a = wordAlpha(w, t);
+    // a newer word in the same slot knocks the old one off the print on the beat
+    for (let wj = wi + 1; wj < WORDS.length; wj++) {
+      if (WORDS[wj].slot === w.slot && WORDS[wj].t0 <= t) a *= 1 - smooth((t - WORDS[wj].t0) / 0.11);
+    }
+    if (a <= 0.004) continue;
+    const m = (w.flip && isFree(t)) ? 'punch' : mode;
+    drawLine(g, w.text, w.size, LX, SLOT[w.slot], w.t0, t, m, w.seed, { ink: g.__ink, alpha: a, maxW: w.maxW });
+    if (w.erase) {
+      const half = BEAT / 2, n = Math.floor((t - w.t0) / half), f = ((t - w.t0) / half) % 1;
+      if (n > 0 && f < 0.20) {
+        const mm = buildMask(w.text, w.size, w.maxW, w.seed);
+        g.save();
+        g.globalCompositeOperation = 'destination-out';
+        g.globalAlpha = 0.9 * clamp((0.20 - f) * 9, 0, 1);
+        g.fillStyle = '#000';
+        raggedRect(g, LX + mm.total - w.size * 0.52, SLOT[w.slot] - w.size * 0.62, w.size * 0.68, w.size * 0.78, w.seed * 13 + n, 9);
+        g.restore();
+      }
+    }
+  }
+}
+
+/* ------------------------------------------------------------------ the runner */
+// pose in local space: hip at (0,0), ground at y=HIPH, -y is up.  p = stride phase (2 beats).
+function limb(g, pts, w0, w1, seed) { taper(g, pts, w0, w1, seed, 2.0, 3.4); }
+function kneeOf(hip, foot, L1, L2, forward) {
+  const dx = foot[0] - hip[0], dy = foot[1] - hip[1], d = Math.hypot(dx, dy) || 0.001;
+  const dc = Math.min(d, (L1 + L2) * 0.995);
+  const a = (L1 * L1 - L2 * L2 + dc * dc) / (2 * dc);
+  const h = Math.sqrt(Math.max(0, L1 * L1 - a * a));
+  const ux = dx / d, uy = dy / d;
+  const mx = hip[0] + ux * a, my = hip[1] + uy * a;
+  return [mx + uy * h * forward, my - ux * h * forward];
+}
+/* one stride = 2 beats: contact, stance, toe-off, knee up, reach.  q = 0 is the footfall. */
+const RUNKEYS = [[0, 0.58, 0], [0.12, 0.10, 0], [0.30, -0.82, 10], [0.42, -1.00, 46],
+                 [0.58, -0.26, 212], [0.72, 0.36, 178], [0.86, 0.62, 62], [1, 0.58, 0]];
+function footAt(q, A) {
+  q = ((q % 1) + 1) % 1;
+  for (let i = 1; i < RUNKEYS.length; i++) {
+    const a = RUNKEYS[i - 1], b = RUNKEYS[i];
+    if (q <= b[0]) {
+      const u = (q - a[0]) / (b[0] - a[0]), e = u * u * (3 - 2 * u);
+      return [lerp(a[1], b[1], e) * A, HIPH - lerp(a[2], b[2], e)];
+    }
+  }
+  return [RUNKEYS[0][1] * A, HIPH];
+}
+// the hands pump: forward at chin height, back down past the hip
+function handAt(q, sc) {
+  const th = q * Math.PI * 2, c = Math.cos(th), s = Math.sin(th);
+  return [(30 + 120 * c) * sc, (-195 - 75 * c + 55 * s) * sc];
+}
+function runnerPose(p, sc) {
+  const A = 134 * sc;                                    // stride reach
+  const bob = 17 * sc * Math.cos(4 * Math.PI * p + 0.9);  // two bounces per stride
+  const hip = [0, bob];
+  const sho = [20 * sc, -252 * sc + bob * 0.85];          // shoulders (leaning forward)
+  const leg = (q) => { const f = footAt(q, A); return { f, k: kneeOf(hip, f, 182 * sc, 176 * sc, 1) }; };
+  return { hip, sho, A, bob, leg, hand: (q) => handAt(q, sc), sc };
+}
+function drawRunner(g, t, o) {
+  const p = o.phase % 1;
+  const sc = o.sc, lean = o.lean === undefined ? 0.13 : o.lean;
+  const P = runnerPose(p, sc);
+  const seed = o.seed || 11;
+  const legR = P.leg(p), legL = P.leg((p + 0.5) % 1);
+  const shR = P.hand((p + 0.5) % 1), shL = P.hand(p);
+  const elR = kneeOf(P.sho, shR, 100 * sc, 96 * sc, -1), elL = kneeOf(P.sho, shL, 100 * sc, 96 * sc, -1);
+  g.save();
+  g.lineCap = 'round';
+  const limbs = [
+    [legR.k, legR.f, 40, 20, seed + 11], [legL.k, legL.f, 40, 20, seed + 12],
+    [P.hip, legR.k, 56, 34, seed + 13], [P.hip, legL.k, 56, 34, seed + 14],
+    [P.sho, elR, 32, 22, seed + 15], [P.sho, elL, 32, 22, seed + 16],
+    [elR, shR, 26, 16, seed + 17], [elL, shL, 26, 16, seed + 18],
+  ];
+  for (const [a, b, w0, w1, sd] of limbs) taper(g, [a, b], w0 * sc, w1 * sc, sd, 2.2, 3.4);
+  // feet
+  for (const L of [legR, legL]) taper(g, [L.f, [L.f[0] + 56 * sc, L.f[1] + 4 * sc]], 26 * sc, 15 * sc, 77, 1.6, 4);
+  // hands
+  for (const hh of [shR, shL]) { g.beginPath(); g.arc(hh[0], hh[1], 19 * sc, 0, 6.283); g.fill(); }
+  // torso: heavy brush mass from hip to chest, chest proud, waist narrow
+  taper(g, [[P.hip[0], P.hip[1]], [P.sho[0] - 4 * sc, P.sho[1] + 46 * sc]], 88 * sc, 78 * sc, seed + 20, 2.6, 4);
+  taper(g, [[P.sho[0] - 6 * sc, P.sho[1] + 52 * sc], [P.sho[0] + 10 * sc, P.sho[1] - 4 * sc]], 80 * sc, 92 * sc, seed + 21, 2.2, 4);
+  g.beginPath(); g.ellipse(P.hip[0] - 4 * sc, P.hip[1] - 6 * sc, 54 * sc, 44 * sc, 0.2, 0, 6.283); g.fill();
+  // neck + head
+  const hd = [P.sho[0] + 30 * sc, P.sho[1] - 60 * sc];
+  taper(g, [[P.sho[0] + 10 * sc, P.sho[1] - 6 * sc], hd], 40 * sc, 32 * sc, seed + 22, 1.6, 4);
+  g.beginPath(); g.ellipse(hd[0], hd[1], 52 * sc, 56 * sc, 0.06, 0, 6.283); g.fill();
+  // two thin wisps of hair streaming back (motion, not a horn)
+  taper(g, [[hd[0] - 34 * sc, hd[1] - 16 * sc], [hd[0] - 62 * sc, hd[1] - 6 * sc - 6 * sc * Math.sin(t * 5)]], 13 * sc, 3 * sc, seed + 23, 1.6, 4);
+  taper(g, [[hd[0] - 32 * sc, hd[1] + 20 * sc], [hd[0] - 56 * sc, hd[1] + 30 * sc]], 9 * sc, 2.5 * sc, seed + 24, 1.6, 4);
+  g.restore();
+  return { hd, sho: P.sho, hip: P.hip };
+}
+// eyes: in paper-world they are holes, in flood-world they are ink dots
+function drawFace(g, hd, mode, sc, t) {
+  const open = clamp((t - 11.25) / 0.5, 0, 1);
+  if (open <= 0.01) return;
+  const prev = g.globalCompositeOperation, prevF = g.fillStyle;
+  const dots = [[hd[0] + 8 * sc, hd[1] - 6 * sc, 13 * sc], [hd[0] + 40 * sc, hd[1] - 8 * sc, 10 * sc]];
+  if (mode === 'punch') {
+    g.globalCompositeOperation = 'source-over'; g.globalAlpha = open;
+    for (const [x, y, r] of dots) { g.beginPath(); g.arc(x, y, r, 0, 6.283); g.fill(); }
+  } else {
+    g.globalCompositeOperation = 'destination-out'; g.globalAlpha = open;
+    for (const [x, y, r] of dots) { g.beginPath(); g.arc(x, y, r, 0, 6.283); g.fill(); }
+  }
+  g.globalAlpha = 1; g.globalCompositeOperation = prev; g.fillStyle = prevF;
+}
+
+/* ------------------------------------------------------------------ the world */
+function scrollX(t) { return -dist(t); }
+// which elements the PINK plate prints: L1 blue only, L2 the street and the sun,
+// L3 the streaks and the runner, L4 everything.  After the drop it is all overprint.
+function pinkHas(t, part) {
+  if (t >= BAR * 8) return true;
+  const L = world(t).loopIdx;
+  if (part === 'sky' || part === 'posts' || part === 'ground') return L >= 1;
+  if (part === 'streak') return L >= 2;
+  if (part === 'runner') return L >= 2;
+  return true;
+}
+function drawWorld(g, t, isPink) {
+  const w = world(t), tW = worldT(t);
+  const has = (part) => !isPink || pinkHas(t, part);
+  const sc = speedAt(t);
+  const kick = pulse(w.beat, 5) * clamp((t - 0.05) * 6, 0, 1);
+  const hat = pulse(w.beat / 0.5, 6);
+  const free = t >= BAR * 8;
+  // ---- ground band with speed streaks
+  if (has('ground')) {
+    raggedRect(g, -40, GROUND + 2, W + 80, 258 + 7 * kick, 41, 5);
+    const db = mulberry32(1234);
+    for (let i = 0; i < 34; i++) {
+      const bx = db() * W, by = 1712 + db() * 196, sz = 1.6 + db() * 7;
+      g.beginPath(); g.ellipse(bx, by, sz, sz * (0.5 + db() * 0.8), db() * 3, 0, 6.283); g.fill();
+    }
+    taper(g, [[-20, GROUND], [W + 20, GROUND]], 13, 13, 61, 2.5, 5);
+  }
+  if (has('streak')) {
+    const rp = mulberry32(55);
+    const sStep = 158;
+    const x0 = scrollX(t) % sStep;
+    for (let i = -1; i < 9; i++) {
+      const bx = x0 + i * sStep + rp() * 30;
+      const len = 120 + 260 * (sc / 800) * (1 + 1.6 * kick);
+      taper(g, [[bx, GROUND + 30 + rp() * 150], [bx + len, GROUND + 30 + rp() * 150]], 9, 4, 900 + i, 3, 6);
+    }
+  }
+  // ---- lamp posts / rhythm bars / dancing figures
+  const S = 225, ph = dist(tW) / S;
+  if (has('posts')) for (let i = -1; i < 9; i++) {
+    const px = W / 2 + ((i - ph) * S);
+    if (px < -220 || px > W + 220) continue;
+    const idx = i + Math.floor(ph);
+    const seed = idx * 977;
+    const bob = 5 * Math.sin(t * 6 + idx);
+    if (w.loopIdx <= 1 && t < BAR * 4) {                       // L1: a plain lamp post
+      taper(g, [[px, GROUND], [px, 560 + bob]], 16, 13, seed, 1.8, 4);
+      taper(g, [[px, 574 + bob], [px - 74, 566 + bob]], 11, 9, seed + 1, 1.6, 4);
+      g.beginPath(); g.arc(px - 82, 574 + bob, 22, 0, 6.283); g.fill();
+    } else if (t < BAR * 6) {                                  // L2: post + its pink twin (drawn per plate)
+      taper(g, [[px, GROUND], [px, 560 + bob]], 16, 13, seed, 1.8, 4);
+      taper(g, [[px, 574 + bob], [px - 74, 566 + bob]], 11, 9, seed + 1, 1.6, 4);
+      g.beginPath(); g.arc(px - 82, 574 + bob, 22, 0, 6.283); g.fill();
+    } else if (t < BAR * 8) {                                  // L3: the post is a stack of rhythm bars
+      for (let k = 0; k < 6; k++) {
+        const hgt = 26 + (k % 2 ? 60 : 30) * (1 + 2.6 * kick);
+        taper(g, [[px, GROUND - k * 118 - 20], [px - hgt, GROUND - k * 118 - 20]], 20 - k, 14 - k, seed + k, 2.4, 4);
+      }
+      taper(g, [[px, GROUND], [px, 560 + bob]], 12, 10, seed + 90, 1.8, 4);
+    } else {                                                   // L4 + free: dancing figures
+      const dance = 12 * kick, sw = 40 * Math.sin(t * 5.2 + idx * 1.7);
+      const hy = GROUND - 190 - dance;
+      taper(g, [[px, GROUND], [px + sw * 0.4, hy]], 16, 12, seed, 2, 4);              // body
+      taper(g, [[px + sw * 0.4, hy], [px - 70 - sw, hy - 120 - 30 * kick]], 11, 8, seed + 2, 2.4, 4);
+      taper(g, [[px + sw * 0.4, hy], [px + 80 + sw, hy - 130 - 30 * kick]], 11, 8, seed + 3, 2.4, 4);
+      taper(g, [[px, GROUND], [px - 60 - sw, GROUND - 10]], 12, 8, seed + 4, 2.4, 4);
+      taper(g, [[px, GROUND], [px + 60 + sw, GROUND - 10]], 12, 8, seed + 5, 2.4, 4);
+      g.beginPath(); g.arc(px + sw * 0.4, hy - 34, 26, 0, 6.283); g.fill();
+    }
+  }
+  // ---- the printed sun: a thick ring, so he stays readable inside it
+  const sunR = 186 + 8 * Math.sin(t * 1.1);
+  if (has('sky')) { g.save(); g.lineWidth = 44;
+  g.beginPath(); g.arc(950, 618, sunR, 0, 6.283); g.stroke();
+  g.lineWidth = 18;
+  for (let i = 0; i < 12; i++) {
+    const a = i / 12 * Math.PI * 2 + t * 0.12;
+    g.beginPath();
+    g.moveTo(950 + Math.cos(a) * (sunR + 52), 618 + Math.sin(a) * (sunR + 52));
+    g.lineTo(950 + Math.cos(a) * (sunR + 52 + 30 + 14 * kick), 618 + Math.sin(a) * (sunR + 52 + 30 + 14 * kick));
+    g.stroke();
+  }
+  g.restore(); }
+  // ---- riso registration crosses in the margins
+  for (const [mx, my] of [[62, 252], [W - 62, 252], [62, 1500], [W - 62, 1500]]) {
+    taper(g, [[mx - 22, my], [mx + 22, my]], 5, 5, 300 + mx, 1, 5);
+    taper(g, [[mx, my - 22], [mx, my + 22]], 5, 5, 400 + mx, 1, 5);
+  }
+  return { kick, hat, sc, w };
+}
+
+/* the flood: from the drop the whole plate floods over - pink plus blue makes purple */
+function floodAmt(t) { return smooth((t - 15.0) / 0.62); }
+function drawFlood(g, t, a) {
+  if (a <= 0.004) return;
+  const r = mulberry32(4242);
+  const cx = 540, cy = 1020;
+  const grow = lerp(0.06, 1.42, a);
+  g.globalAlpha = 1;
+  g.beginPath();
+  const N = 46;
+  for (let i = 0; i <= N; i++) {
+    const ang = i / N * Math.PI * 2;
+    const rx = 700 * grow * (1 + (r() - .5) * 0.22), ry = 1180 * grow * (1 + (r() - .5) * 0.20);
+    const x = cx + Math.cos(ang) * rx, y = cy + Math.sin(ang) * ry;
+    i ? g.lineTo(x, y) : g.moveTo(x, y);
+  }
+  g.closePath(); g.fill();
+}
+/* the burst that throws the print out of register on the drop */
+function drawBurst(g, t) {
+  if (t < 15.0 || t > 16.6) return;
+  const a = clamp((t - 15.0) / 0.26, 0, 1), fade = 1 - clamp((t - 15.42) / 0.55, 0, 1);
+  if (fade <= 0.01) return;
+  const L = lerp(90, 1250, a);
+  const r = mulberry32(777);
+  g.globalAlpha = fade * 0.9;
+  for (let i = 0; i < 20; i++) {
+    const ang = i / 20 * Math.PI * 2 + (r() - .5) * 0.18;
+    const len = L * (0.6 + r() * 0.65);
+    taper(g, [[540 + Math.cos(ang) * 50, 1010 + Math.sin(ang) * 50],
+              [540 + Math.cos(ang) * len, 1010 + Math.sin(ang) * len]], 34, 7, 500 + i, 4, 14);
+  }
+  g.globalAlpha = 1;
+}
+// colour splashes: one per footfall in the free section
+function drawSplashes(g, t, plate) {
+  const t0 = BAR * 8, tEnd = 24.4;
+  if (t < t0 || t > tEnd + 0.9) return;
+  const startBeat = Math.floor(t0 / BEAT);
+  const lastBeat = Math.min(Math.floor(t / BEAT), Math.floor(tEnd / BEAT));
+  for (let b = startBeat; b <= lastBeat; b++) {
+    const tt = b * BEAT;
+    const age = t - tt;
+    if (age < 0 || age > 0.85) continue;
+    const s = clamp(age / 0.16, 0, 1), fade = 1 - smooth((age - 0.35) / 0.5);
+    if (fade <= 0.01) continue;
+    const rr = mulberry32(b * 131 + 7);
+    const x = 200 + rr() * 700, y = 1220 + rr() * 190;
+    // only the plate that owns this splash
+    const owner = b % 2 === 0 ? 'blue' : 'pink';
+    if (plate !== 'both' && plate !== owner) continue;
+    g.globalAlpha = fade * 0.95;
+    blob(g, x, y, (54 + rr() * 60) * lerp(0.5, 1, s), b * 17 + 3, 16, 0.45);
+    for (let k = 0; k < 7; k++) {
+      const ang = rr() * 6.283, d = (60 + rr() * 130) * lerp(0.4, 1, s);
+      g.beginPath(); g.arc(x + Math.cos(ang) * d, y + Math.sin(ang) * d, (5 + rr() * 12) * lerp(0.5, 1, s), 0, 6.283); g.fill();
+    }
+    g.globalAlpha = 1;
+  }
+}
+/* the giant stamped 1 that the drop hammers into the print */
+function drawOne(g, t) {
+  if (t < 15.0) return;
+  const a = clamp((t - 15.0) / 0.2, 0, 1);
+  const rise = clamp((t - 15.0) / 6, 0, 1);
+  const cx = 96, cy = 1010 - rise * 150, sc = 0.94 + 0.06 * (1 - a);
+  g.save(); g.globalAlpha = a * (t > 24.3 ? 0.16 : 0.5);
+  g.translate(cx, cy); g.scale(sc, sc); g.rotate(-0.03);
+  taper(g, [[0, -420], [-6, 300]], 150, 120, 811, 8, 14);                  // stem
+  taper(g, [[-6, -420], [-150, -300]], 92, 40, 812, 8, 12);                // flag
+  taper(g, [[-118, 300], [128, 296]], 60, 54, 813, 7, 12);                 // foot
+  g.globalAlpha = a * 0.5;
+  g.translate(40, 30); g.globalAlpha = a * 0.22;
+  taper(g, [[0, -420], [-6, 300]], 150, 120, 814, 8, 16);
+  g.restore();
+  g.globalAlpha = 1;
+}
+
+/* the clock sign: it counts the loop down and shatters at the drop */
+function drawClock(g, t) {
+  const w = world(t);
+  const show = t < 15 ? Math.max(0, 4 - w.loopIdx) : 0;   // 00:04 counts down one per loop
+  if (t > 16.6) return;
+  const bx = 704, by = 238, bw = 340, bh = 172;
+  const shatter = t >= 15 ? clamp((t - 15) / 0.25, 0, 1) : 0;
+  const broken = shatter > 0.05
+    ? { a: 30 * shatter, b: 26 * shatter, c: 28 * shatter, d: 30 * shatter, e: 24 * shatter, f: 26 * shatter, g: 28 * shatter }
+    : null;
+  g.save();
+  g.globalCompositeOperation = 'destination-out';          // a clean panel to read it on
+  raggedRect(g, bx, by, bw, bh, 313, 9);
+  g.globalCompositeOperation = 'source-over';
+  g.fillStyle = g.__ink; g.strokeStyle = g.__ink; g.lineWidth = 10; g.lineJoin = 'round';
+  const rr = mulberry32(314);
+  g.beginPath();
+  const P = [[bx, by], [bx + bw, by], [bx + bw, by + bh], [bx, by + bh]];
+  for (let i = 0; i < 4; i++) {
+    const a = P[i], b = P[(i + 1) % 4];
+    for (let k = 0; k <= 8; k++) {
+      const u = k / 8;
+      const x = lerp(a[0], b[0], u) + (rr() - .5) * 9, y = lerp(a[1], b[1], u) + (rr() - .5) * 9;
+      i === 0 && k === 0 ? g.moveTo(x, y) : g.lineTo(x, y);
+    }
+  }
+  g.closePath(); g.stroke();
+  const dw = 60, dh = 122, gap = 10, y0 = by + 25, x0 = bx + 30;
+  segDigit(g, x0, y0, dw, dh, 0, 500, 13, broken);                      // 0
+  segDigit(g, x0 + dw + gap, y0, dw, dh, 0, 501, 13, broken);          // 0
+  for (const yy of [y0 + dh * 0.32, y0 + dh * 0.70]) {
+    g.beginPath(); g.arc(x0 + dw * 2 + gap * 1.6, yy, 8.5, 0, 6.283); g.fill();
+    g.beginPath(); g.arc(x0 + dw * 2 + gap * 2.6, yy, 8.5, 0, 6.283); g.fill();
+  }
+  segDigit(g, x0 + dw * 2 + gap * 3, y0, dw, dh, 0, 503, 13, broken);   // 0
+  segDigit(g, x0 + dw * 3 + gap * 4, y0, dw, dh, show, 504, 13, broken); // 4..1
+  g.restore();
+}
+
+/* ------------------------------------------------------------------ frame */
+const TEAR_Y = 1235;
+const tearPath = (() => {
+  const r = mulberry32(909), pts = [];
+  for (let i = 0; i <= 26; i++) pts.push([i / 26 * (W + 60) - 30, TEAR_Y + (r() - .5) * 150]);
+  return pts;
+})();
+/* the drop throws the print off the paper: the sheet tears, whips and zooms back */
+function dropMove(t) {
+  if (t < 15.0) return { spread: 0, ang: 0, zoom: 1 };
+  const u = clamp((t - 15.0) / 1.15, 0, 1);
+  const heal = 1 - smooth((t - 15.6) / 1.7);
+  const ang = -0.40 * Math.sin(Math.PI * Math.min(1, u * 1.06)) * (0.35 + 0.65 * heal);
+  const zoom = 1 + 0.34 * (1 - smooth(clamp(u * 1.4, 0, 1)));
+  return { spread: smooth(clamp((t - 15.0) / 0.3, 0, 1)) * heal, ang, zoom };
+}
+function register(t) {
+  const w = world(t);
+  const hat = pulse(w.beat / 0.5, 6);
+  const kick = pulse(w.beat, 5);
+  let amp = 4.2 + 2.6 * w.loopIdx + 2.4 * hat + 3.0 * kick;
+  let bx = -0.62, by = -0.46, px = 0.66, py = 0.5;
+  if (t >= 15 && t < 17.4) { const d = 1 - smooth((t - 15.0) / 2.4); amp += 58 * d * d; }
+  if (t >= 16.875) amp = 6.5 + 2.0 * hat;
+  // the endcard: out of register, then it snaps exactly into register on the final downbeat
+  if (t >= BAR * 13) {
+    const snap = smooth((t - BAR * 14) / 0.10);
+    const out = 13 * (1 - snap);
+    amp = out + 1.5 * hat * (1 - snap);
+    bx = -0.7; by = -0.55; px = 0.8; py = 0.6;
+  }
+  return [bx * amp, by * amp, px * amp, py * amp, amp];
+}
+function shake(t) {
+  const beat = t / BEAT, n = Math.floor(beat), f = beat - n;
+  const r = mulberry32(n * 7919 + 13);
+  const amp = 11 * Math.max(0, 1 - f * 4.2) * (n === 0 ? 1.4 : 1);
+  return [(r() - .5) * amp, (r() - .5) * amp * 0.7];
+}
+function flashAmt(t) {
+  const f = (tt, d, p) => Math.max(0, 1 - Math.abs(t - tt) / d) * p;
+  return Math.max(f(15.10, 0.055, 0.42), f(15.76, 0.05, 0.34), f(24.375, 0.045, 0.20), f(26.25, 0.055, 0.30));
+}
+
+function seek(t) {
+  t = clamp(t, 0, DURATION - 0.0001);
+  const w = world(t);
+  const tW = worldT(t);
+  const free = isFree(t);
+  const flood = floodAmt(t) * (t >= 24.3 ? 1 - smooth((t - 24.3) / 0.25) : 1);
+  const [bx, by, px, py] = register(t);
+  const [shx, shy] = shake(t);
+
+  // ---- 1. paper
+  pctx.globalCompositeOperation = 'source-over'; pctx.globalAlpha = 1;
+  pctx.drawImage(PAPER, 0, 0);
+
+  // ---- 2. the two ink plates
+  for (const [g, ink] of [[bctx, BLUE], [kctx, PINK]]) {
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, W, H);
+    g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+    g.fillStyle = ink; g.strokeStyle = ink; g.__ink = ink;
+  }
+  // the flood first (it is the paper turning into overprint)
+  if (flood > 0.004) { bctx.fillStyle = BLUE; kctx.fillStyle = PINK; drawFlood(bctx, t, flood); drawFlood(kctx, t, flood); }
+
+  const worldMode = free ? 'punch' : 'ink';
+  const wm = (g) => {
+    if (worldMode === 'punch') { g.globalCompositeOperation = 'destination-out'; g.fillStyle = '#000'; g.strokeStyle = '#000'; }
+    else { g.globalCompositeOperation = 'source-over'; }
+  };
+  const wmEnd = (g) => { g.globalCompositeOperation = 'source-over'; g.fillStyle = g.__ink; };
+
+  // background + runner on both plates (identical geometry = the overprint)
+  bctx.save(); wm(bctx); drawWorld(bctx, t, false); wmEnd(bctx); bctx.restore();
+  kctx.save(); wm(kctx); drawWorld(kctx, t, true); wmEnd(kctx); kctx.restore();
+
+  // the runner: in the loops he is ink, after the drop he is knocked out of the flood
+  const run = runnerPath(t);
+  for (const [g, ink] of [[bctx, BLUE], [kctx, PINK]]) {
+    if (ink === PINK && !pinkHas(t, 'runner')) continue;
+    g.save();
+    if (worldMode === 'punch') { g.globalCompositeOperation = 'destination-out'; g.fillStyle = '#000'; }
+    g.translate(run.x, GROUND - HIPH * run.sc); g.rotate(run.lean); g.scale(run.sc, run.sc);
+    const hd = drawRunner(g, t, { phase: run.phase, sc: 1, lean: 0, seed: 11 });
+    g.restore();
+    // the face, punched or printed to match the world's polarity
+    g.save();
+    g.translate(run.x, GROUND - HIPH * run.sc); g.rotate(run.lean); g.scale(run.sc, run.sc);
+    g.fillStyle = ink; drawFace(g, hd.hd, worldMode === 'punch' ? 'punch' : 'ink', 1, t);
+    g.restore();
+    g.globalCompositeOperation = 'source-over'; g.fillStyle = ink;
+  }
+  // his shadow does not keep up (only in the loops)
+  if (!free) {
+    bctx.save(); bctx.globalAlpha = 0.5;
+    taper(bctx, [[run.x - 120, GROUND + 6], [run.x + 120, GROUND + 6]], 16, 16, 88, 3, 6);
+    bctx.restore();
+  }
+  // ---- 3. colour splashes and the burst (always ink)
+  for (const [g, which] of [[bctx, 'blue'], [kctx, 'pink']]) {
+    g.globalCompositeOperation = 'source-over'; g.fillStyle = g.__ink; g.globalAlpha = 1;
+    drawSplashes(g, t, which);
+    drawBurst(g, t);
+  }
+  // the giant 1 (overprint on both plates)
+  for (const g of [bctx, kctx]) { g.globalCompositeOperation = 'source-over'; g.fillStyle = g.__ink; drawOne(g, t); }
+  // the clock, which is printed on top of everything
+  drawClock(bctx, t);
+  drawClock(kctx, t);
+
+  // ---- 4. type
+  drawType(bctx, t, 'ink');
+  drawType(kctx, t, 'ink');
+
+  // ---- 5. riso ink texture: the dots that did not take
+  for (const g of [bctx, kctx]) {
+    g.globalCompositeOperation = 'destination-out';
+    g.globalAlpha = 0.26 + (w.loopIdx >= 2 ? 0.08 : 0);
+    g.drawImage(SPECK, 0, 0, 540, 960, 0, 0, W, H);
+    g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+  }
+
+  // ---- 6. compose the sheet: paper, then blue, then pink, multiplied
+  sctx.setTransform(1, 0, 0, 1, 0, 0);
+  sctx.globalCompositeOperation = 'source-over'; sctx.globalAlpha = 1;
+  sctx.clearRect(0, 0, W, H);
+  sctx.drawImage(paperC, 0, 0);
+  sctx.globalCompositeOperation = 'multiply';
+  sctx.drawImage(blueC, bx, by);
+  sctx.drawImage(pinkC, px, py);
+  sctx.globalCompositeOperation = 'source-over';
+
+  // ---- 7. onto the screen: cream, the torn sheet, flash, grain
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+  ctx.fillStyle = CREAM; ctx.fillRect(0, 0, W, H);
+  const T = dropMove(t);
+  const ax = 540, ay = 1010;                       // he spins around the runner
+  const plain = T.spread < 0.004 && Math.abs(T.ang) < 0.001 && T.zoom < 1.002;
+  const place = (dx, dy) => {
+    ctx.translate(ax + shx + dx, ay + shy + dy); ctx.rotate(T.ang); ctx.scale(T.zoom, T.zoom); ctx.translate(-ax, -ay);
+    ctx.drawImage(sheetC, 0, 0);
+  };
+  if (plain) {
+    ctx.drawImage(sheetC, shx, shy);
+  } else {
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(-60, -90); ctx.lineTo(W + 60, -90);
+    for (let i = tearPath.length - 1; i >= 0; i--) ctx.lineTo(tearPath[i][0], tearPath[i][1] - 30 * T.spread);
+    ctx.closePath(); ctx.clip();
+    place(16 * T.spread, -20 * T.spread);
+    ctx.restore();
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(-60, H + 90); ctx.lineTo(W + 60, H + 90);
+    for (let i = tearPath.length - 1; i >= 0; i--) ctx.lineTo(tearPath[i][0], tearPath[i][1] + 30 * T.spread);
+    ctx.closePath(); ctx.clip();
+    place(-18 * T.spread, 22 * T.spread);
+    ctx.restore();
+  }
+  // a torn paper edge: the fibres of the sheet showing along the tear
+  if (T.spread > 0.004) {
+    ctx.save();
+    ctx.globalAlpha = 0.9 * T.spread;
+    ctx.strokeStyle = '#FFFBF0'; ctx.lineWidth = 7 * T.spread;
+    ctx.beginPath();
+    for (let i = 0; i < tearPath.length; i++) { const p = tearPath[i]; i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]); }
+    ctx.stroke(); ctx.restore();
+  }
+  const fl = flashAmt(t);
+  if (fl > 0.004) { ctx.globalAlpha = fl; ctx.fillStyle = '#FFF7E8'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; }
+  // grain (static: the same texture every frame, so the encoder barely pays for it)
+  ctx.globalAlpha = 0.5; ctx.fillStyle = grainPat; ctx.fillRect(0, 0, W, H);
+  ctx.globalAlpha = 1;
+}
+/* the runner's path through the frame */
+function runnerPath(t) {
+  const w = world(t);
+  const phase = (t / (BEAT * 2)) % 1;
+  let x = 505 + 28 * Math.sin(t * 0.62), sc = 1.0, lean = 0.13;
+  if (t >= 15.0 && t < 15.62) {                     // he runs THROUGH the frame
+    const u = clamp((t - 15.0) / 0.5, 0, 1);
+    x = 505 + u * u * 1750; sc = 1.0 + u * 0.35; lean = 0.13 + u * 0.5;
+  } else if (t >= 15.62 && t < 16.9) {              // gone, then back in from the left
+    const u = clamp((t - 16.3) / 0.55, 0, 1);
+    x = -450 + smooth(u) * 960; sc = 1.15; lean = 0.2;
+  } else if (t >= 16.9 && t < 24.0) {
+    x = 515 + 34 * Math.sin((t - 16.9) * 0.8);
+    sc = 1.14 + 0.05 * Math.abs(Math.sin(t * 6.4));
+    lean = 0.17 + 0.05 * Math.sin(t * 3.2);
+  } else if (t >= 24.0) {
+    const u = clamp((t - 24.0) / 0.5, 0, 1);
+    x = 515 + smooth(u) * 1500; sc = 1.14; lean = 0.17;
+  }
+  return { x, sc, phase, lean };
+}
+
+/* ------------------------------------------------------------------ contract */
+window.__motion = {
+  ready: false,
+  duration: DURATION,
+  size: { width: W, height: H },
+  seek(t) { if (t < 0) t = 0; seek(t); },
+};
+await document.fonts.ready;
+seek(0);
+window.__motion.ready = true;
+
+/* a live preview when the page is opened by a human (?play=1 or ?t=1.2) */
+const q = new URLSearchParams(location.search);
+if (q.has('t')) { seek(parseFloat(q.get('t'))); }
+else if (q.get('play') === '1') {
+  let t0 = null;
+  const loop = (ms) => { if (t0 === null) t0 = ms; seek(((ms - t0) / 1000) % DURATION); requestAnimationFrame(loop); };
+  requestAnimationFrame(loop);
+}
+})();
+</script>
+</body>
+</html>

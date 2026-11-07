@@ -1,0 +1,15 @@
+{
+  "tool": "voice.piper",
+  "input": {
+    "voice": "en_US-kristin-medium",
+    "length_scale": 0.95,
+    "lines": [
+      { "name": "v1", "text": "You hear it before you see it." },
+      { "name": "v2", "text": "Do not run." },
+      { "name": "v3", "text": "It can feel your pulse." },
+      { "name": "v4", "text": "Brace." },
+      { "name": "v5", "text": "It's not attacking." },
+      { "name": "v6", "text": "It's dancing." }
+    ]
+  }
+}

@@ -1,0 +1,52 @@
+// EP3 HEIST ON THE OFFBEAT - funk breakbeat, 110 bpm. One cycle = one 4/4 bar = 2.1818 s.
+// 12 bars = 26.18 s. Accents sit ON THE OFFBEAT (the hats), matching the picture.
+setcpm(110/4)
+
+// --- section markers (music.render {markers:{...}} rewrites these) ---
+let HORN = 2;   // bar 3 : horn stabs enter           (works 1..4)
+let DROP = 5;   // bar 6 : the vault opens            (works 4..7)
+let ENDC = 11;  // bar 12: endcard, kick+snare drop out (works 10..11)
+
+const span = (a, b) => cat(...Array(a).fill(0), ...Array(b - a).fill(1), ...Array(64).fill(0))
+const from = (a) => span(a, 64)
+const to = (b) => cat(...Array(b).fill(1), ...Array(64 - b).fill(0))
+// on in cycles [a,b) and again from c on
+const except = (a, b, c) => cat(...Array(a).fill(1), ...Array(b - a).fill(0), ...Array(c - b).fill(1), ...Array(64 - c).fill(1))
+
+// --- breakbeat kit: kick 1 / ghost 7 / 11, snares on 2 and 4, hats on the offbeats ---
+$: s("bd ~ ~ ~ ~ ~ bd ~ ~ ~ bd ~ ~ ~ ~ ~").bank("RolandTR909").gain(.62).mask(to(ENDC))
+$: s("~ ~ ~ ~ sd ~ ~ ~ ~ ~ ~ ~ sd ~ ~ ~").bank("RolandTR909").gain(.7).mask(to(ENDC))
+$: s("~ ~ ~ ~ ~ ~ ~ ~ ~ ~ sd? ~ ~ ~ ~ sd?").bank("RolandTR808").gain(.26).room(.2).mask(to(ENDC))
+$: s("~ ~ hh ~ ~ ~ hh ~ ~ ~ hh ~ ~ ~ hh ~").bank("RolandTR909").gain(.38)
+$: s("~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ oh ~").bank("RolandTR909").gain(.22)
+
+// drop only: driving 16th hats + claps on the offbeats + a slap-bass octave push
+$: s("hh*16").bank("RolandTR909").gain(.15).mask(from(DROP))
+$: s("~ ~ cp ~ ~ ~ cp ~ ~ ~ cp ~ ~ ~ cp ~").bank("RolandTR909").gain(.22).mask(from(DROP))
+$: note("e3 ~ ~ e3 ~ ~ e3 ~ ~ ~ ~ ~ ~ ~ ~ ~").s("gm_slap_bass_1").gain(.22).mask(from(DROP))
+
+// --- slap bass: syncopated funk riff, e minor ---
+$: note("e2 ~ ~ e2 ~ g2 a2 ~ ~ g2 ~ e2 ~ d2 ~ ~").s("gm_slap_bass_1").gain(.58).lpf(1700).room(.12)
+
+// --- wah guitar: two-note chops, filter sweeping. Out for the tension bars (4-5) ---
+$: note("<[e3,b3] [g3,d4] [a3,e4] [b3,f#4]>")
+   .s("gm_electric_guitar_muted").gain(.24).hpf(200).lpf(sine.range(600,2600).slow(4)).room(.2)
+   .mask(except(0, 3, 5))
+
+// --- horn stabs on the offbeats, from bar 3 ---
+$: note("~ ~ [e4,g4,b4] ~ ~ [e4,g4,b4] ~ ~ ~ [d4,f#4,a4] ~ ~ [d4,f#4,a4] ~ ~ ~")
+   .s("gm_brass_section").gain(.3).attack(.005).release(.18).room(.28).mask(span(HORN, DROP))
+
+// --- tension (bars 4-5): string swell + snare roll into the drop ---
+$: note("e3").s("gm_string_ensemble_1").gain(.17).attack(.6).release(.6).room(.4).mask(span(3, 5))
+$: s("sd*8").bank("RolandTR909").gain(.27).mask(cat(...Array(4).fill(0), 1, ...Array(59).fill(0)))
+
+// --- the drop (bar 6): crash, sub hit, big brass section ---
+$: s("cr").bank("RolandTR909").gain(.45).mask(cat(...Array(5).fill(0), 1, ...Array(58).fill(0)))
+$: note("e1 ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~").s("sine").gain(.2).release(.5).mask(from(DROP))
+$: note("<[e3,g3,b3,e4] ~ ~ ~ [e3,g3,b3,e4] ~ ~ ~ [d3,f#3,a3,d4] ~ ~ ~ [e3,g3,b3,e4] ~ ~ ~ ~>")
+   .s("gm_brass_section").gain(.3).hpf(200).attack(.005).release(.25).room(.32).mask(from(DROP))
+
+// --- endcard (bar 12): no kick or snare, one last brass hit rings over the title card ---
+$: note("[e3,g3,b3,e4]").s("gm_brass_section").gain(.38).hpf(200).attack(.005).release(1.4).room(.45)
+   .mask(cat(...Array(11).fill(0), 1, ...Array(52).fill(0)))

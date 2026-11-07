@@ -38,7 +38,7 @@ export function mono(audio) {
 
 /**
  * Seconds until speech ends: the last sample (any channel) louder than threshold_db, plus tail_s,
- * capped at the file length. Ported from motion-studio build.mjs:96-103 (threshold 0.01 = -40 dBFS, +30 ms).
+ * capped at the file length. The classic setting is threshold 0.01 (-40 dBFS) and +30 ms.
  */
 export function speechEnd(audio, { threshold_db = -40, tail_s = 0.03 } = {}) {
   const thr = fromDb(threshold_db);

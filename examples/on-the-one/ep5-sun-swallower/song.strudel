@@ -1,0 +1,71 @@
+// ON THE ONE — EP5: THE SUN SWALLOWER
+// Persian techno, 124 bpm, 4/4. One bar = 4 beats = 1.9355 s. 14 bars = 27.10 s.
+// Bar 1 = cycle 0 ... bar 8 = cycle 7 = THE DROP.
+// Markers: DROP works 5..10, END works 11..13, DARK works 2..5.
+setcpm(124/4)
+
+let DROP = 7;   // cycle of the drop (bar 8)
+let END  = 12;  // cycle of the endcard (bar 13)
+let DARK = 3;   // cycle where the sun gets swallowed (bar 4)
+
+// section masks: 1 from cycle a up to (not including) b
+const on = (a, b) => cat(...Array(a).fill(0), ...Array(Math.max(0, b - a)).fill(1), ...Array(64).fill(0))
+
+// ---------------------------------------------------------------- drums
+// kick: straight 4/4, but the last two beats of bar 7 are empty (the gap before the drop)
+$: s("bd*4").bank("RolandTR909").gain(.62).mask(on(0, DROP - 1))
+$: s("bd bd ~ ~").bank("RolandTR909").gain(.62).mask(on(DROP - 1, DROP))
+$: s("bd*4").bank("RolandTR909").gain(.74).mask(on(DROP, END))
+$: s("bd*4").bank("RolandTR909").gain(.7).mask(on(END, 14))
+
+// daf jingle: 16ths, quiet in the intro, bright after the drop
+$: s("hh*16").bank("RolandTR909").gain(.045).hpf(3000).mask(on(0, DARK))
+$: s("hh*16").bank("RolandTR909").gain(.055).hpf(3000).mask(on(DARK, DROP - 1))
+$: s("hh*16").bank("RolandTR909").gain(.085).hpf(2600).mask(on(DROP, END))
+$: s("oh").bank("RolandTR909").gain(.06).hpf(2200).mask(on(DROP, END))
+
+// tombak: 3+3+2 (a 6/8 accent carried over 4/4) — dum on the low taiko, tak on the rim
+$: s("[[gm_taiko_drum ~] ~ ~] [[rim ~] ~ ~] [gm_taiko_drum rim]")
+   .gain(.30).hpf(55).room(.18).mask(on(0, DARK))
+$: s("[[gm_taiko_drum ~] ~ ~] [[rim ~] ~ ~] [gm_taiko_drum rim]")
+   .gain(.24).hpf(55).room(.18).mask(on(DARK, DROP - 2))
+// bar 6: the daf alone, no kick, building
+$: s("[[gm_taiko_drum ~] ~ ~] [[rim rim] ~ ~] [gm_taiko_drum rim rim]")
+   .gain(.40).hpf(55).room(.22).mask(on(DROP - 2, DROP - 1))
+// bar 7: four big strikes on the daf
+$: s("gm_taiko_drum*4").gain(.62).hpf(50).room(.3).mask(on(DROP - 1, DROP))
+// the drop: full tombak groove, louder and busier
+$: s("[[gm_taiko_drum ~] ~ ~] [[rim ~] ~ ~] [gm_taiko_drum rim]")
+   .gain(.44).hpf(50).room(.22).mask(on(DROP, END))
+$: s("gm_taiko_drum*4").gain(.66).hpf(50).room(.3).mask(on(DROP + 8, 14))
+// a second tak layer off the grid after the drop
+$: s("~ rim ~ [rim rim]").bank("RolandTR909").gain(.12).mask(on(DROP, END))
+
+// crash on the drop and on the endcard downbeat
+$: s("~ ~ ~ ~ cr").bank("RolandTR909").gain(.22).mask(on(DROP, DROP + 1))
+$: s("cr").bank("RolandTR909").gain(.16).mask(on(END, END + 1))
+
+// ---------------------------------------------------------------- bass + drone
+$: note("<c2 g1>").s("gm_string_ensemble_1").gain(.15).attack(1.2).release(1.5).lpf(600).mask(on(0, DROP))
+$: note("<c2 c2 g1 ab1>").s("sawtooth").lpf(320).hpf(42).gain(.38).decay(.35).sustain(0).mask(on(DROP, END))
+$: note("<c2 c2 g1 ab1>").s("sawtooth").lpf(300).hpf(42).gain(.22).decay(.14).sustain(0).late(0.125).mask(on(DROP, END))
+
+// ---------------------------------------------------------------- santur (hammered dulcimer)
+// bars 2-3: a slow hint of the mode (C phrygian dominant), one note per beat
+$: note("c5 ~ bb4 ~ ab4 ~ g4 ~").s("gm_dulcimer").gain(.26).room(.35).delay(.25).mask(on(1, DARK))
+// bars 4-5: descending, thinner, under the swallow
+$: note("<e4 ~ db4 ~ c4 ~ ~ ~ bb3>").s("gm_dulcimer").gain(.20).room(.5).mask(on(DARK, DROP - 2))
+// bar 6: alone in the dark, an ornament climbing up
+$: note("[c4 db4 e4 f4 g4 ab4 bb4 c5]").s("gm_dulcimer").gain(.24).room(.5).mask(on(DROP - 2, DROP - 1))
+// the drop: the full riff, 8ths, with an octave echo
+$: note("c5 bb4 ab4 g4 f4 e4 db4 c4").s("gm_dulcimer").gain(.34).room(.25)
+   .off(1/16, x => x.add(note(12)).gain(.12)).mask(on(DROP, END))
+// endcard: one last descending phrase
+$: note("<c5 bb4 ab4 g4>").s("gm_dulcimer").gain(.30).room(.45).mask(on(END, 14))
+
+// ---------------------------------------------------------------- riser into the drop
+$: s("white").gain(.10).attack(1.6).release(.05).lpf(6000).mask(on(DROP - 1, DROP))
+$: s("white*8").gain(saw.range(.015, .07).slow(2)).hpf(2500).mask(on(DROP - 2, DROP - 1))
+
+// ---------------------------------------------------------------- bell on the endcard
+$: note("<c6>").s("gm_tubular_bells").gain(.18).room(.6).mask(on(END, END + 1))

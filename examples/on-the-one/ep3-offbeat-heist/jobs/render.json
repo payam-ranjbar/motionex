@@ -1,0 +1,18 @@
+{
+ "tool": "picture.render",
+ "input": {
+  "page": "episodes/ep3-offbeat-heist/scene.html",
+  "fps": 30,
+  "workers": 6,
+  "audio": "job:job_01a1b2f2b7bd75e6a34011c0f97556c1/mix.wav",
+  "name": "ep3.mp4",
+  "video": {
+   "codec": "libx264",
+   "preset": "medium",
+   "crf": 18,
+   "pix_fmt": "yuv420p"
+  },
+  "audio_codec": "aac",
+  "audio_bitrate_k": 192
+ }
+}

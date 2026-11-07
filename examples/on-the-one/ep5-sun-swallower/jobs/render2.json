@@ -1,0 +1,8 @@
+{"tool":"picture.render","input":{
+  "page":"episodes/ep5-sun-swallower/scene.html",
+  "fps":30,"workers":4,
+  "width":1080,"height":1920,
+  "audio":"job:job_01a1b2e876607010a7875e398de39388/mix.wav",
+  "audio_bitrate_k":192,
+  "video":{"codec":"libx264","preset":"medium","crf":19,"pix_fmt":"yuv420p"},
+  "name":"video.mp4"}}

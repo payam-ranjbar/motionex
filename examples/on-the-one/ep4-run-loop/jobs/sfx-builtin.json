@@ -1,0 +1,10 @@
+{
+  "tool": "sfx.synth",
+  "input": {
+    "builtin": "generic",
+    "sounds": ["whoosh_by", "glitch_cut"],
+    "params": { "whoosh_by": { "seconds": 0.95, "pitch": 0.85 }, "glitch_cut": { "seconds": 0.28 } },
+    "seed": 7,
+    "finish": { "peak_db": -3 }
+  }
+}

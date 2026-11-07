@@ -1,0 +1,7 @@
+{
+  "tool": "audio.speech-ratio",
+  "input": {
+    "voice": "job:job_01a1b2fe5ea3740a8df45e8d04b8d7ff/stems/dialogue.wav",
+    "background": "job:job_01a1b2fe5ea3740a8df45e8d04b8d7ff/stems/music.wav"
+  }
+}

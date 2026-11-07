@@ -1,5 +1,5 @@
 // timeline.layout: lay scenes out from voice-over lines, optionally snapped to a beat grid,
-// with markers that align the music and named times. Ported from motion-studio build.mjs:96-124 and 283-332.
+// with markers that align the music and named times.
 //
 // Nothing is enforced: with all defaults at zero and no snapping, a scene is exactly as long as its lines.
 import { writeFile } from 'node:fs/promises';

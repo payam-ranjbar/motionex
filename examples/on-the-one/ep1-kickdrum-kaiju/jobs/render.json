@@ -1,0 +1,14 @@
+{
+  "tool": "picture.render",
+  "input": {
+    "page": "episodes/ep1-kickdrum-kaiju/scene.html",
+    "fps": 30,
+    "workers": 5,
+    "offline": true,
+    "audio": "job:job_01a1b2ea3505777b88c00ba9e6b4b64f/mix.wav",
+    "audio_codec": "aac",
+    "audio_bitrate_k": 192,
+    "video": { "codec": "libx264", "crf": 18, "preset": "medium", "pix_fmt": "yuv420p", "color": "bt709" },
+    "name": "ep1-kickdrum-kaiju.mp4"
+  }
+}

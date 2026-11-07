@@ -1,0 +1,40 @@
+{
+  "tool": "image.contact-sheet",
+  "input": {
+    "images": [
+      "job:job_01a1b2e4880c7076aba20a3b2b2a2329/still-0000.000.jpg",
+      "job:job_01a1b2e4880c7076aba20a3b2b2a2329/still-0004.350.jpg",
+      "job:job_01a1b2e4880c7076aba20a3b2b2a2329/still-0006.000.jpg",
+      "job:job_01a1b2e4880c7076aba20a3b2b2a2329/still-0008.600.jpg",
+      "job:job_01a1b2e4880c7076aba20a3b2b2a2329/still-0010.600.jpg",
+      "job:job_01a1b2e4880c7076aba20a3b2b2a2329/still-0011.900.jpg",
+      "job:job_01a1b2e4880c7076aba20a3b2b2a2329/still-0013.900.jpg",
+      "job:job_01a1b2e4880c7076aba20a3b2b2a2329/still-0015.900.jpg",
+      "job:job_01a1b2e4880c7076aba20a3b2b2a2329/still-0017.900.jpg",
+      "job:job_01a1b2e4880c7076aba20a3b2b2a2329/still-0019.900.jpg",
+      "job:job_01a1b2e4880c7076aba20a3b2b2a2329/still-0021.800.jpg",
+      "job:job_01a1b2e4880c7076aba20a3b2b2a2329/still-0024.500.jpg",
+      "job:job_01a1b2e4880c7076aba20a3b2b2a2329/still-0025.450.jpg"
+    ],
+    "columns": 4,
+    "cell_width": 280,
+    "labels": [
+      "t0.0",
+      "t4.35",
+      "t6.0",
+      "t8.6",
+      "t10.6",
+      "t11.9",
+      "t13.9",
+      "t15.9",
+      "t17.9",
+      "t19.9",
+      "t21.8",
+      "t24.5",
+      "t25.45"
+    ],
+    "gap_px": 4,
+    "background": "0x333333",
+    "format": "png"
+  }
+}

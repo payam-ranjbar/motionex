@@ -1,0 +1,59 @@
+{
+  "tool": "audio.mix",
+  "input": {
+    "preset": "dialogue-anchored",
+    "duration_s": 25.4545,
+    "sample_rate": 48000,
+    "tracks": [
+      {
+        "name": "dialogue",
+        "clips": [
+          { "src": "pin:onthe1/ep1-kickdrum-kaiju/voice#v1.wav", "at": 0.1 },
+          { "src": "pin:onthe1/ep1-kickdrum-kaiju/voice#v2.wav", "at": 5.6 },
+          { "src": "pin:onthe1/ep1-kickdrum-kaiju/voice#v3.wav", "at": 7.42 },
+          { "src": "pin:onthe1/ep1-kickdrum-kaiju/voice#v4.wav", "at": 9.14 },
+          { "src": "pin:onthe1/ep1-kickdrum-kaiju/voice#v5.wav", "at": 14.65 },
+          { "src": "pin:onthe1/ep1-kickdrum-kaiju/voice#v6.wav", "at": 16.46 }
+        ]
+      },
+      {
+        "name": "music",
+        "clips": [
+          { "src": "job:job_01a1b2e0477f75a0b50844fd74c9f827/music.wav", "at": 0, "fade_out_s": 0.5 }
+        ]
+      },
+      {
+        "name": "sfx",
+        "clips": [
+          { "src": "job:job_01a1b2df583374e4bca3e0358325458c/radio_static.wav", "at": 5.32, "gain_db": -2 },
+          { "src": "job:job_01a1b2df583374e4bca3e0358325458c/radio_static.wav", "at": 7.14, "gain_db": -2 },
+          { "src": "job:job_01a1b2df583374e4bca3e0358325458c/radio_static.wav", "at": 8.86, "gain_db": -2 },
+          { "src": "job:job_01a1b2df583374e4bca3e0358325458c/radio_static.wav", "at": 14.37, "gain_db": -2 },
+          { "src": "job:job_01a1b2df583374e4bca3e0358325458c/radio_static.wav", "at": 16.18, "gain_db": -2 },
+          { "src": "job:job_01a1b2df583374e4bca3e0358325458c/alert_beep.wav", "at": 9.09, "gain_db": -3 },
+          { "src": "job:job_01a1b2df583374e4bca3e0358325458c/sub_thump.wav", "at": 10.909 }
+        ]
+      },
+      {
+        "name": "impact",
+        "level": { "relative_to": "dialogue", "lu": -7 },
+        "clips": [
+          { "src": "job:job_01a1b2df583374e4bca3e0358325458c/glass_crack_a.wav", "at": 0 },
+          { "src": "job:job_01a1b2df583374e4bca3e0358325458c/glass_crack_b.wav", "at": 1.8182 },
+          { "src": "job:job_01a1b2df583374e4bca3e0358325458c/glass_crack_a.wav", "at": 5.4545 },
+          { "src": "job:job_01a1b2df583374e4bca3e0358325458c/glass_crack_b.wav", "at": 7.2727 },
+          { "src": "job:job_01a1b2df583374e4bca3e0358325458c/glass_crack_a.wav", "at": 9.0909 },
+          { "src": "job:job_01a1b2df583374e4bca3e0358325458c/glass_crack_b.wav", "at": 9.5455 },
+          { "src": "job:job_01a1b2df583374e4bca3e0358325458c/glass_crack_a.wav", "at": 10.0 },
+          { "src": "job:job_01a1b2df583374e4bca3e0358325458c/glass_crack_b.wav", "at": 10.4545 },
+          { "src": "job:job_01a1b2df583374e4bca3e0358325458c/glass_crack_a.wav", "at": 14.5455 },
+          { "src": "job:job_01a1b2df583374e4bca3e0358325458c/glass_crack_b.wav", "at": 16.3636 }
+        ]
+      }
+    ],
+    "master": {
+      "loudness": { "target_lufs": -14, "true_peak_db": -1.5, "method": "gain+limiter" }
+    },
+    "output": { "stems": true, "preview_mp3": true }
+  }
+}

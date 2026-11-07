@@ -16,3 +16,7 @@ voices/samples
 biome.json
 Dockerfile
 .dockerignore
+examples
+site
+.github
+LICENSE

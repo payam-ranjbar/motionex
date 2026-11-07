@@ -1,6 +1,6 @@
 // Reusable SFX synthesis DSP kit: stereo [L, R] Float32Array buffers at 48 kHz.
 //
-// Ported from motion-studio/videos/shapur/sfx-tools/dsp.mjs. Differences from the original:
+// Ported from an earlier in-house DSP script. Differences from the original:
 //   - no module-level state: createKit() returns an isolated kit with its own seeded PRNG;
 //   - no env vars and no writing: save() became finish(), which returns the processed buffer;
 //   - pal() reads from the in-memory `palette` passed to createKit() instead of a scratch folder.

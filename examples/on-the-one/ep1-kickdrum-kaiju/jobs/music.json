@@ -1,0 +1,11 @@
+{
+  "tool": "music.render",
+  "input": {
+    "file": "episodes/ep1-kickdrum-kaiju/song.strudel",
+    "seconds": 25.4545,
+    "tail_s": 1.6,
+    "bpm": 132,
+    "beats_per_cycle": 4,
+    "markers": { "DROP": 6, "BUILD": 5 }
+  }
+}

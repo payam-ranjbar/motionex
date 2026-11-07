@@ -1,6 +1,6 @@
 # Vendored Mucavex renderer
 
-- Source: github.com/payam-ranjbar/Mucavex, folder `renderer/`
+- Source: the Mucavex project (a Strudel/superdough offline renderer), folder `renderer/`.
 - Commit: f5452804b9a1645409c83ef562a85911919a8011 (2026-10-14)
 - Copied: `src/**`, `test/**`, `examples/**`, `scripts/prune-modules.sh`; upstream `package.json` kept as `package.upstream.json`.
 - Licence: AGPL-3.0-or-later (declared in upstream package.json; the upstream repo has no LICENSE file).

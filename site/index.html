@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>motionex · ON THE ONE</title>
+<meta name="description" content="Five vertical music videos made end to end by AI coding agents with motionex, a motion-graphics toolbox for agents.">
+<meta property="og:title" content="motionex · ON THE ONE">
+<meta property="og:description" content="Five vertical music videos made end to end by AI coding agents with motionex.">
+<meta property="og:image" content="media/ep5-poster.jpg">
+<style>
+  :root {
+    --bg: #0e0d11;
+    --panel: #17161c;
+    --fg: #f3efe7;
+    --muted: #a7a197;
+    --line: #2b2932;
+    --accent: #ffb43c;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  a { color: var(--accent); text-underline-offset: 3px; }
+  main { max-width: 1240px; margin: 0 auto; padding: 56px 16px 72px; }
+  .eyebrow { color: var(--muted); font-size: .85rem; letter-spacing: .14em; text-transform: uppercase; margin: 0 0 10px; }
+  h1 { font-size: clamp(2.4rem, 7vw, 4.6rem); line-height: .95; letter-spacing: -.035em; margin: 0 0 18px; font-weight: 800; }
+  h1 span { color: var(--accent); }
+  .lede { max-width: 46rem; font-size: 1.12rem; color: #ddd7cc; margin: 0 0 12px; }
+  .facts { display: flex; flex-wrap: wrap; gap: 8px; margin: 22px 0 40px; padding: 0; list-style: none; }
+  .facts li { border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; font-size: .88rem; color: var(--muted); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 22px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; }
+  .card video { display: block; width: 100%; aspect-ratio: 9 / 16; background: #000; object-fit: cover; }
+  .meta { padding: 14px 14px 16px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+  .ep { color: var(--muted); font-size: .78rem; letter-spacing: .12em; text-transform: uppercase; }
+  .title { font-weight: 750; font-size: 1.05rem; line-height: 1.2; margin: 0; }
+  .hook { color: #cfc8bc; font-size: .92rem; margin: 0; }
+  .tags { color: var(--muted); font-size: .82rem; margin: 2px 0 0; }
+  .links { margin-top: auto; padding-top: 8px; font-size: .88rem; display: flex; gap: 14px; }
+  section.how { margin-top: 64px; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 28px; border-top: 1px solid var(--line); padding-top: 36px; }
+  section.how h2 { font-size: 1.05rem; margin: 0 0 8px; }
+  section.how p { margin: 0; color: #cfc8bc; font-size: .95rem; }
+  code { font: .9em ui-monospace, SFMono-Regular, Consolas, monospace; background: #221f28; padding: 1px 5px; border-radius: 5px; }
+  footer { margin-top: 56px; color: var(--muted); font-size: .88rem; }
+  @media (max-width: 480px) {
+    main { padding-top: 36px; }
+    .grid { grid-template-columns: 1fr 1fr; gap: 12px; }
+    .meta { padding: 10px 10px 12px; }
+    .hook { display: none; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <p class="eyebrow">Made with motionex</p>
+  <h1>ON THE <span>ONE</span></h1>
+  <p class="lede">Five vertical micro-stories where every cut, impact and word lands on the beat. Each one was made end to end by an AI coding agent from a one-page brief: it wrote the scene as an HTML page, composed the song in Strudel, synthesised the sound effects and the voice, mixed to −14 LUFS, checked its own stills, and rendered the MP4 through motionex.</p>
+  <p class="lede">Turn the sound on.</p>
+  <ul class="facts">
+    <li>1080 × 1920 · 30 fps</li>
+    <li>25–28 s each</li>
+    <li>one agent per episode, run in parallel</li>
+    <li>20–62 min and under $1 of model time each</li>
+  </ul>
+
+  <div class="grid" id="episodes"></div>
+
+  <section class="how">
+    <div>
+      <h2>The brief</h2>
+      <p>A series bible and one page per episode: the beat map, the look, the word effect, the music sketch. The agents read the motionex skill first. <a href="https://github.com/payam-ranjbar/motionex/tree/main/examples/on-the-one">The briefs are in the repo.</a></p>
+    </div>
+    <div>
+      <h2>The tools</h2>
+      <p>One Docker service with bare tools over HTTP: <code>music.render</code>, <code>voice.piper</code>, <code>sfx.synth</code>, <code>audio.mix</code>, <code>picture.render</code> and the analysis that lets an agent mix without ears.</p>
+    </div>
+    <div>
+      <h2>The source</h2>
+      <p>Every episode folder holds the agent's <code>scene.html</code>, <code>song.strudel</code>, SFX recipe, every job it submitted, and its production notes.</p>
+    </div>
+  </section>
+
+  <footer>
+    <a href="https://github.com/payam-ranjbar/motionex">github.com/payam-ranjbar/motionex</a> · AGPL-3.0-or-later
+  </footer>
+</main>
+<script>
+  const SRC = 'https://github.com/payam-ranjbar/motionex/tree/main/examples/on-the-one/';
+  const EPISODES = [
+    { n: 1, id: 'ep1-kickdrum-kaiju', title: 'Kickdrum Kaiju', tags: 'hard techno · 132 bpm · 25.5 s',
+      hook: 'A giant built out of speaker cones wakes the city, and its footsteps are the kick drum.' },
+    { n: 2, id: 'ep2-one-pixel', title: 'One Pixel', tags: 'deep house · 122 bpm · 25.6 s',
+      hook: 'Nobody sees one pixel, until it finds a beat and becomes the eye of a whole picture.' },
+    { n: 3, id: 'ep3-offbeat-heist', title: 'Heist on the Offbeat', tags: 'funk breakbeat · 110 bpm · 26.2 s',
+      hook: 'Three raccoon thieves crack a vault where every single move has to land on the offbeat.' },
+    { n: 4, id: 'ep4-run-loop', title: 'Run Loop', tags: 'driving techno · 128 bpm · 28.1 s',
+      hook: 'He has run this street a thousand times; the night he stops counting the loop, it turns into a groove.' },
+    { n: 5, id: 'ep5-sun-swallower', title: 'The Sun Swallower', tags: 'Persian techno · 124 bpm · 27.1 s',
+      hook: 'A serpent swallows the sun, and one drummer drums it back up, on the one.' },
+  ];
+  const grid = document.getElementById('episodes');
+  for (const e of EPISODES) {
+    const card = document.createElement('article');
+    card.className = 'card';
+    card.id = `ep${e.n}`;
+    card.innerHTML = `
+      <video controls playsinline preload="none" poster="media/ep${e.n}-poster.jpg" src="media/${e.id}.mp4"
+        aria-label="Episode ${e.n}: ${e.title}"></video>
+      <div class="meta">
+        <span class="ep">Episode ${e.n}</span>
+        <h3 class="title">${e.title}</h3>
+        <p class="hook">${e.hook}</p>
+        <p class="tags">${e.tags}</p>
+        <div class="links"><a href="${SRC}${e.id}">Source</a><a href="media/${e.id}.mp4" download>MP4</a></div>
+      </div>`;
+    grid.append(card);
+  }
+  // One video at a time.
+  grid.addEventListener('play', (ev) => {
+    for (const v of grid.querySelectorAll('video')) if (v !== ev.target) v.pause();
+  }, true);
+</script>
+</body>
+</html>

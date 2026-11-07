@@ -1,0 +1,13 @@
+{
+  "tool": "media.ffmpeg",
+  "input": {
+    "args": ["-i", "{in:a}", "-i", "{in:b}", "-filter_complex",
+      "[0:v]crop=340:180:120:580,scale=1020:-1:flags=neighbor,pad=1080:540:0:0:0xF1E7D6[a];[1:v]crop=360:180:690:235,scale=1080:-1:flags=neighbor[b];[a][b]vstack",
+      "-y", "{out:crop3.png}"],
+    "inputs": {
+      "a": ".mx/jobs/job_01a1b2ef63df766e8c72d8d5e03f2d5f/out/still-0027.000.jpg",
+      "b": ".mx/jobs/job_01a1b2ef63df766e8c72d8d5e03f2d5f/out/still-0000.050.jpg"
+    },
+    "outputs": ["crop3.png"]
+  }
+}

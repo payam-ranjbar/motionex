@@ -64,4 +64,4 @@ Presets are JSON files in `presets/<kind>/<name>.json` (`encode`, `mix`, `timeli
 - A Lottie adapter.
 - Image generators.
 - A live Strudel studio for the human.
-- Publishing through contavex, which needs explicit human approval per post.
+- Publishing to social platforms, which needs explicit human approval per post.

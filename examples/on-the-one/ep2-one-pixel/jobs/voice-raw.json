@@ -1,0 +1,16 @@
+{
+  "tool": "voice.piper",
+  "input": {
+    "voice": "en_US-joe-medium",
+    "length_scale": 1.05,
+    "noise_scale": 0.60,
+    "noise_w_scale": 0.75,
+    "lines": [
+      { "name": "l1", "text": "I'm one pixel." },
+      { "name": "l2", "text": "Nobody sees one pixel." },
+      { "name": "l3", "text": "So I found a beat." },
+      { "name": "l4", "text": "Now I'm part of something." },
+      { "name": "l5", "text": "Big." }
+    ]
+  }
+}

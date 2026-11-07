@@ -1,0 +1,23 @@
+{
+  "tool": "audio.process",
+  "input": {
+    "inputs": [
+      "job:job_01a1b2dde85870f49bb15b34225135d0/again.wav",
+      "job:job_01a1b2dde85870f49bb15b34225135d0/faster.wav",
+      "job:job_01a1b2dde85870f49bb15b34225135d0/whatif.wav",
+      "job:job_01a1b2dde85870f49bb15b34225135d0/notaloop.wav",
+      "job:job_01a1b2dde85870f49bb15b34225135d0/groove.wav"
+    ],
+    "steps": [
+      { "pitch_semitones": -1 },
+      { "filter": "highpass=f=95,equalizer=f=185:t=q:w=1.1:g=2.5,equalizer=f=4300:t=q:w=1.2:g=-3,acompressor=threshold=0.05:ratio=3:attack=6:release=140" },
+      { "trim_silence": { "threshold_db": -50, "keep_s": 0.02 } },
+      { "fade_in_s": 0.005 },
+      { "fade_out_s": 0.02 },
+      { "normalize_peak_db": -3 }
+    ],
+    "format": "wav",
+    "sample_rate": 48000,
+    "channels": 1
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "tool": "image.contact-sheet",
+  "input": {
+    "images": [
+      ".mx/jobs/job_01a1b2e5e0a3747283ca5a57f5ef5f3b/out/still-0000.050.jpg",
+      ".mx/jobs/job_01a1b2e5e0a3747283ca5a57f5ef5f3b/out/still-0000.500.jpg",
+      ".mx/jobs/job_01a1b2e5e0a3747283ca5a57f5ef5f3b/out/still-0004.000.jpg",
+      ".mx/jobs/job_01a1b2e5e0a3747283ca5a57f5ef5f3b/out/still-0012.000.jpg",
+      ".mx/jobs/job_01a1b2e5e0a3747283ca5a57f5ef5f3b/out/still-0015.000.jpg",
+      ".mx/jobs/job_01a1b2e5e0a3747283ca5a57f5ef5f3b/out/still-0015.300.jpg",
+      ".mx/jobs/job_01a1b2e5e0a3747283ca5a57f5ef5f3b/out/still-0017.200.jpg",
+      ".mx/jobs/job_01a1b2e5e0a3747283ca5a57f5ef5f3b/out/still-0019.300.jpg",
+      ".mx/jobs/job_01a1b2e5e0a3747283ca5a57f5ef5f3b/out/still-0026.400.jpg"
+    ],
+    "columns": 3,
+    "cell_width": 300,
+    "gap_px": 6,
+    "background": "0x222222"
+  }
+}

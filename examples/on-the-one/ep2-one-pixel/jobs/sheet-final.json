@@ -1,0 +1,38 @@
+{
+  "tool": "image.contact-sheet",
+  "input": {
+    "images": [
+      "job:job_01a1b2f1074e703bab17249601feae8c/frame-0000.000.png",
+      "job:job_01a1b2f1074e703bab17249601feae8c/frame-0003.000.png",
+      "job:job_01a1b2f1074e703bab17249601feae8c/frame-0004.400.png",
+      "job:job_01a1b2f1074e703bab17249601feae8c/frame-0008.600.png",
+      "job:job_01a1b2f1074e703bab17249601feae8c/frame-0010.200.png",
+      "job:job_01a1b2f1074e703bab17249601feae8c/frame-0011.900.png",
+      "job:job_01a1b2f1074e703bab17249601feae8c/frame-0012.400.png",
+      "job:job_01a1b2f1074e703bab17249601feae8c/frame-0014.000.png",
+      "job:job_01a1b2f1074e703bab17249601feae8c/frame-0018.500.png",
+      "job:job_01a1b2f1074e703bab17249601feae8c/frame-0021.000.png",
+      "job:job_01a1b2f1074e703bab17249601feae8c/frame-0022.400.png",
+      "job:job_01a1b2f1074e703bab17249601feae8c/frame-0025.400.png"
+    ],
+    "columns": 4,
+    "cell_width": 280,
+    "labels": [
+      "t0.0",
+      "t3.0",
+      "t4.4",
+      "t8.6",
+      "t10.2",
+      "t11.9",
+      "t12.4",
+      "t14.0",
+      "t18.5",
+      "t21.0",
+      "t22.4",
+      "t25.4"
+    ],
+    "gap_px": 4,
+    "background": "0x333333",
+    "format": "png"
+  }
+}

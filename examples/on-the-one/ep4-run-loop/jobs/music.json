@@ -1,0 +1,14 @@
+{
+  "tool": "music.render",
+  "input": {
+    "file": "episodes/ep4-run-loop/song.strudel",
+    "markers": { "LOOP2": 2, "LOOP3": 4, "LOOP4": 6, "DROP": 8, "FREE": 9 },
+    "seconds": 29.2,
+    "tail_s": 1.2,
+    "sample_rate": 48000,
+    "format": "wav",
+    "max_polyphony": 4096,
+    "seed": 0,
+    "analyze": true
+  }
+}

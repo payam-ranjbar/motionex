@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 # motionex: bare motion-graphics tools for AI agents in one image.
-# Base images are pinned by digest (contavex convention). To update one:
+# Base images are pinned by digest. To update one:
 #   docker buildx imagetools inspect <image:tag>   (take the top-level Digest), then rebuild and run the docker tests.
 ARG NODE_IMAGE=node:24-bookworm-slim@sha256:01d566e8d94d8c619591d78652babfccd3c6992a3dffa9ed5ab39e11cf6c70e9
 ARG FFMPEG_IMAGE=mwader/static-ffmpeg:7.1.1@sha256:11a44711684c0b9f754c047dcd64235b8b52deab251bd0e0a86f22faa160749c

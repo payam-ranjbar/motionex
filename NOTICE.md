@@ -11,6 +11,6 @@ motionex is licensed AGPL-3.0-or-later because it includes the AGPL Mucavex/Stru
 | Piper voice joe | CC0 training data | |
 | ffmpeg (static build with libx264) | GPL | |
 | Chromium headless shell / Playwright | BSD / Apache-2.0 | |
-| GSAP 3.15 | GSAP Standard "no charge" licence (Webflow) | optional browser library; its licence restricts use in tools that compete with Webflow's visual builder; this is a private, local service |
+| GSAP 3.15 | GSAP Standard "no charge" licence (Webflow) | optional browser library; installed from npm, not committed here; its licence restricts use in tools that compete with Webflow's visual builder |
 | Ajv | MIT | |
 | ElevenLabs (optional provider) | ElevenLabs terms | free tier is non-commercial and needs attribution |

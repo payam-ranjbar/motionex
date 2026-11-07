@@ -1,0 +1,3 @@
+{ "tool": "audio.levels",
+  "input": { "input": "job:job_01a1b2dedb9c74fbbf6359f5e38404c5/music.wav",
+             "grid": { "bpm": 128, "per": "bar", "offset_s": 0 } } }

@@ -1,0 +1,68 @@
+// ON THE ONE - EP1 KICKDRUM KAIJU - hard techno, 132 bpm, 14 bars of 4/4
+// one Strudel cycle = one bar = 1.81818 s. Structure is bar 1..14:
+//   1     hook: bare 909 kick, huge
+//   2-3   offbeat open hats + sub rumble
+//   4-5   claps on 2 and 4, acid line enters
+//   6     BUILD: kick on 1+2 only, white-noise riser, snare roll
+//   7     DROP (cycle 6): full kick, sub, supersaw stab, crash
+//   8-11  rave groove
+//   12-13 groove with the percussion open
+//   14    endcard: final kick + crash
+setcpm(132/4)
+
+// --- section markers, rewritten by music.render {markers:{...}}; 0-based cycles
+let DROP = 6;   // bar 7  (range 6..6, the gate length below is fixed to 14)
+let BUILD = 5;  // bar 6
+const N = 14;
+
+// A one-value-per-cycle on/off mask: 1 between cycle a and cycle b, else 0.
+// cat() = one argument per cycle (sequence() would be one step per cycle, i.e. 14 gates inside every bar).
+// Built from an array instead of a mini-notation string: inside Strudel a string literal IS mini-notation,
+// so a lone "<" or a plain " " does not parse.
+const gate = (a, b) => cat(...Array.from({ length: N }, (_, i) => (i >= a && i < b ? 1 : 0)));
+
+// --- 1 kick -----------------------------------------------------------------
+$: s("bd*4").bank("RolandTR909").gain(1.05).mask(gate(0, BUILD))
+$: s("bd bd ~ ~").bank("RolandTR909").gain(1.05).mask(gate(BUILD, DROP))
+$: s("bd*4").bank("RolandTR909").gain(1.3).mask(gate(DROP, N))
+
+// --- 2 sub rumble under the dark part --------------------------------------
+$: s("brown").lpf(120).gain(0.3).mask(gate(0, DROP))
+
+// --- 3 hats ----------------------------------------------------------------
+$: s("~ oh ~ oh").bank("RolandTR909").gain(0.85).hpf(200).pan("0.5 -0.5").mask(gate(1, N))
+$: s("hh*8").bank("RolandTR909").gain(0.4).hpf(250).pan("0.5 -0.5").mask(gate(DROP, N))
+
+// --- 4 claps on 2 and 4 ----------------------------------------------------
+$: s("~ cp ~ cp").bank("RolandTR909").gain(0.6).hpf(180).room(0.15).mask(gate(3, N))
+
+// --- 5 acid line -----------------------------------------------------------
+$: note("c2 c2 eb2 c2 g1 bb1 c2 eb2")
+   .s("sawtooth")
+   .lpf(sine.range(300, 2200).slow(4))
+   .lpq(8)
+   .hpf(90)
+   .gain(0.55)
+   .pan("0.6 -0.6")
+   .mask(gate(3, N))
+
+// --- 6 build bar -----------------------------------------------------------
+$: s("white").hpf(sine.range(300, 9000).slow(1)).gain(0.32).mask(gate(BUILD, DROP))
+$: s("sd*8").bank("RolandTR909").gain(saw.range(0.15, 0.8).slow(1)).mask(gate(BUILD, DROP))
+$: s("cr").bank("RolandTR909").gain(0.5).mask(gate(BUILD, DROP))
+
+// --- 7 drop ----------------------------------------------------------------
+$: s("cr").bank("RolandTR909").gain(0.85).mask(gate(DROP, DROP + 1))
+$: note("<c3 eb3 g3 bb3>").s("supersaw").attack(0.004).decay(0.45).sustain(0).release(0.12)
+   .hpf(250).gain(0.32).room(0.25).pan("0.4 -0.4").mask(gate(DROP, N))
+$: note("c2").s("sine").gain(0.55).mask(gate(DROP, N))
+
+// --- 8 rave percussion -----------------------------------------------------
+$: s("lt ~ mt ~").bank("RolandTR909").gain(0.3).mask(gate(DROP, N - 1))
+$: s("~ rd ~ rd").bank("RolandTR909").gain(0.32).hpf(400).pan("0.6 -0.6").mask(gate(8, N))
+
+// --- 9 final crash for the endcard ----------------------------------------
+$: s("cr").bank("RolandTR909").gain(0.9).mask(gate(N - 1, N))
+
+// --- master trim: the bed must not clip (music.render does not limit) ------
+all(x => x.postgain(0.25))

@@ -1,4 +1,4 @@
-// Time specs used by timeline.layout, audio.mix and others. Ported from motion-studio build.mjs:317-332.
+// Time specs used by timeline.layout, audio.mix and others.
 // Grammar:  number (seconds) | "<scene>" | "<scene>+1.5" | "<scene>-0.2" | "<scene>#<cue>" | "<scene>#<cue>.end[+-s]"
 //           | "bar:<n>[+-s]" | "beat:<n>[+-s]"   (bar/beat need timeline.grid {bpm, beats_per_bar, offset_s}; n is 0-based)
 // Scene ids match ^[\w-]+$ and MAY contain "-": if the whole string is a scene id it is that scene; otherwise a trailing

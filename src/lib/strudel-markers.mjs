@@ -1,6 +1,6 @@
 // Named section markers in Strudel songs. A marker is a top-level assignment whose value is a plain
 // number, e.g. `let DROP = 34;`. Builds rewrite these lines to move scenes instead of regenerating the
-// song (see Mucavex sandbox/songs/shapur/notes.md).
+// song.
 import { ToolError } from './errors.mjs';
 
 // `<indent><let|const|var> NAME = <value>; <rest-of-line>`; the value may not cross a `;` or a newline.

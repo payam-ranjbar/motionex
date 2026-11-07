@@ -1,6 +1,6 @@
 # Copy to compose.local.yaml (git-ignored) and start with:
 #   docker compose -f compose.yaml -f compose.local.yaml up --build -d
-# Secrets are FILES, never environment variables or tracked content (contavex convention).
+# Secrets are FILES, never environment variables or tracked content.
 services:
   motionex:
     secrets:

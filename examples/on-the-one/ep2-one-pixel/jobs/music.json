@@ -1,0 +1,16 @@
+{
+  "tool": "music.render",
+  "input": {
+    "file": "episodes/ep2-one-pixel/song.strudel",
+    "bpm": 122,
+    "beats_per_cycle": 4,
+    "seconds": 25.58,
+    "tail_s": 1.6,
+    "format": "wav",
+    "sample_rate": 48000,
+    "max_polyphony": 4096,
+    "seed": 0,
+    "analyze": true,
+    "name": "music.wav"
+  }
+}

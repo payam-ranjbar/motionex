@@ -1,0 +1,33 @@
+{
+ "tool": "media.ffmpeg",
+ "input": {
+  "args": [
+   "-i",
+   "{in:v}",
+   "-i",
+   "{in:a}",
+   "-map",
+   "0:v:0",
+   "-map",
+   "1:a:0",
+   "-c:v",
+   "copy",
+   "-c:a",
+   "aac",
+   "-b:a",
+   "192k",
+   "-ar",
+   "48000",
+   "-movflags",
+   "+faststart",
+   "{out:final.mp4}"
+  ],
+  "inputs": {
+   "v": "job:job_01a1b2f616a27438841f923ac183ac13/ep3.mp4",
+   "a": "job:job_01a1b2f8b6cf719586550328b0cabbae/mix.wav"
+  },
+  "outputs": [
+   "final.mp4"
+  ]
+ }
+}

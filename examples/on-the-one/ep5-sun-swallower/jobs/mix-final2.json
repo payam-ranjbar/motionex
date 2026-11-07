@@ -1,0 +1,157 @@
+{
+ "tool": "audio.mix",
+ "input": {
+  "duration_s": 27.0968,
+  "tracks": [
+   {
+    "name": "dialogue",
+    "fx": "volume=6dB,acompressor=threshold=0.2:ratio=4:attack=3:release=120,alimiter=limit=0.6:level=false",
+    "clips": [
+     {
+      "src": "job:job_01a1b2e70d1975b4991746c0d231d5cc/long-ago.wav",
+      "at": 1.95,
+      "fade_in_s": 0.02,
+      "fade_out_s": 0.06
+     },
+     {
+      "src": "job:job_01a1b2e70d1975b4991746c0d231d5cc/swallowed.wav",
+      "at": 5.86,
+      "fade_in_s": 0.02,
+      "fade_out_s": 0.06
+     },
+     {
+      "src": "job:job_01a1b2e70d1975b4991746c0d231d5cc/climbed.wav",
+      "at": 9.68,
+      "fade_in_s": 0.02,
+      "fade_out_s": 0.08
+     },
+     {
+      "src": "job:job_01a1b2e70d1975b4991746c0d231d5cc/played.wav",
+      "at": 12.45,
+      "fade_in_s": 0.02,
+      "fade_out_s": 0.06
+     },
+     {
+      "src": "job:job_01a1b2e70d1975b4991746c0d231d5cc/thats-why.wav",
+      "at": 17.52,
+      "fade_in_s": 0.02,
+      "fade_out_s": 0.06
+     },
+     {
+      "src": "job:job_01a1b2e70d1975b4991746c0d231d5cc/we-dance.wav",
+      "at": 19.42,
+      "fade_in_s": 0.02,
+      "fade_out_s": 0.08
+     }
+    ]
+   },
+   {
+    "name": "music",
+    "clips": [
+     {
+      "src": "job:job_01a1b2e5ea3e744295fe211935508d2f/music.wav",
+      "at": 0,
+      "duration_s": 13.5484,
+      "gain_db": -10.5,
+      "fade_out_s": 0.02
+     },
+     {
+      "src": "job:job_01a1b2e5ea3e744295fe211935508d2f/music.wav",
+      "at": 13.5484,
+      "offset_s": 13.5484,
+      "gain_db": -8,
+      "fade_out_s": 0.6
+     }
+    ]
+   },
+   {
+    "name": "sfx",
+    "gain_db": -8,
+    "clips": [
+     {
+      "src": "job:job_01a1b2e2fe4e70e3a3191b24e54e2765/shimmer.wav",
+      "at": 0.1,
+      "gain_db": -4
+     },
+     {
+      "src": "job:job_01a1b2e2fe4e70e3a3191b24e54e2765/shimmer.wav",
+      "at": 2.0,
+      "gain_db": -6
+     },
+     {
+      "src": "job:job_01a1b2e2fe4e70e3a3191b24e54e2765/swish.wav",
+      "at": 5.9,
+      "gain_db": 2
+     },
+     {
+      "src": "job:job_01a1b2e2fe4e70e3a3191b24e54e2765/shimmer.wav",
+      "at": 6.0,
+      "gain_db": -6
+     },
+     {
+      "src": "job:job_01a1b2e2fe4e70e3a3191b24e54e2765/shimmer.wav",
+      "at": 9.85,
+      "gain_db": -6
+     },
+     {
+      "src": "job:job_01a1b2e2fe4e70e3a3191b24e54e2765/ring.wav",
+      "at": 11.613
+     },
+     {
+      "src": "job:job_01a1b2e2fe4e70e3a3191b24e54e2765/ring.wav",
+      "at": 12.097
+     },
+     {
+      "src": "job:job_01a1b2e2fe4e70e3a3191b24e54e2765/ring.wav",
+      "at": 12.581
+     },
+     {
+      "src": "job:job_01a1b2e2fe4e70e3a3191b24e54e2765/ring.wav",
+      "at": 13.065
+     },
+     {
+      "src": "job:job_01a1b2e2fe4e70e3a3191b24e54e2765/thump.wav",
+      "at": 13.548,
+      "gain_db": 6
+     },
+     {
+      "src": "job:job_01a1b2e2fe4e70e3a3191b24e54e2765/burst.wav",
+      "at": 13.56,
+      "gain_db": 4
+     },
+     {
+      "src": "job:job_01a1b2e2fe4e70e3a3191b24e54e2765/swish.wav",
+      "at": 14.6,
+      "gain_db": 1
+     },
+     {
+      "src": "job:job_01a1b2e2fe4e70e3a3191b24e54e2765/shimmer.wav",
+      "at": 17.55,
+      "gain_db": -6
+     },
+     {
+      "src": "job:job_01a1b2e2fe4e70e3a3191b24e54e2765/shimmer.wav",
+      "at": 19.45,
+      "gain_db": -4
+     },
+     {
+      "src": "job:job_01a1b2e2fe4e70e3a3191b24e54e2765/shimmer.wav",
+      "at": 23.39,
+      "gain_db": -2
+     }
+    ]
+   }
+  ],
+  "master": {
+   "loudness": {
+    "target_lufs": -14,
+    "true_peak_db": -1.5,
+    "method": "gain+limiter"
+   }
+  },
+  "output": {
+   "stems": true,
+   "preview_mp3": true
+  }
+ }
+}

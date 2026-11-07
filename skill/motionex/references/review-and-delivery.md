@@ -20,7 +20,7 @@
 
 Every preset is JSON (`presets/encode/*.json`) and every field can be overridden in the request. "MB" means 10^6 bytes.
 
-**Upload limits upstream**: a publishing service may cap uploads lower than the platform does; contavex, for example, accepts 64 MiB. Ask where the file is going before you choose a preset.
+**Upload limits upstream**: a publishing service may cap uploads lower than the platform does (one we used accepts 64 MiB). Ask where the file is going before you choose a preset.
 
 ## Covers and posters
 Pull candidate stills (`picture.stills`, or `media.frames` from the master) at 2–3 moments, put them on a contact sheet, and let the human choose. Title cards usually make the best cover.

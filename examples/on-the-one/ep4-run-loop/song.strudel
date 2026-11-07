@@ -1,0 +1,56 @@
+// ON THE ONE - EP4 RUN LOOP
+// 128 bpm, 4 beats per cycle, so ONE CYCLE = ONE BAR = 1.875 s.
+// cycle 0 = bar 1 = t 0.000 s.  The DROP is cycle 8 = bar 9 = t 15.000 s.
+// Markers (0-based cycle numbers) - works for DROP in 8..10:
+//   LOOP2 = hats in (bar 3)   LOOP3 = bass in (bar 5)
+//   LOOP4 = arp + riser in (bar 7)
+//   DROP  = break-out (bar 9) FREE = dance-run (bar 10)
+// 15 cycles = 28.125 s, the length of the episode.
+
+setcpm(128/4)
+
+let LOOP2 = 2;
+let LOOP3 = 4;
+let LOOP4 = 6;
+let DROP  = 8;
+let FREE  = 9;
+
+const span = (a, b) => cat(...Array(a).fill(0), ...Array(b - a).fill(1), ...Array(64).fill(0))
+const from = (a) => span(a, a + 64)
+
+// one master gain for the whole song: it peaks at -1 dBFS, nothing clipped.
+const G = .68
+
+// ---- the loop: 909 kick. The LAST BEAT of bar 8 is missing: the loop breaks.
+// Bars 7-8 pull the kick back (.5, .35) so the drop at bar 9 hits hard.
+$: s("<bd*4 bd*4 bd*4 bd*4 bd*4 bd*4 bd*4 [bd bd bd ~]>")
+  .bank("RolandTR909")
+  .gain("<.544 .530 .544 .544 .558 .544 .34 .224 .544 .544 .544 .544 .544 .558 .590 .544>")
+  // ^ 16 cycles: <.8 .78 .8 .8 .82 .8 .5 .33> * G  then full for the free bars, a lift on the final downbeat
+
+// ---- L2: 8th hats (the first layer added)
+$: s("hh*8").bank("RolandTR909").gain(.26*G).pan(sine.range(-.25,.25).slow(4)).mask(from(LOOP2))
+$: s("~ oh ~ oh").bank("RolandTR909").gain(.2*G).mask(from(LOOP2))
+
+// ---- L3: rolling bass (only until the drop, where the drive bass takes over)
+$: note("a1 [~ a1] a1 [~ a2]").s("sawtooth").lpf(400).lpq(4).gain(.5*G).mask(span(LOOP3, DROP))
+// ---- drop bass: root pulses on the chord roots
+$: note("<a1 d2 f1 g1>").s("sawtooth").lpf(650).lpq(6).gain(.48*G).mask(from(DROP))
+
+// ---- L4: A-minor arp
+$: n("0 3 7 10").scale("A:minor").s("square").gain(.15*G).lpf(2200)
+  .fast(2).pan(sine.range(-.5,.5).slow(2)).mask(from(LOOP4))
+
+// ---- L4: the riser across bar 8, one sweep from dark to bright
+$: s("white*8").hpf(250).lpf(saw.range(400,6500)).gain(saw.range(.03,.42*G)).mask(span(7,8))
+
+// ---- DROP: crash, 16th hats, clap on 2 and 4, chord stabs
+// crash on the drop, on the endcard in, and on the final downbeat (the register snap)
+$: s("cr").bank("RolandTR909").gain(.34*G).mask("<0 0 0 0 0 0 0 0 1 0 0 0 0 1 1>")
+$: s("hh*16").bank("RolandTR909").gain(.15*G).mask(from(DROP))
+$: s("~ cp ~ cp").bank("RolandTR909").gain(.5*G).mask(from(DROP))
+$: chord("<Am7 Dm7 F^7 G7>").voicing().s("sawtooth").lpf(1500).lpq(6).gain(.17*G)
+  .fast(2).room(.2).mask(from(DROP))
+
+// ---- FREE: percussion answers, then everything rings to the end
+$: s("~ lt ~ [lt lt]").bank("RolandTR909").gain(.2*G).mask(from(FREE))

@@ -1,0 +1,26 @@
+{
+ "tool": "image.contact-sheet",
+ "input": {
+  "images": [
+   "job:job_01a1b2f0e9fd721882d3bb5397cda057/frame-0000.050.png",
+   "job:job_01a1b2f0e9fd721882d3bb5397cda057/frame-0000.600.png",
+   "job:job_01a1b2f0e9fd721882d3bb5397cda057/frame-0002.600.png",
+   "job:job_01a1b2f0e9fd721882d3bb5397cda057/frame-0005.000.png",
+   "job:job_01a1b2f0e9fd721882d3bb5397cda057/frame-0007.200.png",
+   "job:job_01a1b2f0e9fd721882d3bb5397cda057/frame-0009.000.png",
+   "job:job_01a1b2f0e9fd721882d3bb5397cda057/frame-0011.000.png",
+   "job:job_01a1b2f0e9fd721882d3bb5397cda057/frame-0013.550.png",
+   "job:job_01a1b2f0e9fd721882d3bb5397cda057/frame-0013.900.png",
+   "job:job_01a1b2f0e9fd721882d3bb5397cda057/frame-0016.000.png",
+   "job:job_01a1b2f0e9fd721882d3bb5397cda057/frame-0019.000.png",
+   "job:job_01a1b2f0e9fd721882d3bb5397cda057/frame-0021.000.png",
+   "job:job_01a1b2f0e9fd721882d3bb5397cda057/frame-0023.400.png",
+   "job:job_01a1b2f0e9fd721882d3bb5397cda057/frame-0025.400.png"
+  ],
+  "columns": 5,
+  "cell_width": 300,
+  "gap_px": 6,
+  "labels": "auto",
+  "format": "jpeg"
+ }
+}

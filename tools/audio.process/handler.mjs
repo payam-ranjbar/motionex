@@ -1,7 +1,6 @@
 // audio.process: run a list of processing steps, in order, over one or more audio files (usually voice takes).
 // Steps that need real DSP go through ffmpeg (filterAudio): the agent's own filter chain, pitch, tempo.
 // gain, silence trim, pause tightening, fades and peak normalisation are plain JS on the planar Float32 buffers.
-// Ported from motion-studio build.mjs:195-242 (tightenPauses, 16-bit mono) and videos/shapur/video.json (voice fx).
 import path from 'node:path';
 import { decodeAudio, filterAudio, writeAudio } from '../../src/lib/audio-io.mjs';
 import { ToolError } from '../../src/lib/errors.mjs';
@@ -63,7 +62,6 @@ function scaleInPlace(audio, g) {
 
 /**
  * Cut leading and/or trailing audio whose peak (over all channels) is below threshold_db, keeping keep_s of it.
- * Ported from motion-studio build.mjs:191-194 (silenceremove start_periods=1, start_silence=0.03).
  * @param {import('../../src/lib/wav.mjs').Audio} audio mutated copy
  * @param {{threshold_db: number, start: boolean, end: boolean, keep_s: number}} o
  */
@@ -94,7 +92,7 @@ function trimSilence(audio, { threshold_db, start, end, keep_s }) {
 /**
  * Shorten every INTERNAL pause longer than max_pause_s to exactly max_pause_s, keeping half on each side of the
  * cut. Leading and trailing silence are left alone. A window is silent when its peak (over all channels) is below
- * threshold_db. Ported from motion-studio build.mjs:195-242, which does the same on 16-bit mono PCM.
+ * threshold_db.
  * @param {import('../../src/lib/wav.mjs').Audio} audio
  * @param {{max_pause_s: number, threshold_db: number, window_ms: number}} o
  * @returns {import('../../src/lib/wav.mjs').Audio}

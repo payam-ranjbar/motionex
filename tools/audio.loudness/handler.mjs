@@ -1,5 +1,5 @@
 // audio.loudness: EBU R128 summary from ffmpeg's ebur128 filter, plus an optional K-weighted
-// momentary/short-term curve computed in JS. Ported from motion-studio videos/shapur/mix.mjs:56-61 and sfx-tools/loud.mjs.
+// momentary/short-term curve computed in JS.
 // This is the TEMPLATE tool: copy its shape (tool.json + handler.mjs) for new node tools.
 import { decodeAudio } from '../../src/lib/audio-io.mjs';
 import { ebur128, loudnessCurve } from '../../src/lib/loudness.mjs';

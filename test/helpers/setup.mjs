@@ -1,5 +1,5 @@
 // Loaded with `node --import ./test/helpers/setup.mjs --test ...` (scripts/test.mjs does this).
-// A process warning raised from motionex's own code fails the run (contavex: filterwarnings=error).
+// A process warning raised from motionex's own code fails the run.
 // Warnings from dependencies (node_modules, vendor/) and ExperimentalWarning are ignored.
 process.on('warning', (w) => {
   if (w.name === 'ExperimentalWarning') return;

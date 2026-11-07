@@ -1,0 +1,9 @@
+{"tool": "voice.piper", "input": {"voice": "en_US-norman-medium", "length_scale": 1.15, "noise_scale": 0.6, "noise_w_scale": 0.7,
+  "lines": [
+    {"name": "long-ago",  "text": "Long ago, the sun still had a heartbeat."},
+    {"name": "swallowed", "text": "Then the serpent swallowed it."},
+    {"name": "climbed",   "text": "So a drummer climbed the dark, and"},
+    {"name": "played",    "text": "played."},
+    {"name": "thats-why", "text": "And that's why,"},
+    {"name": "we-dance",  "text": "we dance on the one."}
+  ]}}

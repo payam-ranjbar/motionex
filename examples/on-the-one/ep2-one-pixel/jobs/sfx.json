@@ -1,0 +1,8 @@
+{
+  "tool": "sfx.synth",
+  "input": {
+    "recipe": "episodes/ep2-one-pixel/sfx/ep2-sfx.mjs",
+    "seed": 7,
+    "format": "wav24"
+  }
+}

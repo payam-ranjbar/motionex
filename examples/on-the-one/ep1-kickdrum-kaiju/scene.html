@@ -1,0 +1,1179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ON THE ONE - EP1 KICKDRUM KAIJU</title>
+<style>
+  html,body{margin:0;padding:0;background:#000;overflow:hidden}
+  canvas{display:block}
+</style>
+</head>
+<body>
+<canvas id="stage" width="1080" height="1920"></canvas>
+<script>
+(() => {
+'use strict';
+
+// =====================================================================================
+// ON THE ONE - EP1 "KICKDRUM KAIJU"
+// neon vector wireframe city, a creature built of speaker cones, 132 bpm hard techno.
+// Every frame is a pure function of t: no Math.random, no Date, no timers.
+// =====================================================================================
+
+const W = 1080, H = 1920;
+const BPM = 132, BPB = 4;
+const SPB = 60 / BPM;          // 0.45454545 s per beat
+const BAR = SPB * BPB;         // 1.8181818  s per bar
+const NBARS = 14;
+const DUR = NBARS * BAR;       // 25.45454 s
+const barT = (n) => (n - 1) * BAR;      // 1-based bar number -> seconds
+const DROP_T = barT(7);                 // 10.90909 = the drop
+const FPS = 30;
+
+const cv = document.getElementById('stage');
+const ctx = cv.getContext('2d');
+
+// ---------------------------------------------------------------- math helpers
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
+const lerp = (a, b, x) => a + (b - a) * x;
+const smooth = (a, b, x) => { const u = clamp((x - a) / (b - a), 0, 1); return u * u * (3 - 2 * u); };
+const hash = (i, j) => { const h = Math.sin(i * 127.1 + j * 311.7) * 43758.5453; return h - Math.floor(h); };
+const TAU = Math.PI * 2;
+
+// ---------------------------------------------------------------- the grid
+const beatF = (t) => t / SPB;
+const kickPhase = (t) => { const b = t / SPB; return b - Math.floor(b); };
+const kickIndex = (t) => Math.round(t / SPB);
+/** decaying pulse that restarts on every kick */
+const kickPulse = (t, k = 9) => Math.exp(-kickPhase(t) * k);
+/** decaying pulse on every 8th-note hat */
+const hatPulse = (t, k = 15) => { const p = (t / (SPB / 2)) % 1; return Math.exp(-p * k); };
+/** overall energy 0..1: low in the intro, 1 after the drop */
+const energy = (t) => 0.18 + 0.82 * smooth(DROP_T, DROP_T + 0.35, t);
+/** 0 = crouched, 1 = standing tall */
+const standAt = (t) =>
+  0.40 + 0.16 * smooth(barT(6) + 1.0, DROP_T, t) + 0.44 * smooth(DROP_T, DROP_T + 0.6, t);
+/** the camera shake amplitude of the current shot multiplier, restarts on every kick */
+const shakeAt = (t, amp) => amp * (0.55 * kickPulse(t, 11) + 0.45 * Math.exp(-kickPhase(t) * 3.2));
+
+// =====================================================================================
+// camera + perspective projection
+// =====================================================================================
+function makeCam(eye, look, fovDeg, roll) {
+  let fx = look.x - eye.x, fy = look.y - eye.y, fz = look.z - eye.z;
+  const fl = Math.hypot(fx, fy, fz) || 1;
+  fx /= fl; fy /= fl; fz /= fl;
+  // right = up x forward   (up = world +y, forward = view direction)
+  let rx = 1 * fz - 0 * fy, ry = 0 * fx - 0 * fz, rz = 0 * fy - 1 * fx; // (0,1,0) x f
+  const rl = Math.hypot(rx, ry, rz) || 1;
+  rx /= rl; ry /= rl; rz /= rl;
+  // up = forward x right
+  const ux = fy * rz - fz * ry, uy = fz * rx - fx * rz, uz = fx * ry - fy * rx;
+  return {
+    ex: eye.x, ey: eye.y, ez: eye.z,
+    fx, fy, fz, rx, ry, rz, ux, uy, uz,
+    fpx: (H / 2) / Math.tan((fovDeg * Math.PI) / 360),
+    cr: Math.cos(roll), sr: Math.sin(roll),
+  };
+}
+const NEAR = 0.42;
+/** camera-space depth of a world point */
+const cdz = (cam, x, y, z) => (x - cam.ex) * cam.fx + (y - cam.ey) * cam.fy + (z - cam.ez) * cam.fz;
+function toScreen(cam, x, y, z) {
+  const dx = x - cam.ex, dy = y - cam.ey, dz = z - cam.ez;
+  const vz = dx * cam.fx + dy * cam.fy + dz * cam.fz;
+  if (vz <= NEAR) return null;
+  const vx = dx * cam.rx + dy * cam.ry + dz * cam.rz;
+  const vy = dx * cam.ux + dy * cam.uy + dz * cam.uz;
+  let sx = W / 2 + (cam.fpx * vx) / vz;
+  let sy = H / 2 - (cam.fpx * vy) / vz;
+  if (cam.sr) {
+    const ox = sx - W / 2, oy = sy - H / 2;
+    sx = W / 2 + ox * cam.cr - oy * cam.sr;
+    sy = H / 2 + ox * cam.sr + oy * cam.cr;
+  }
+  return { x: sx, y: sy, z: vz };
+}
+/** project a segment, clipping it at the near plane. returns [pa, pb, z] or null */
+function seg(cam, ax, ay, az, bx, by, bz) {
+  let za = cdz(cam, ax, ay, az), zb = cdz(cam, bx, by, bz);
+  if (za <= NEAR && zb <= NEAR) return null;
+  if (za <= NEAR) {
+    const k = (NEAR - za) / (zb - za);
+    ax = lerp(ax, bx, k); ay = lerp(ay, by, k); az = lerp(az, bz, k); za = NEAR;
+  } else if (zb <= NEAR) {
+    const k = (NEAR - zb) / (za - zb);
+    bx = lerp(bx, ax, k); by = lerp(by, ay, k); bz = lerp(bz, az, k); zb = NEAR;
+  }
+  const pa = toScreen(cam, ax, ay, az), pb = toScreen(cam, bx, by, bz);
+  if (!pa || !pb) return null;
+  return [pa, pb, (za + zb) * 0.5];
+}
+function line(cam, a, b) { seg(cam, a.x, a.y, a.z, b.x, b.y, b.z); }
+function strokeSeg(cam, a, b) {
+  const s = line(cam, a, b);
+  if (!s) return;
+  ctx.beginPath();
+  ctx.moveTo(s[0].x, s[0].y);
+  ctx.lineTo(s[1].x, s[1].y);
+  ctx.stroke();
+}
+/** world circle -> world points. plane 'y' = horizontal, 'z' = facing +z, 'x' = facing +x */
+function circle(cx, cy, cz, r, segs, plane) {
+  const out = [];
+  for (let i = 0; i < segs; i++) {
+    const a = (i / segs) * TAU;
+    const c = Math.cos(a) * r, s2 = Math.sin(a) * r;
+    if (plane === 'y') out.push({ x: cx + c, y: cy, z: cz + s2 });
+    else if (plane === 'z') out.push({ x: cx + c, y: cy + s2, z: cz });
+    else out.push({ x: cx, y: cy + c, z: cz + s2 });
+  }
+  return out;
+}
+function poly(cam, pts, close) {
+  const sp = [];
+  for (const p of pts) { const q = toScreen(cam, p.x, p.y, p.z); if (!q) return null; sp.push(q); }
+  ctx.beginPath();
+  ctx.moveTo(sp[0].x, sp[0].y);
+  for (let i = 1; i < sp.length; i++) ctx.lineTo(sp[i].x, sp[i].y);
+  if (close) ctx.closePath();
+  return sp;
+}
+const polyStroke = (cam, pts, close) => { if (poly(cam, pts, close)) ctx.stroke(); };
+/** stroke a world polyline, breaking it where points fall behind the near plane */
+function softStroke(cam, pts) {
+  ctx.beginPath();
+  let started = false;
+  for (const p of pts) {
+    const q = toScreen(cam, p.x, p.y, p.z);
+    if (!q) { started = false; continue; }
+    if (!started) { ctx.moveTo(q.x, q.y); started = true; } else ctx.lineTo(q.x, q.y);
+  }
+  ctx.stroke();
+}
+
+// =====================================================================================
+// the world
+// =====================================================================================
+const CITY = (() => {
+  const r = mulberry32(20261106);
+  const out = [];
+  const ring = (n, r0, r1, h0, h1, hx, phase, hue) => {
+    for (let i = 0; i < n; i++) {
+      const a = phase + (i / n) * TAU + (r() - 0.5) * (TAU / n) * 0.35;
+      const rad = lerp(r0, r1, r());
+      out.push({
+        x: Math.cos(a) * rad, z: Math.sin(a) * rad,
+        w: hx + r() * 1.5, d: hx + r() * 1.5,
+        h: lerp(h0, h1, r() ** 0.75),
+        hue, seed: Math.floor(r() * 99999),
+      });
+    }
+  };
+  // hero ring: the near towers that frame the kaiju (a dense near skyline)
+  ring(14, 19.5, 24, 20, 32, 2.0, 0.25, 0);
+  // mid ring
+  ring(26, 34, 50, 13, 28, 2.9, 0.12, 1);
+  // far ring
+  ring(38, 54, 78, 8, 22, 3.6, 0.05, 0);
+  // the horizon: a distant skyline so the city does not end in a void
+  ring(26, 86, 112, 10, 26, 4.2, 0.0, 1);
+  return out;
+})();
+const HERO = CITY.slice(0, 14);
+// the tower the cable tendril wraps: the hero tower nearest the tendril shot's look point
+const WRAP = HERO.reduce((best, b) =>
+  (Math.hypot(b.x + 13.5, b.z - 6.5) < Math.hypot(best.x + 13.5, best.z - 6.5) ? b : best), HERO[0]);
+
+// windows: a deterministic lit pattern on every face
+function windowsOf(b) {
+  if (b.win) return b.win;
+  const r = mulberry32(b.seed + 7);
+  const cols = 3, rows = Math.max(3, Math.min(6, Math.floor(b.h / 3.4)));
+  const list = [];
+  for (let f = 0; f < 4; f++) {
+    for (let c = 0; c < cols; c++) {
+      for (let q = 0; q < rows; q++) {
+        list.push({ f, c, q, lit: r() });
+      }
+    }
+  }
+  b.win = list;
+  b.winRows = rows; b.winCols = cols;
+  return list;
+}
+
+// =====================================================================================
+// shots
+// =====================================================================================
+const SHOTS = [
+  // one shot per cut; every cut lands on a bar line
+  { bar: 1, bars: 1, kind: 'slam' },
+  { bar: 2, bars: 2, kind: 'tiltup' },
+  { bar: 4, bars: 1, kind: 'eye' },
+  { bar: 5, bars: 1, kind: 'tendril' },
+  { bar: 6, bars: 1, kind: 'build' },
+  { bar: 7, bars: 1, kind: 'reveal' },
+  { bar: 8, bars: 1, kind: 'rave' },
+  { bar: 9, bars: 1, kind: 'feet' },
+  { bar: 10, bars: 1, kind: 'face' },
+  { bar: 11, bars: 1, kind: 'skyline' },
+  { bar: 12, bars: 2, kind: 'roofs' },
+  { bar: 14, bars: 1, kind: 'endcard' },
+];
+const shotStart = (s) => barT(s.bar);
+function currentShot(t) {
+  for (let i = SHOTS.length - 1; i >= 0; i--) if (t >= shotStart(SHOTS[i]) - 1e-9) return SHOTS[i];
+  return SHOTS[0];
+}
+const lerpP = (a, b, u) => ({ x: lerp(a.x, b.x, u), y: lerp(a.y, b.y, u), z: lerp(a.z, b.z, u) });
+function shotCamera(s, u, t) {
+  const P = (x, y, z) => ({ x, y, z });
+  const roll = (v) => v;
+  switch (s.kind) {
+    case 'slam':
+      return makeCam(P(6.0 + 1.3 * u, 2.2 + 0.7 * u, 11.6 - 1.2 * u),
+                      P(5.5, 1.9 + 0.5 * u, 0.6), 62, roll(0.04 * Math.sin(u * 6)));
+    case 'tiltup':
+      return makeCam(P(-6.4 - 1.2 * u, 1.4 + 0.4 * u, 11.5 - 1.5 * u),
+                      P(1.2 + 1.2 * u, 4.5 + 12 * u ** 1.2, -2 - 2 * u), 58, roll(0.025 * u));
+    case 'eye':
+      return makeCam(P(0, 27.6 + 0.5 * u, 13.5 - 2.5 * u), P(0, 28.9, 0.4), 46, roll(0.02 * u));
+    case 'tendril':
+      return makeCam(P(9 - 1.5 * u, 12.5 + 0.8 * u, 20.5 - 2 * u), P(-12, 20, 6), 60, roll(-0.03 * u));
+    case 'build':
+      return makeCam(P(11 + 4 * u, 6.4 + 4.4 * u, 21 + 8 * u), P(0, 7.5 + 5 * u, 0), 58, roll(0.11 * u * u));
+    case 'reveal':
+      return makeCam(P(0, 11 + 6 * u, 24 + 10 * u), P(0, 9 + 15 * u, 0), 60, 0);
+    case 'rave': {
+      const a = 0.10 + 0.34 * u;
+      const R = lerp(40, 35, u);
+      return makeCam(P(Math.sin(a) * R, lerp(11, 14.5, u), Math.cos(a) * R), P(0, 14, 0), 57, 0);
+    }
+    case 'feet':
+      return makeCam(P(-9.5 + 0.8 * u, 3.0 + 0.3 * u, 13.8 - 0.6 * u), P(0.6, 3.6 + 0.4 * u, 0), 60, roll(0.025));
+    case 'face':
+      return makeCam(P(1.6 - 1.6 * u, 30.2 + 0.9 * u, 24 - 4.5 * u), P(0, 33.5, 1.0), 46, roll(0.02 * u));
+    case 'skyline':
+      return makeCam(P(25 - 7 * u, 38, 29 - 4 * u), P(0, 21, 0), 60, roll(-0.02 * u));
+    case 'roofs':
+      return makeCam(P(27 - 4 * u, 31 + 1.5 * u, 28 - 3 * u), P(9, 20.5, 7), 58, roll(0.03 * Math.sin(u * 3)));
+    case 'endcard':
+      return makeCam(P(0, 15.5, 33 + 8 * u), P(0, 13.5 + 1.5 * u, 0), 55, 0);
+    default:
+      return makeCam(P(0, 12, 34), P(0, 12, 0), 58, 0);
+  }
+}
+/** camera for a time, including the shake */
+function cameraAt(t) {
+  const s = currentShot(t);
+  const u = clamp((t - shotStart(s)) / (s.bars * BAR), 0, 1);
+  const cam = shotCamera(s, u, t);
+  const amp = { slam: 0.62, tiltup: 0.16, eye: 0.10, tendril: 0.16, build: 0.26,
+                reveal: 0.95, rave: 0.40, feet: 0.62, face: 0.34, skyline: 0.30, roofs: 0.26, endcard: 0.30 }[s.kind] || 0.3;
+  const sh = shakeAt(t, amp);
+  // jitter in camera space: sideways + up, plus a tiny roll
+  const j1 = Math.sin(t * 71.3) + 0.6 * Math.sin(t * 137.1);
+  const j2 = Math.cos(t * 61.7) + 0.6 * Math.sin(t * 111.3);
+  const roll = cam.cr !== 1 ? Math.atan2(cam.sr, cam.cr) : 0;
+  return makeCam(
+    { x: cam.ex + (cam.rx * j1 + cam.ux * j2 * 0.8) * sh,
+      y: cam.ey + (cam.ry * j1 + cam.uy * j2 * 0.8) * sh,
+      z: cam.ez + (cam.rz * j1 + cam.uz * j2 * 0.8) * sh },
+    { x: cam.ex + cam.fx * 10 + cam.rx * j2 * sh * 0.5,
+      y: cam.ey + cam.fy * 10 + cam.uy * j2 * sh * 0.5,
+      z: cam.ez + cam.fz * 10 + cam.rz * j2 * sh * 0.5 },
+    (Math.atan(cam.fpx / (H / 2)) * 360) / Math.PI,
+    roll + j1 * sh * 0.006,
+  );
+}
+
+// safety: no building may sit on a camera eye (sampled over the whole episode)
+const CAM_SAMPLES = (() => {
+  const out = [];
+  for (let i = 0; i * (1 / 20) < DUR; i++) {
+    const t = i / 20;
+    const s = currentShot(t);
+    const u = clamp((t - shotStart(s)) / (s.bars * BAR), 0, 1);
+    out.push(shotCamera(s, u, t));
+  }
+  return out;
+})();
+const SOLID = CITY.filter((b) => !CAM_SAMPLES.some((c) =>
+  Math.abs(c.ex - b.x) < b.w + 3.4 && Math.abs(c.ez - b.z) < b.d + 3.4 && c.ey < b.h + 3.4));
+
+// =====================================================================================
+// kaiju (built from speaker cones)
+// =====================================================================================
+function strokeLoop(cam, pts) {
+  if (!poly(cam, pts, true)) return false;
+  ctx.stroke();
+  return true;
+}
+/** A truncated cone between two world points: dark body, bright rim, cone rings and ribs. */
+function coneFill(cam, bot, top, r0, r1, segs, edge, alpha, rings) {
+  const c0 = circle(bot.x, bot.y, bot.z, r0, segs, 'y');
+  const c1 = circle(top.x, top.y, top.z, r1, segs, 'y');
+  const s0 = c0.map((p) => toScreen(cam, p.x, p.y, p.z));
+  const s1 = c1.map((p) => toScreen(cam, p.x, p.y, p.z));
+  if (s0.some((q) => !q) || s1.some((q) => !q)) return;
+  // the body: a dark, near-opaque mass so the city does not read through it
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = 'rgba(9,10,24,0.965)';
+  for (let i = 0; i < segs; i++) {
+    const j = (i + 1) % segs;
+    ctx.beginPath();
+    ctx.moveTo(s0[i].x, s0[i].y);
+    ctx.lineTo(s1[i].x, s1[i].y);
+    ctx.lineTo(s1[j].x, s1[j].y);
+    ctx.lineTo(s0[j].x, s0[j].y);
+    ctx.closePath();
+    ctx.fill();
+  }
+  // the speaker mouth (the top rim) is the bright edge
+  ctx.strokeStyle = edge;
+  ctx.globalAlpha = alpha;
+  ctx.lineWidth = 3;
+  strokeLoop(cam, c1);
+  ctx.globalAlpha = alpha * 0.45;
+  ctx.lineWidth = 1.6;
+  strokeLoop(cam, c0);
+  // concentric cone rings
+  if (rings) {
+    for (let k = 1; k <= 2; k++) {
+      const f = k * 0.3;
+      ctx.globalAlpha = alpha * (0.34 - k * 0.1);
+      ctx.lineWidth = 1.4;
+      strokeLoop(cam, circle(lerp(bot.x, top.x, f), lerp(bot.y, top.y, f), lerp(bot.z, top.z, f),
+        lerp(r0, r1, f) * 0.86, segs, 'y'));
+    }
+  }
+  // ribs
+  ctx.globalAlpha = alpha * 0.5;
+  ctx.lineWidth = 1.2;
+  for (let i = 0; i < segs; i += 3) {
+    ctx.beginPath();
+    ctx.moveTo(s0[i].x, s0[i].y);
+    ctx.lineTo(s1[i].x, s1[i].y);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  ctx.lineWidth = 2;
+}
+
+const KA = { // kaiju state for the current frame
+  stand: 0.4, hip: 11, top: 24, liftL: 0, liftR: 0, lean: 0, bow: 0, eyeOpen: 0, pump: 0,
+};
+// proportions (standing): feet 0, hip 17, shoulders 30, head 30..37.5
+function kaijuState(t) {
+  const kp = kickPulse(t, 10);
+  const e = energy(t);
+  const st = standAt(t);
+  const hip = lerp(7.4, 17.0, st);
+  const top = hip + lerp(9.5, 20.5, st);
+  // stomping: a foot lands on every kick, alternating right / left
+  let liftL = 0, liftR = 0;
+  const stomping = smooth(DROP_T - 0.05, DROP_T + 0.35, t);
+  if (stomping > 0) {
+    const bi = kickIndex(t);
+    const ph = kickPhase(t);
+    const rise = Math.max(0, Math.sin(Math.PI * clamp((ph - 0.5) / 0.5, 0, 1)));
+    const h = 6.2 * rise * stomping;
+    if (bi % 2 === 0) liftR = h; else liftL = h;
+  }
+  KA.stand = st; KA.hip = hip; KA.top = top;
+  KA.liftL = liftL; KA.liftR = liftR;
+  KA.lean = (liftR - liftL) * 0.28;
+  KA.bow = 0.6 * smooth(barT(13) + 0.9, barT(13) + 1.9, t);
+  KA.eyeOpen = clamp(0.12 + 0.55 * smooth(barT(3) + 0.2, barT(4) + 0.6, t) + e * 0.45, 0, 1);
+  KA.pump = kp * (0.45 + 0.55 * e);
+  return KA;
+}
+function drawKaiju(cam, t, alpha) {
+  const st = kaijuState(t);
+  const neon = smooth(DROP_T, DROP_T + 0.55, t);
+  const edA = '#2ae8ff';
+  const edB = neon > 0.45 ? '#ff3ce6' : '#8f7dff';
+  const pump = st.pump;
+  const hipX = st.lean, hipZ = 0;
+  // ---------------------------------------------------------------- legs + feet
+  for (const side of [-1, 1]) {
+    const lift = side < 0 ? st.liftL : st.liftR;
+    const fx = side * 6.4;
+    const ed = side < 0 ? edA : edB;
+    coneFill(cam, { x: fx, y: lift + 1.4, z: 0.3 }, { x: hipX + side * 2.0, y: st.hip + 0.4, z: hipZ },
+      4.0, 3.3, 10, ed, alpha, false);
+    // the foot: a slab with three toe cones
+    const fy = lift + 1.4, fz = 0.3, fs = 3.4;
+    const lo = [{ x: fx - fs, y: fy, z: fz - fs * 1.5 }, { x: fx + fs, y: fy, z: fz - fs * 1.5 },
+                { x: fx + fs, y: fy, z: fz + fs * 1.4 }, { x: fx - fs, y: fy, z: fz + fs * 1.4 }];
+    const hi = lo.map((p) => ({ x: p.x, y: fy + 1.8, z: p.z }));
+    ctx.globalAlpha = alpha;
+    const sp = hi.map((p) => toScreen(cam, p.x, p.y, p.z));
+    if (sp.every((q) => q)) {
+      ctx.beginPath();
+      ctx.moveTo(sp[0].x, sp[0].y);
+      for (let i = 1; i < 4; i++) ctx.lineTo(sp[i].x, sp[i].y);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(12,13,28,0.97)';
+      ctx.fill();
+    }
+    ctx.strokeStyle = ed;
+    ctx.lineWidth = 2.6;
+    polyStroke(cam, hi, true);
+    ctx.globalAlpha = alpha * 0.5;
+    ctx.lineWidth = 1.4;
+    polyStroke(cam, lo, true);
+    for (let i = 0; i < 4; i++) strokeSeg(cam, lo[i], hi[i]);
+    // toes
+    for (let i = 0; i < 3; i++) {
+      const tx = fx - fs * 0.65 + i * fs * 0.65;
+      const tz = fz - fs * 1.5 - 1.6;
+      coneFill(cam, { x: tx, y: fy + 0.2, z: tz + 1.2 }, { x: tx, y: fy + 0.2, z: tz - 0.6 },
+        0.95, 0.55, 7, ed, alpha * 0.85, false);
+    }
+  }
+  // ---------------------------------------------------------------- torso: stacked woofers
+  const segs = 14;
+  const N = 4;
+  for (let i = 0; i < N; i++) {
+    const y0 = lerp(st.hip + 0.6, st.top, i / N);
+    const y1 = lerp(st.hip + 0.6, st.top, (i + 1) / N);
+    const r0 = lerp(8.6, 5.4, i / N) * (1 + 0.10 * pump);
+    const r1 = lerp(8.6, 5.4, (i + 1) / N);
+    const wob = Math.sin(t * 22 + i * 1.3) * 0.1 * pump;
+    coneFill(cam, { x: hipX + wob, y: y0, z: hipZ }, { x: hipX - wob, y: y1, z: hipZ }, r0, r1, segs,
+      i % 2 ? edB : edA, alpha, true);
+  }
+  // ---------------------------------------------------------------- shoulder pods + cable arms
+  const shY = lerp(st.hip, st.top, 0.86);
+  for (const side of [-1, 1]) {
+    const sx = hipX + side * 6.6;
+    coneFill(cam, { x: sx, y: shY - 0.6, z: 0.2 }, { x: sx + side * 1.1, y: shY + 1.9, z: 0.6 },
+      2.0, 2.5, 10, side < 0 ? edA : edB, alpha * 0.95, true);
+    // cables hanging off the pod
+    ctx.strokeStyle = side < 0 ? '#7ef4ff' : '#ff8ce9';
+    ctx.globalAlpha = alpha * 0.8;
+    ctx.lineWidth = 2.2;
+    for (let k = 0; k < 3; k++) {
+      const bx = sx + side * (2.6 + k * 1.2);
+      const by = shY - 4.5 - k * 1.6 + Math.sin(t * 5 + k * 1.9) * 0.45 * (1 + pump);
+      const bz = 0.6 + Math.sin(t * 3 + k) * 1.4;
+      ctx.beginPath();
+      const a0 = toScreen(cam, sx + side * 1.4, shY + 0.6, 0.6);
+      const a1 = toScreen(cam, bx, by, bz);
+      if (a0 && a1) { ctx.moveTo(a0.x, a0.y); ctx.lineTo(a1.x, a1.y); ctx.stroke(); }
+    }
+    ctx.globalAlpha = 1;
+  }
+  // ---------------------------------------------------------------- head: a huge speaker horn
+  const headY = st.top;
+  const tilt = st.bow;
+  const hx = hipX + Math.sin(tilt) * 3.6, hz = -Math.sin(tilt) * 3.0;
+  coneFill(cam, { x: hx, y: headY, z: hz }, { x: hx + Math.sin(tilt) * 1.6, y: headY + 6.2, z: hz - Math.sin(tilt) * 2.2 },
+    5.6, 7.8, 14, edB, alpha, true);
+  // the face plate, facing +z: a big woofer with two eyes
+  const faceZ = 5.0;
+  const faceC = { x: hx, y: headY + 3.6, z: hz + faceZ };
+  const faceR = 5.4;
+  const fp = circle(faceC.x, faceC.y, faceC.z, faceR, 16, 'z');
+  const spf = fp.map((p) => toScreen(cam, p.x, p.y, p.z));
+  if (spf.every((q) => q)) {
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    ctx.moveTo(spf[0].x, spf[0].y);
+    for (let i = 1; i < spf.length; i++) ctx.lineTo(spf[i].x, spf[i].y);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(7,8,18,0.98)';
+    ctx.fill();
+    ctx.strokeStyle = edB;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    // grille
+    ctx.globalAlpha = alpha * 0.35;
+    ctx.lineWidth = 1.2;
+    for (let k = 1; k <= 2; k++) {
+      polyStroke(cam, circle(faceC.x, faceC.y, faceC.z + 0.04, faceR * (1 - k * 0.24), 16, 'z'), true);
+    }
+    ctx.globalAlpha = alpha * 0.22;
+    strokeSeg(cam, { x: faceC.x - faceR, y: faceC.y, z: faceC.z + 0.05 },
+      { x: faceC.x + faceR, y: faceC.y, z: faceC.z + 0.05 });
+    ctx.globalAlpha = 1;
+  }
+  // the eyes: two big woofers that open on the build and burn at the drop
+  const open = st.eyeOpen;
+  const glow = 0.35 + 0.65 * open + 0.25 * pump;
+  for (const side of [-1, 1]) {
+    const ex = faceC.x + side * 2.5, ey = faceC.y + 0.7;
+    const er = 0.45 + open * 1.35;
+    for (let k = 3; k >= 1; k--) {
+      const rr = er * (1 + k * 0.85);
+      ctx.globalAlpha = clamp(alpha * glow * 0.07 * (4 - k), 0, 1);
+      ctx.fillStyle = '#ff2bd6';
+      poly(cam, circle(ex, ey, faceC.z + 0.06, rr, 12, 'z'), true);
+      ctx.fill();
+    }
+    ctx.globalAlpha = clamp(alpha * glow, 0, 1);
+    ctx.strokeStyle = '#ff6ce8';
+    ctx.lineWidth = 3.4;
+    polyStroke(cam, circle(ex, ey, faceC.z + 0.07, er, 14, 'z'), true);
+    ctx.globalAlpha = clamp(alpha * glow, 0, 1);
+    poly(cam, circle(ex, ey, faceC.z + 0.08, er * 0.62, 12, 'z'), true);
+    ctx.fillStyle = '#ff9ff0';
+    ctx.fill();
+    poly(cam, circle(ex, ey, faceC.z + 0.09, er * 0.26, 10, 'z'), true);
+    ctx.fillStyle = '#fff4fd';
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  ctx.lineWidth = 2;
+}
+
+// =====================================================================================
+// city painting
+// =====================================================================================
+const NEON_A = '#00e5ff', NEON_B = '#ff2bd6', NEON_C = '#7cf6ff';
+function drawCity(cam, t) {
+  const neon = smooth(DROP_T, DROP_T + 0.5, t);         // magenta floods in at the drop
+  const eq = smooth(DROP_T + 0.2, DROP_T + 1.4, t);      // windows become an equaliser
+  const kp = kickPulse(t, 9);
+  const bi = kickIndex(t);
+  const list = [];
+  for (const b of SOLID) {
+    const dx = b.x - cam.ex, dz = b.z - cam.ez, dy = b.y0 === undefined ? 0 : b.y0;
+    const dist = Math.hypot(dx, dz, dy - cam.ey);
+    if (dist > 135) continue;
+    const dc = toScreen(cam, b.x, b.h * 0.5, b.z);
+    if (dc && (dc.x < -W * 0.6 || dc.x > W * 1.6)) continue;
+    list.push({ b, dist });
+  }
+  list.sort((p, q) => q.dist - p.dist);
+  for (const it of list) {
+    const b = it.b;
+    const near = it.dist < 55;
+    const half = { w: b.w, d: b.d };
+    const tone = mulberry32(b.seed)();
+    const edge = neon > 0.5 ? (tone < 0.5 ? '#ff3de0' : '#26f0ff') : (tone < 0.5 ? '#26d9f2' : '#8ef2ff');
+    const depthA = clamp(1 - (it.dist - 20) / 130, 0.16, 1);
+    const al = depthA * (0.55 + 0.45 * energy(t));
+    // the 8 corners
+    const y0 = 0, y1 = b.h;
+    const xA = b.x - half.w, xB = b.x + half.w, zA = b.z - half.d, zB = b.z + half.d;
+    const C = [
+      { x: xA, y: y0, z: zA }, { x: xB, y: y0, z: zA }, { x: xB, y: y0, z: zB }, { x: xA, y: y0, z: zB },
+      { x: xA, y: y1, z: zA }, { x: xB, y: y1, z: zA }, { x: xB, y: y1, z: zB }, { x: xA, y: y1, z: zB },
+    ];
+    // fill the front-facing side walls only (cheap solid look)
+    const faces = [
+      { i: [0, 1, 5, 4], n: { x: 0, y: 0, z: -1 }, c: { x: b.x, y: b.h / 2, z: zA }, f: 2 },
+      { i: [2, 3, 7, 6], n: { x: 0, y: 0, z: 1 }, c: { x: b.x, y: b.h / 2, z: zB }, f: 3 },
+      { i: [1, 2, 6, 5], n: { x: 1, y: 0, z: 0 }, c: { x: xB, y: b.h / 2, z: b.z }, f: 1 },
+      { i: [3, 0, 4, 7], n: { x: -1, y: 0, z: 0 }, c: { x: xA, y: b.h / 2, z: b.z }, f: 0 },
+    ];
+    if (near) {
+      for (const f of faces) {
+        const vx = cam.ex - f.c.x, vy = cam.ey - f.c.y, vz = cam.ez - f.c.z;
+        if (f.n.x * vx + f.n.y * vy + f.n.z * vz <= 0) continue;
+        const pts = [C[f.i[0]], C[f.i[1]], C[f.i[2]], C[f.i[3]]];
+        const sp = pts.map((p) => toScreen(cam, p.x, p.y, p.z));
+        if (sp.some((q) => !q)) continue;
+        ctx.beginPath();
+        ctx.moveTo(sp[0].x, sp[0].y);
+        for (let i = 1; i < 4; i++) ctx.lineTo(sp[i].x, sp[i].y);
+        ctx.closePath();
+        ctx.fillStyle = neon > 0.02
+          ? `rgba(${Math.round(6 + 16 * neon)},4,${Math.round(16 + 24 * neon)},0.9)`
+          : 'rgba(5,8,18,0.9)';
+        ctx.fill();
+        // ---- windows on this face (only where they can be seen)
+        if (it.dist > 52) continue;
+        const win = windowsOf(b);
+        const A = C[f.i[0]], B = C[f.i[1]];
+        const base = A, edgeV = { x: B.x - A.x, y: 0, z: B.z - A.z };
+        const upV = { x: 0, y: b.h, z: 0 };
+        const cols = b.winCols, rows = b.winRows;
+        const colIdx = f.f;
+        // equaliser: brightness of a column depends on the beat + the column index
+        const bandE = (ci) => {
+          const ph = kickPhase(t);
+          const s1 = Math.sin(ph * Math.PI * 2 + ci * 0.9) * 0.5 + 0.5;
+          const s2 = Math.exp(-ph * (2 + (ci % 4))) ;
+          const jam = 0.35 + 0.65 * s1;
+          return clamp(0.25 + jam * s2 * 1.3, 0, 1);
+        };
+        const kp2 = kp;
+        for (const w of win) {
+          if (w.f !== f.f) continue;
+          const u0 = (w.c + 0.2) / cols, u1 = (w.c + 0.8) / cols;
+          const v0 = (w.q + 0.28) / rows, v1 = (w.q + 0.72) / rows;
+          const litBase = 0.05 + 0.2 * w.lit;
+          const flick = hash(w.c * 7 + w.q * 13 + colIdx * 31, bi) ;
+          const eqv = eq * bandE(w.c + colIdx * 3) * (0.25 + 0.75 * w.lit);
+          const br = clamp(litBase + 0.34 * kp2 * flick + eqv * 0.8, 0, 1);
+          if (br < 0.1) continue;
+          const p = [];
+          for (const [uu, vv] of [[u0, v0], [u1, v0], [u1, v1], [u0, v1]]) {
+            p.push({ x: base.x + edgeV.x * uu, y: base.y + upV.y * vv, z: base.z + edgeV.z * uu });
+          }
+          const sp2 = p.map((pp) => toScreen(cam, pp.x, pp.y, pp.z));
+          if (sp2.some((z) => !z)) continue;
+          ctx.beginPath();
+          ctx.moveTo(sp2[0].x, sp2[0].y);
+          for (let i = 1; i < 4; i++) ctx.lineTo(sp2[i].x, sp2[i].y);
+          ctx.closePath();
+          const warm = w.lit > 0.88 ? 1 : 0;
+          ctx.fillStyle = warm
+            ? `rgba(255,${Math.round(170 + 50 * br)},${Math.round(120 + 70 * br)},${0.12 + 0.4 * br})`
+            : `rgba(${Math.round(90 * br + 40)},${Math.round(200 * br + 45)},255,${0.1 + 0.5 * br})`;
+          ctx.fill();
+        }
+      }
+    }
+    // ---- neon edges: verticals + top ring
+    ctx.strokeStyle = edge;
+    ctx.lineWidth = near ? 2.4 : 1.5;
+    ctx.globalAlpha = al * (0.7 + 0.3 * kickPulse(t, 7));
+    for (let i = 0; i < 4; i++) strokeSeg(cam, C[i], C[i + 4]);
+    polyStroke(cam, [C[4], C[5], C[6], C[7]], true);
+    if (near) {
+      ctx.globalAlpha = al * 0.35;
+      strokeSeg(cam, C[0], C[1]); strokeSeg(cam, C[2], C[3]);
+      strokeSeg(cam, C[1], C[2]); strokeSeg(cam, C[3], C[0]);
+      // floor bands: a lit ring every few metres
+      ctx.globalAlpha = al * (0.12 + 0.2 * kp);
+      const bands = Math.min(6, Math.floor(b.h / 4));
+      for (let i = 1; i <= bands; i++) {
+        const y = (i * b.h) / (bands + 1);
+        polyStroke(cam, [
+          { x: xA, y, z: zA }, { x: xB, y, z: zA }, { x: xB, y, z: zB }, { x: xA, y, z: zB },
+        ], true);
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+  ctx.lineWidth = 2;
+}
+
+// ---------------------------------------------------------------- ground
+function drawGround(cam, t) {
+  const neon = smooth(DROP_T, DROP_T + 0.5, t);
+  const warp = smooth(barT(6) + 0.4, DROP_T + 0.3, t);   // the floor lifts in the build
+  const kp = kickPulse(t, 9);
+  const R = 90, step = 9;
+  ctx.lineWidth = 1.6;
+  for (let k = -10; k <= 10; k++) {
+    const x = k * step;
+    const wave = (z) => {
+      const d = Math.hypot(x, z);
+      const fall = clamp(1 - d / 70, 0, 1);
+      return warp * 7 * Math.sin(d * 0.16 - t * 3.4) * fall * fall;
+    };
+    const N = 26;
+    let prev = null;
+    const amp = clamp(1 - Math.abs(k) / 11, 0, 1);
+    ctx.strokeStyle = neon > 0.5 ? '#ff4be0' : '#1fc6ea';
+    ctx.globalAlpha = (0.16 + 0.62 * amp) * (0.5 + 0.5 * energy(t)) * (0.7 + 0.3 * kp);
+    ctx.beginPath();
+    for (let i = 0; i <= N; i++) {
+      const z = -R + (2 * R * i) / N;
+      const p = toScreen(cam, x, 0.02 + wave(z), z);
+      if (!p) { prev = null; continue; }
+      if (!prev) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+      prev = p;
+    }
+    ctx.stroke();
+    // horizontal lines
+    const z = k * step;
+    ctx.beginPath();
+    prev = null;
+    for (let i = 0; i <= N; i++) {
+      const x2 = -R + (2 * R * i) / N;
+      const d = Math.hypot(x2, z);
+      const fall = clamp(1 - d / 70, 0, 1);
+      const y = 0.02 + warp * 7 * Math.sin(d * 0.16 - t * 3.4) * fall * fall;
+      const p = toScreen(cam, x2, y, z);
+      if (!p) { prev = null; continue; }
+      if (!prev) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+      prev = p;
+    }
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ---------------------------------------------------------------- dust rings + shockwave
+function drawRings(cam, t) {
+  const list = [];
+  // the opening slam: pre-aged so frame 1 already shows the ring expanding
+  list.push({ at: -0.2, x: 6.4, z: 0.3, s: 1.5 });
+  // every kick after the drop, from the stomping foot
+  for (let bi = 28; bi * SPB < t + 0.1; bi++) {
+    const tt = bi * SPB;
+    if (tt > barT(14) - 0.05) break;
+    const side = bi % 2 === 0 ? 1 : -1;
+    list.push({ at: tt, x: side * 4.7, z: 0.6, s: 1.0 });
+  }
+  for (const r of list) {
+    const age = t - r.at;
+    if (age < 0 || age > 1.5) continue;
+    const a = Math.exp(-age * 3.4) * 0.85;
+    for (let k = 0; k < 3; k++) {
+      const rad = (k * 0.34 + 0.15 + age * (17 + k * 5)) * r.s;
+      const ring = circle(r.x, 0.22, r.z, rad, 34, 'y');
+      ctx.strokeStyle = k === 0 ? '#dffcff' : k === 1 ? '#25e6ff' : '#ff2bd6';
+      ctx.globalAlpha = a * (1 - k * 0.3);
+      ctx.lineWidth = 3.5 - k;
+      softStroke(cam, ring);
+    }
+    ctx.globalAlpha = 1;
+  }
+  // the drop shockwave: a vertical ring around the kaiju
+  const da = t - DROP_T;
+  if (da >= 0 && da < 1.6) {
+    const rad = 6 + da * 34;
+    const a = Math.exp(-da * 2.3);
+    for (let k = 0; k < 4; k++) {
+      const rr = rad + k * 1.6;
+      ctx.strokeStyle = k % 2 ? '#fff' : '#ff2bd6';
+      ctx.globalAlpha = a * (0.8 - k * 0.16);
+      ctx.lineWidth = 5 - k;
+      softStroke(cam, circle(0, 14, 0, rr, 30, 'z'));
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+// =====================================================================================
+// words: slam in on a kick, crack, and shatter into shards
+// =====================================================================================
+const COND = 0.84;
+const fontStr = (size) => `900 ${size}px "DejaVu Sans Condensed","Liberation Sans Narrow","Arial Narrow","DejaVu Sans","Liberation Sans",Arial,sans-serif`;
+function buildWord(w) {
+  const pad = 26;
+  const maxW = W * 0.9;
+  let size = W * (w.maxSize || 0.2);
+  let widest = 0;
+  for (let pass = 0; pass < 30; pass++) {
+    ctx.font = fontStr(size);
+    widest = 0;
+    for (const ln of w.lines) widest = Math.max(widest, ctx.measureText(ln).width * COND);
+    if (widest <= maxW) break;
+    size *= maxW / widest;
+  }
+  const lh = size * 1.0;
+  const blockH = lh * w.lines.length;
+  const innerW = Math.ceil(widest) + pad * 2;
+  const cw = innerW, ch = Math.ceil(blockH + size * 0.34) + pad * 2;
+  const oc = document.createElement('canvas');
+  oc.width = cw; oc.height = ch;
+  const g = oc.getContext('2d');
+  g.font = fontStr(size);
+  g.textAlign = 'left';
+  g.textBaseline = 'middle';
+  g.lineJoin = 'round';
+  g.save();
+  g.scale(COND, 1);
+  const rawW = innerW / COND;
+  w.lines.forEach((ln, i) => {
+    const tw = g.measureText(ln).width;
+    const x = (rawW - tw) / 2;
+    const y = (ch / 2) + (i - (w.lines.length - 1) / 2) * lh;
+    g.lineWidth = size * 0.13;
+    g.strokeStyle = w.edge;
+    g.strokeText(ln, x, y);
+    g.lineWidth = size * 0.045;
+    g.strokeStyle = '#ffffff';
+    g.strokeText(ln, x, y);
+    g.fillStyle = '#ffffff';
+    g.fillText(ln, x, y);
+  });
+  g.restore();
+  // chromatic copies (source-in keeps the letters' alpha and replaces their colour)
+  const tint = (col) => {
+    const c = document.createElement('canvas');
+    c.width = cw; c.height = ch;
+    const gg = c.getContext('2d');
+    gg.drawImage(oc, 0, 0);
+    gg.globalCompositeOperation = 'source-in';
+    gg.fillStyle = col;
+    gg.fillRect(0, 0, cw, ch);
+    return c;
+  };
+  w.cv = oc;
+  w.red = tint('#ff0033');
+  w.cyan = tint('#00e5ff');
+  // shards
+  const cols = w.lines.length > 1 ? 5 : 4, rows = w.lines.length > 1 ? 2 : 2;
+  const shards = [];
+  for (let cy2 = 0; cy2 < rows; cy2++) {
+    for (let cxi = 0; cxi < cols; cxi++) {
+      const sx = Math.floor((cxi * cw) / cols), ex = Math.floor(((cxi + 1) * cw) / cols);
+      const sy = Math.floor((cy2 * ch) / rows), ey = Math.floor(((cy2 + 1) * ch) / rows);
+      const ccx = (sx + ex) / 2 - cw / 2, ccy = (sy + ey) / 2 - ch / 2;
+      const rr = mulberry32(w.seed + cy2 * 101 + cxi * 17);
+      const dir = { x: ccx, y: ccy - 1 };
+      const dl = Math.hypot(dir.x, dir.y) || 1;
+      shards.push({
+        sx, sy, sw: ex - sx, sh: ey - sy, cx: ccx, cy: ccy,
+        vx: (dir.x / dl) * (240 + rr() * 420), vy: (dir.y / dl) * (200 + rr() * 300) - 130,
+        rot: (rr() - 0.5) * 7, jit: rr() * TAU, jr: (rr() - 0.5) * 0.25,
+      });
+    }
+  }
+  w.shards = shards;
+  return w;
+}
+const WORDS = [
+  { id: 'w1', lines: ['YOU HEAR IT'], t0: -0.10, tFly: SPB, y: 0.30, maxSize: 0.235, edge: '#00e5ff', seed: 11, over: 0.9, slamDur: 0.05, crackBoost: 4 },
+  { id: 'w2', lines: ['BEFORE YOU', 'SEE IT'], t0: barT(2), tFly: barT(2) + SPB, y: 0.60, maxSize: 0.20, edge: '#33f0ff', seed: 23 },
+  { id: 'w3', lines: ['DO NOT RUN'], t0: barT(4), tFly: barT(4) + SPB, y: 0.30, maxSize: 0.20, edge: '#00e5ff', seed: 31 },
+  { id: 'w4', lines: ['IT FEELS', 'YOUR PULSE'], t0: barT(5), tFly: barT(5) + SPB, y: 0.63, maxSize: 0.185, edge: '#33f0ff', seed: 41 },
+  { id: 'w5', lines: ['BRACE'], t0: barT(6), tFly: barT(6) + SPB, y: 0.32, maxSize: 0.26, edge: '#ff2bd6', seed: 53 },
+  { id: 'w6', lines: ['3'], t0: barT(6) + SPB, tFly: barT(6) + 2 * SPB, y: 0.55, maxSize: 0.3, edge: '#ff2bd6', seed: 61 },
+  { id: 'w7', lines: ['2'], t0: barT(6) + 2 * SPB, tFly: barT(6) + 3 * SPB, y: 0.55, maxSize: 0.3, edge: '#ff2bd6', seed: 67 },
+  { id: 'w8', lines: ['1'], t0: barT(6) + 3 * SPB, tFly: DROP_T, y: 0.55, maxSize: 0.3, edge: '#ff2bd6', seed: 71 },
+  { id: 'w9', lines: ['NOT ATTACKING'], t0: barT(9), tFly: barT(9) + SPB, y: 0.27, maxSize: 0.19, edge: '#00e5ff', seed: 83 },
+  { id: 'w10', lines: ["IT'S DANCING"], t0: barT(10), tFly: barT(10) + SPB, y: 0.70, maxSize: 0.26, edge: '#ff2bd6', seed: 97 },
+  { id: 'e1', lines: ['ON THE ONE'], t0: barT(14), tFly: null, y: 0.40, maxSize: 0.24, edge: '#ff2bd6', seed: 101, over: 0.7 },
+  { id: 'e2', lines: ['EP 1 \u00b7 KICKDRUM KAIJU'], t0: barT(14) + SPB * 0.5, tFly: null, y: 0.52, maxSize: 0.075, edge: '#00e5ff', seed: 103, over: 0.5 },
+];
+const wordEnd = (w) => (w.tFly == null ? DUR + 1 : w.tFly + 0.62);
+
+function drawWord(cam, w, t) {
+  const a = t - w.t0;
+  if (a < -0.001 || t > wordEnd(w)) return;
+  const slam = w.slamDur === undefined ? 0.1 : w.slamDur;
+  const over = w.over === undefined ? 1.5 : w.over;
+  let scale;
+  if (a < slam) scale = 1 + over * Math.pow(1 - a / slam, 2.4);
+  else scale = 1 + 0.07 * Math.exp(-(a - slam) * 13) * Math.sin((a - slam) * 44);
+  const hp = hatPulse(t, 13);
+  const kp = kickPulse(t, 10);
+  const fly = w.tFly == null ? 0 : t - w.tFly;
+  let alpha = 1;
+  if (fly > 0) alpha = clamp(1 - fly / 0.6, 0, 1);
+  if (alpha <= 0.01) return;
+  const split = a < slam ? lerp(30, 3.5, a / slam) : 3 + 5 * hp + 2 * kp;
+  const cx = W / 2 + (w.shakeX || 0), cy = H * w.y;
+  const iw = w.cv.width, ih = w.cv.height;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(scale, scale);
+  ctx.globalAlpha = alpha;
+  ctx.globalCompositeOperation = 'source-over';
+  for (const s of w.shards) {
+    let ox = s.cx, oy = s.cy, rot = 0;
+    if (fly > 0) {
+      const e = fly;
+      ox += s.vx * e;
+      oy += s.vy * e + 620 * e * e;
+      rot = s.rot * e;
+    } else {
+      const j = hp * 2.2 + kp * 3.2;
+      ox += Math.sin(s.jit + t * 37) * j;
+      oy += Math.cos(s.jit * 1.7 + t * 41) * j;
+      rot = s.jr * j * 0.6;
+      // the word that is already cracked on frame 1: the shards have popped apart
+      if (w.crackBoost) {
+        const bo = w.crackBoost * clamp(a / 0.09, 0, 1);
+        ox += Math.sign(s.cx) * bo * 0.8;
+        oy += Math.sign(s.cy) * bo * 0.5;
+        rot += Math.sign(s.cx) * bo * 0.0012;
+      }
+    }
+    const dw = s.sw, dh = s.sh;
+    const dx = ox - dw / 2, dy = oy - dh / 2;
+    ctx.save();
+    if (rot) { ctx.translate(ox, oy); ctx.rotate(rot); ctx.translate(-ox, -oy); }
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = alpha * 0.9;
+    ctx.drawImage(w.cyan, s.sx, s.sy, s.sw, s.sh, dx + split, dy, dw, dh);
+    ctx.drawImage(w.red, s.sx, s.sy, s.sw, s.sh, dx - split, dy, dw, dh);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = alpha;
+    ctx.drawImage(w.cv, s.sx, s.sy, s.sw, s.sh, dx, dy, dw, dh);
+    // crack seams right after the impact
+    if (a > slam * 0.55 && a < slam + 0.26 && s.sw > 6) {
+      ctx.globalAlpha = alpha * 0.4 * clamp(1 - Math.max(0, a - slam) / 0.26, 0, 1);
+      ctx.strokeStyle = '#dffcff';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(dx, dy, dw, dh);
+    }
+    ctx.restore();
+  }
+  // the impact flash on the slam frame
+  if (a < 0.04) {
+    ctx.globalAlpha = clamp(1 - a / 0.04, 0, 1) * 0.16;
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(-iw / 2, -ih / 2, iw, ih);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
+// ---------------------------------------------------------------- overlays
+const scanPat = (() => {
+  const c = document.createElement('canvas');
+  c.width = 3; c.height = 3;
+  const g = c.getContext('2d');
+  g.fillStyle = 'rgba(0,0,0,0.5)';
+  g.fillRect(0, 0, 3, 1);
+  return ctx.createPattern(c, 'repeat');
+})();
+let bgGrad = null, vigGrad = null, rollGrad = null, hazeGrad = null;
+function ensureGrads() {
+  if (bgGrad) return;
+  bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+  bgGrad.addColorStop(0, '#01030a');
+  bgGrad.addColorStop(0.45, '#05060f');
+  bgGrad.addColorStop(0.75, '#0a0718');
+  bgGrad.addColorStop(1, '#02030a');
+  vigGrad = ctx.createRadialGradient(W / 2, H * 0.5, H * 0.18, W / 2, H * 0.5, H * 0.72);
+  vigGrad.addColorStop(0, 'rgba(0,0,0,0)');
+  vigGrad.addColorStop(1, 'rgba(0,0,0,0.82)');
+  rollGrad = ctx.createLinearGradient(0, 0, 0, 220);
+  rollGrad.addColorStop(0, 'rgba(255,255,255,0)');
+  rollGrad.addColorStop(0.5, 'rgba(190,240,255,0.055)');
+  rollGrad.addColorStop(1, 'rgba(255,255,255,0)');
+  hazeGrad = ctx.createRadialGradient(W / 2, H * 0.58, 40, W / 2, H * 0.58, H * 0.6);
+  hazeGrad.addColorStop(0, 'rgba(60,20,90,0.5)');
+  hazeGrad.addColorStop(1, 'rgba(0,0,0,0)');
+}
+function drawOverlays(t) {
+  const neon = smooth(DROP_T, DROP_T + 0.6, t);
+  ctx.globalAlpha = 0.35 + 0.5 * neon;
+  ctx.fillStyle = hazeGrad;
+  ctx.fillRect(0, 0, W, H);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = vigGrad;
+  ctx.fillRect(0, 0, W, H);
+  // scanlines
+  ctx.globalAlpha = 0.55;
+  ctx.fillStyle = scanPat;
+  ctx.fillRect(0, 0, W, H);
+  ctx.globalAlpha = 1;
+  // CRT roll bar
+  const ry = ((t * 150) % (H + 300)) - 220;
+  ctx.save();
+  ctx.translate(0, ry);
+  ctx.fillStyle = rollGrad;
+  ctx.fillRect(0, 0, W, 220);
+  ctx.restore();
+}
+function drawGlitch(t) {
+  // 4-frame tear on every bar cut, stronger at the drop
+  const cut = Math.floor(t / BAR) * BAR;
+  const since = (t - cut) * FPS;
+  const atDrop = Math.abs(cut - DROP_T) < 1e-6;
+  const n = atDrop ? 7 : 4;
+  if (since > n) return;
+  const seed = Math.floor(cut * 100);
+  const rnd = mulberry32(seed);
+  const slices = atDrop ? 11 : 6;
+  const amp = (atDrop ? 34 : 16) * (1 - since / n);
+  for (let i = 0; i < slices; i++) {
+    const y = Math.floor(rnd() * H);
+    const h = 8 + Math.floor(rnd() * 46);
+    const dx = (rnd() * 2 - 1) * amp;
+    ctx.drawImage(cv, 0, y, W, h, dx, y, W, h);
+  }
+  // a bright tear line and a white flash
+  const fy = Math.floor(rnd() * H);
+  ctx.globalAlpha = 0.16 * (1 - since / n);
+  ctx.fillStyle = '#cfefff';
+  ctx.fillRect(0, fy, W, 3);
+  // a hard white flash only on the drop frame; other cuts get the tear lines alone
+  if (atDrop && since < 1) {
+    ctx.globalAlpha = 0.24 * (1 - since);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, W, H);
+  }
+  ctx.globalAlpha = 1;
+}
+function drawTendril(cam, t) {
+  // a cable from the kaiju's shoulder that wraps the tower
+  const st = kaijuState(t);
+  const shY = lerp(st.hip, st.top, 0.82);
+  const a = { x: 4.6, y: shY - 1.6, z: -1.4 };
+  const b = { x: WRAP.x, y: WRAP.h - 2.6, z: WRAP.z };
+  const pa = toScreen(cam, a.x, a.y, a.z), pb = toScreen(cam, b.x, b.y, b.z);
+  if (!pa || !pb) return;
+  const kp = kickPulse(t, 9);
+  const segs = 16;
+  ctx.strokeStyle = '#ff2bd6';
+  ctx.lineWidth = 4;
+  ctx.globalAlpha = 0.9;
+  ctx.beginPath();
+  for (let i = 0; i <= segs; i++) {
+    const u = i / segs;
+    const wob = Math.sin(u * 9 + t * 4) * 14 * (1 - u) * (0.6 + 0.8 * kp);
+    const x = lerp(pa.x, pb.x, u) + wob * 0.4;
+    const y = lerp(pa.y, pb.y, u) + wob - Math.sin(u * Math.PI) * 22;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.strokeStyle = '#ffd6f5';
+  ctx.lineWidth = 1.4;
+  ctx.stroke();
+  // the coil around the tower, tightening on the kick
+  const tighten = 0.2 + 0.8 * smooth(barT(5) + 0.6, barT(5) + 1.6, t);
+  const mid = toScreen(cam, WRAP.x, WRAP.h - 2.0, WRAP.z);
+  if (mid) {
+    const rx = Math.abs(cam.fpx / mid.z) * (WRAP.w * 1.45) * (1.25 - 0.22 * tighten);
+    const ry2 = rx * 0.3 * (0.4 + cam.fy * 2);
+    for (let i = 0; i < 5; i++) {
+      const yy = mid.y - 26 + i * 13 + Math.sin(t * 6 + i) * 3 * kp;
+      ctx.beginPath();
+      ctx.ellipse(mid.x, yy, rx * 0.5, Math.max(3, ry2 * 0.5), 0, 0, TAU);
+      ctx.globalAlpha = 0.85 - i * 0.1;
+      ctx.strokeStyle = i % 2 ? '#ff2bd6' : '#ff9de8';
+      ctx.lineWidth = 3.4;
+      ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+function drawEmergencyBar(t) {
+  const on = smooth(barT(6) - 0.3, barT(6) + 0.2, t) * (1 - smooth(DROP_T - 0.2, DROP_T, t));
+  if (on < 0.02) return;
+  const y = H * 0.135, h = 84;
+  ctx.globalAlpha = 0.9 * on;
+  ctx.fillStyle = 'rgba(30,0,6,0.85)';
+  ctx.fillRect(0, y, W, h);
+  ctx.strokeStyle = '#ff2b3b';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(0, y, W, h);
+  const msg = '!! EMERGENCY BROADCAST !! GIANT SPEAKER SIGNATURE INBOUND !! DO NOT APPROACH THE STREET !! ';
+  ctx.font = '700 46px "DejaVu Sans Condensed","DejaVu Sans",sans-serif';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#ff5566';
+  const tw = ctx.measureText(msg).width;
+  let x = -((t * 260) % tw);
+  while (x < W) { ctx.fillText(msg, x, y + h / 2 + 2); x += tw; }
+  ctx.globalAlpha = 0.18 * on;
+  ctx.fillStyle = '#ff0018';
+  ctx.fillRect(0, y, W, h);
+  ctx.globalAlpha = 1;
+}
+function drawCrowd(cam, t) {
+  const kp = kickPhase(t);
+  const jump = 1.5 * Math.max(0, Math.sin(Math.PI * clamp((kp - 0.08) / 0.72, 0, 1)));
+  const rnd = mulberry32(5150);
+  for (const b of HERO) {
+    const c = toScreen(cam, b.x, b.h + 1, b.z);
+    if (!c || c.x < 40 || c.x > W - 40 || c.y < 120 || c.y > H - 260) continue;
+    if (c.z < 8) continue;
+    const n = 3 + Math.floor(rnd() * 3);
+    for (let i = 0; i < n; i++) {
+      const u = (i + 0.5) / n;
+      // along the roof edge that faces the camera
+      const p = { x: b.x + (u - 0.5) * b.w * 1.5, y: b.h + jump * (0.85 + 0.3 * rnd()), z: b.z + b.d * 0.55 };
+      const a = toScreen(cam, p.x, p.y, p.z);
+      const b2 = toScreen(cam, p.x, p.y + 1.6, p.z);
+      if (!a || !b2) continue;
+      const lw = clamp((cam.fpx * 0.85) / a.z, 3, 22);
+      // a rim light so the silhouette reads against the dark city
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = '#39e9ff';
+      ctx.globalAlpha = 0.55;
+      ctx.lineWidth = lw + 5;
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b2.x, b2.y); ctx.stroke();
+      ctx.strokeStyle = '#04050c';
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = lw;
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b2.x, b2.y); ctx.stroke();
+      const hd = toScreen(cam, p.x, p.y + 2.1, p.z);
+      if (hd) {
+        ctx.beginPath(); ctx.arc(hd.x, hd.y, lw * 0.6 + 2.2, 0, TAU);
+        ctx.fillStyle = '#39e9ff'; ctx.globalAlpha = 0.55; ctx.fill();
+        ctx.beginPath(); ctx.arc(hd.x, hd.y, lw * 0.6, 0, TAU);
+        ctx.fillStyle = '#04050c'; ctx.globalAlpha = 1; ctx.fill();
+      }
+      // raised arms on the jump
+      if (jump > 0.45) {
+        ctx.lineWidth = lw * 0.5;
+        ctx.strokeStyle = '#04050c';
+        ctx.beginPath(); ctx.moveTo(b2.x, b2.y); ctx.lineTo(b2.x - lw * 1.7, b2.y - lw * 2.4); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(b2.x, b2.y); ctx.lineTo(b2.x + lw * 1.7, b2.y - lw * 2.4); ctx.stroke();
+      }
+    }
+  }
+  ctx.lineCap = 'butt';
+  ctx.globalAlpha = 1;
+}
+// =====================================================================================
+// frame
+// =====================================================================================
+function seek(t) {
+  t = clamp(t, 0, DUR + 0.001);
+  ensureGrads();
+  for (const w of WORDS) if (!w.cv) buildWord(w);
+  const cam = cameraAt(t);
+  const neon = smooth(DROP_T, DROP_T + 0.6, t);
+  // background
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, W, H);
+  if (neon > 0.01) {
+    ctx.globalAlpha = 0.5 * neon;
+    ctx.fillStyle = hazeGrad;
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = 1;
+  }
+  const s = currentShot(t);
+  drawGround(cam, t);
+  drawCity(cam, t);
+  drawRings(cam, t);
+  // the creature is legible from frame 1 (its foot IS the hook); after the drop it goes full strength
+  const alpha = clamp(0.82 + 0.18 * energy(t), 0, 1);
+  drawKaiju(cam, t, alpha);
+  if (s.kind === 'tendril') drawTendril(cam, t);
+  if (s.kind === 'roofs') drawCrowd(cam, t);
+  if (s.kind === 'build' || s.kind === 'slam') drawEmergencyBar(t);
+  for (const w of WORDS) drawWord(cam, w, t);
+  drawOverlays(t);
+  drawGlitch(t);
+  if (window.MXDEBUG) {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = 1;
+    ctx.font = '26px monospace';
+    ctx.fillStyle = '#00ff66';
+    let yy = 70;
+    for (const w of WORDS) {
+      if (t < w.t0 - 0.02 || t > wordEnd(w)) continue;
+      ctx.fillText(`${w.id} ${w.cv.width}x${w.cv.height} a=${(t - w.t0).toFixed(3)} y=${(H * w.y).toFixed(0)}`, 24, yy);
+      yy += 32;
+      const hw = (w.cv.width / 2) * (t - w.t0 < (w.slamDur === undefined ? 0.1 : w.slamDur) ? 3 : 1.1);
+      ctx.strokeStyle = '#ff0';
+      ctx.strokeRect(W / 2 - hw, H * w.y - 60, hw * 2, 120);
+    }
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+window.__motion = {
+  ready: false,
+  duration: DUR,
+  size: { width: W, height: H },
+  seek,
+};
+(async () => {
+  try { await document.fonts.ready; } catch (e) { /* ignore */ }
+  window.__motion.ready = true;
+})();
+})();
+</script>
+</body>
+</html>

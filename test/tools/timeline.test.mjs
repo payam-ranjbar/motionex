@@ -1,4 +1,4 @@
-// timeline.layout tests: the golden contavex-intro layout, neutral defaults, snapping, times,
+// timeline.layout tests: a golden reference layout (optional), neutral defaults, snapping, times,
 // a real audio line (speech end) and the per-frame voice envelope.
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
@@ -10,14 +10,15 @@ import { needs } from '../helpers/needs.mjs';
 import { mkTmp, rmTmp } from '../helpers/tmp.mjs';
 import { runTool } from '../helpers/tool-harness.mjs';
 
-// The golden reference project (read-only): its input and the old build's timeline output.
-const REF = 'C:\\Users\\me\\Projects\\motion-studio\\videos\\contavex-intro';
+// An optional golden reference project (read-only): its video.json input and the old build's
+// build/timeline.json output. Point MX_GOLDEN_TIMELINE_DIR at one to run the comparison.
+const REF = process.env.MX_GOLDEN_TIMELINE_DIR || '';
 const VIDEO = path.join(REF, 'video.json');
 const OLD = path.join(REF, 'build', 'timeline.json');
-const hasGolden = existsSync(VIDEO) && existsSync(OLD);
+const hasGolden = REF !== '' && existsSync(VIDEO) && existsSync(OLD);
 // The golden reference is host-specific: skip when absent, but still fail if ffmpeg is required and missing.
 const goldenOpts = needs('ffmpeg');
-if (!hasGolden) goldenOpts.skip = 'golden reference project not present (motion-studio/videos/contavex-intro)';
+if (!hasGolden) goldenOpts.skip = 'no golden reference project (set MX_GOLDEN_TIMELINE_DIR)';
 
 const outOf = (outputs, name) => outputs.find((o) => o.name === name);
 const readJson = async (outputs, name) => JSON.parse(await readFile(outOf(outputs, name).abs, 'utf8'));
@@ -30,7 +31,7 @@ const TONE_THEN_SILENCE = {
   ],
 };
 
-test('timeline.layout: golden contavex-intro layout matches the old build', goldenOpts, async () => {
+test('timeline.layout: the golden reference layout matches the old build', goldenOpts, async () => {
   const video = JSON.parse(await readFile(VIDEO, 'utf8'));
   const old = JSON.parse(await readFile(OLD, 'utf8'));
   const oldById = new Map(old.scenes.map((s) => [s.id, s]));

@@ -1,0 +1,7 @@
+{"tool": "voice.piper", "input": {"voice": "en_US-norman-medium", "length_scale": 0.82, "lines": [
+ {"name": "l1", "text": "And they're in!"},
+ {"name": "l2", "text": "Rocco on lookout, Pip on the locks, and Big Tuna on... snacks?"},
+ {"name": "l3", "text": "Three seconds on the clock!"},
+ {"name": "l4", "text": "The vault is open!"},
+ {"name": "l5", "text": "They're gone. Unbelievable."}
+]}}

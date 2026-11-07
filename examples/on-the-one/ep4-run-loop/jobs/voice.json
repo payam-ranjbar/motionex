@@ -1,0 +1,15 @@
+{
+  "tool": "voice.piper",
+  "input": {
+    "voice": "en_US-john-medium",
+    "length_scale": 1.1,
+    "noise_w_scale": 0.8,
+    "lines": [
+      { "name": "again", "text": "Again." },
+      { "name": "faster", "text": "Faster." },
+      { "name": "whatif", "text": "What if I don't stop?" },
+      { "name": "notaloop", "text": "It's not a loop." },
+      { "name": "groove", "text": "It's a groove." }
+    ]
+  }
+}

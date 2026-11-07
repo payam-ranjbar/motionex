@@ -1,0 +1,187 @@
+{
+ "tool": "audio.mix",
+ "input": {
+  "duration_s": 26.181818,
+  "timeline": "job:job_01a1b2e2c857758aaf99769ded439898/timeline.json",
+  "tracks": [
+   {
+    "name": "dialogue",
+    "clips": [
+     {
+      "src": "job:job_01a1b2de02227773a56b3f1c68be6abd/l1.wav",
+      "at": 0.0
+     },
+     {
+      "src": "job:job_01a1b2de02227773a56b3f1c68be6abd/l2.wav",
+      "at": 2.2818
+     },
+     {
+      "src": "job:job_01a1b2de02227773a56b3f1c68be6abd/l3.wav",
+      "at": 8.7273
+     },
+     {
+      "src": "job:job_01a1b2de02227773a56b3f1c68be6abd/l4.wav",
+      "at": 10.9491
+     },
+     {
+      "src": "job:job_01a1b2de02227773a56b3f1c68be6abd/l5.wav",
+      "at": 19.7164
+     }
+    ],
+    "gain_db": 3.5
+   },
+   {
+    "name": "music",
+    "gain_db": -7.0,
+    "clips": [
+     {
+      "src": "pin:onthe1/ep3-offbeat-heist/music",
+      "at": 0,
+      "offset_s": 0,
+      "duration_s": 10.87,
+      "fade_out_s": 0.05,
+      "gain_db": -3.0,
+      "fx": "lowpass=f=1200:poles=2"
+     },
+     {
+      "src": "pin:onthe1/ep3-offbeat-heist/music",
+      "at": 10.82,
+      "offset_s": 10.82,
+      "fade_in_s": 0.05,
+      "fade_out_s": 0.25
+     }
+    ],
+    "fx": "equalizer=f=2000:t=q:w=1.4:g=-4.5"
+   },
+   {
+    "name": "sfx",
+    "gain_db": -12.0,
+    "clips": [
+     {
+      "src": "episodes/ep3-offbeat-heist/sfx/stamp.wav",
+      "at": 0.0,
+      "gain_db": 1.5
+     },
+     {
+      "src": "episodes/ep3-offbeat-heist/sfx/paper_slide.wav",
+      "at": 2.4545,
+      "pan": -0.3
+     },
+     {
+      "src": "episodes/ep3-offbeat-heist/sfx/stamp.wav",
+      "at": 3.0,
+      "gain_db": -2
+     },
+     {
+      "src": "episodes/ep3-offbeat-heist/sfx/paper_slide.wav",
+      "at": 3.0,
+      "pan": 0.3
+     },
+     {
+      "src": "episodes/ep3-offbeat-heist/sfx/paper_slide.wav",
+      "at": 3.5455,
+      "pan": 0.6,
+      "gain_db": -2
+     },
+     {
+      "src": "episodes/ep3-offbeat-heist/sfx/stamp.wav",
+      "at": 3.8182,
+      "gain_db": -3
+     },
+     {
+      "src": "episodes/ep3-offbeat-heist/sfx/stamp.wav",
+      "at": 4.6364,
+      "gain_db": -3
+     },
+     {
+      "src": "episodes/ep3-offbeat-heist/sfx/dial_click.wav",
+      "at": 4.6364,
+      "gain_db": -2
+     },
+     {
+      "src": "episodes/ep3-offbeat-heist/sfx/dial_click.wav",
+      "at": 8.7273
+     },
+     {
+      "src": "episodes/ep3-offbeat-heist/sfx/dial_click.wav",
+      "at": 9.2727
+     },
+     {
+      "src": "episodes/ep3-offbeat-heist/sfx/dial_click.wav",
+      "at": 9.8182
+     },
+     {
+      "src": "episodes/ep3-offbeat-heist/sfx/dial_click.wav",
+      "at": 10.3636
+     },
+     {
+      "src": "episodes/ep3-offbeat-heist/sfx/vault_boom.wav",
+      "at": 10.9091,
+      "gain_db": 2
+     },
+     {
+      "src": "episodes/ep3-offbeat-heist/sfx/coin_rain.wav",
+      "at": 11.06,
+      "gain_db": -1
+     },
+     {
+      "src": "episodes/ep3-offbeat-heist/sfx/stamp.wav",
+      "at": 11.8091,
+      "gain_db": -1
+     },
+     {
+      "src": "episodes/ep3-offbeat-heist/sfx/paper_slide.wav",
+      "at": 15.2727,
+      "pan": -0.5
+     },
+     {
+      "src": "episodes/ep3-offbeat-heist/sfx/paper_slide.wav",
+      "at": 16.3636,
+      "pan": 0.5
+     },
+     {
+      "src": "episodes/ep3-offbeat-heist/sfx/paper_slide.wav",
+      "at": 17.4545,
+      "pan": -0.7,
+      "gain_db": -2
+     },
+     {
+      "src": "episodes/ep3-offbeat-heist/sfx/paper_slide.wav",
+      "at": 18.5455,
+      "pan": 0.7,
+      "gain_db": -2
+     },
+     {
+      "src": "episodes/ep3-offbeat-heist/sfx/stamp.wav",
+      "at": 19.6364,
+      "gain_db": -1
+     },
+     {
+      "src": "episodes/ep3-offbeat-heist/sfx/siren.wav",
+      "at": 19.8,
+      "gain_db": -6
+     },
+     {
+      "src": "episodes/ep3-offbeat-heist/sfx/stamp.wav",
+      "at": 21.8182
+     },
+     {
+      "src": "episodes/ep3-offbeat-heist/sfx/stamp.wav",
+      "at": 24.0,
+      "gain_db": 1.5
+     }
+    ]
+   }
+  ],
+  "master": {
+   "loudness": {
+    "target_lufs": -14,
+    "true_peak_db": -1.9
+   }
+  },
+  "output": {
+   "stems": true,
+   "preview_mp3": true
+  }
+ }
+}

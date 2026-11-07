@@ -1,0 +1,7 @@
+{
+  "tool": "sfx.synth",
+  "input": {
+    "recipe": "episodes/ep1-kickdrum-kaiju/sfx/kaiju-sfx.mjs",
+    "seed": 11
+  }
+}

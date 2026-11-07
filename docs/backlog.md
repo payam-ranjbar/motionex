@@ -17,4 +17,4 @@ suggested fix. Items fixed since are removed from this list; `docs/retro-2026-11
 
 ## Left open on purpose (owner's decision)
 - The Docker image is about 2.3 GB.
-- The pi dispatcher's Windows EPERM rename (in the PI tooling repo, not here).
+- A Windows file-rename race in the agent dispatcher (outside this repo).
