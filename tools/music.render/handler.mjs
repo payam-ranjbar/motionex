@@ -6,6 +6,7 @@
 // there is exactly one engine per process (AGENTS.md, P8 prompt).
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { installAudioDecodeFallback } from '../../src/lib/audio-decode-fallback.mjs';
 import { ToolError } from '../../src/lib/errors.mjs';
 import { fromDb, mulberry32 } from '../../src/lib/signal.mjs';
 import { applyMarkers } from '../../src/lib/strudel-markers.mjs';
@@ -37,6 +38,32 @@ function invalidInput(prefix, err) {
   if (err instanceof ToolError) return err;
   const detail = err instanceof Error ? err.message : String(err);
   return new ToolError('invalid-input', `${prefix}: ${detail}`);
+}
+
+/**
+ * Drop analyzer "silent cycles" entries that only cover the render tail. A cycle starts at `cycle / cps`, so a
+ * cycle at or after the song's own end (before `tail_s`) is silent tail, not a gap in the song. Cycles inside the
+ * song stay, and the warning disappears entirely when nothing is left.
+ * @param {string[]} warnings
+ * @param {number} songCycles number of cycles the song itself renders
+ * @returns {string[]}
+ */
+function withoutTailSilence(warnings, songCycles) {
+  if (!(songCycles > 0)) return warnings;
+  const out = [];
+  for (const warning of warnings) {
+    const m = /^silent cycles: ([\d, ]+)$/.exec(warning);
+    if (!m) {
+      out.push(warning);
+      continue;
+    }
+    const kept = m[1]
+      .split(',')
+      .map((s) => Number(s.trim()))
+      .filter((cycle) => Number.isFinite(cycle) && cycle < songCycles);
+    if (kept.length) out.push(`silent cycles: ${kept.join(', ')}`);
+  }
+  return out;
 }
 
 /**
@@ -92,6 +119,9 @@ export default async function run(input, ctx) {
   // console.warn. An agent cannot hear the missing part, so collect those messages and return them as warnings.
   const skipped = new Map();
   const warn = console.warn;
+  // Some sample files in the banks use a WAV shape node-web-audio-api refuses; route those through ffmpeg and
+  // report which files needed it, instead of rendering their events silent with no hint of the file.
+  const decodeFallback = installAudioDecodeFallback({ signal: ctx.signal });
   console.warn = (...args) => {
     const msg = args.map(String).join(' ');
     const m = /event skipped: (.*)$/.exec(msg);
@@ -113,8 +143,13 @@ export default async function run(input, ctx) {
     throw invalidInput('Strudel render failed', err);
   } finally {
     console.warn = warn;
+    decodeFallback.uninstall();
   }
   const warnings = [...skipped].map(([why, n]) => `${n} event(s) skipped (silent in the render): ${why}`);
+  if (decodeFallback.transcoded.size > 0) {
+    const files = [...decodeFallback.transcoded].join(', ');
+    warnings.push(`${decodeFallback.transcoded.size} sample file(s) were decoded through ffmpeg: ${files}`);
+  }
   const renderMs = Math.round(performance.now() - started);
 
   // 7. Sample peak of the float render (one pass). Measured always, because an agent cannot hear overs and an
@@ -156,12 +191,14 @@ export default async function run(input, ctx) {
       cps: rendered.cps,
       seconds: rendered.seconds,
     });
+    // The analyzer counts the silent tail as silent cycles; report only gaps inside the song itself.
+    const songCycles = input.seconds != null ? input.seconds * rendered.cps : (input.cycles ?? 4);
     analysis = {
       peakDb: report.peakDb,
       rmsDb: report.rmsDb,
       crestDb: report.crestDb,
       clippedSamples: report.clippedSamples,
-      warnings: report.warnings,
+      warnings: withoutTailSilence(report.warnings, songCycles),
     };
     await writeFile(path.join(ctx.outDir, 'analysis.json'), `${JSON.stringify(analysis, null, 2)}\n`);
   }

@@ -85,6 +85,53 @@ test('music.sounds: a /regex/ filter matches by pattern', needs('samples'), asyn
   }
 });
 
+test('music.sounds: a filter with regex metacharacters matches as a pattern', needs('samples'), async () => {
+  const ws = await mkTmp();
+  try {
+    const { result } = await runTool(
+      'music.sounds',
+      { filter: 'dulcimer|sitar|flute' },
+      { workspace: ws, timeoutMs: TIMEOUT_MS },
+    );
+    const names = result.sounds.map((s) => s.name);
+    assert.ok(names.length >= 3, `expected several matches, got ${names.join(', ')}`);
+    assert.ok(
+      names.some((n) => /dulcimer/i.test(n)),
+      `expected a dulcimer, got ${names.join(', ')}`,
+    );
+    assert.ok(
+      names.some((n) => /sitar/i.test(n)),
+      `expected a sitar, got ${names.join(', ')}`,
+    );
+    assert.ok(
+      names.some((n) => /flute/i.test(n)),
+      `expected a flute, got ${names.join(', ')}`,
+    );
+    assert.ok(
+      names.every((n) => /dulcimer|sitar|flute/i.test(n)),
+      `every result matches the pattern: ${names.join(', ')}`,
+    );
+  } finally {
+    await rmTmp(ws);
+  }
+});
+
+test('music.sounds: a metacharacter filter that is not a valid regex is invalid-input', needs('samples'), async () => {
+  const ws = await mkTmp();
+  try {
+    await assert.rejects(
+      runTool('music.sounds', { filter: 'gm_[' }, { workspace: ws, timeoutMs: TIMEOUT_MS }),
+      (err) => {
+        assert.equal(err.type, 'invalid-input');
+        assert.match(err.detail, /invalid filter regex/i);
+        return true;
+      },
+    );
+  } finally {
+    await rmTmp(ws);
+  }
+});
+
 test('music.sounds: an invalid regex filter is invalid-input', needs('samples'), async () => {
   const ws = await mkTmp();
   try {

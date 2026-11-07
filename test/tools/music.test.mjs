@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
-import { mono, rmsDb } from '../../src/lib/signal.mjs';
+import { fromDb, mono, rmsDb } from '../../src/lib/signal.mjs';
 import { readWav } from '../../src/lib/wav.mjs';
 import { needs } from '../helpers/needs.mjs';
 import { mkTmp, rmTmp } from '../helpers/tmp.mjs';
@@ -156,6 +156,48 @@ test('music.render: a drum bank loads from the warm sample cache', needs('ffmpeg
     );
     const { audio } = await readOutput(run, 'music.wav');
     assert.ok(peakOf(audio) > 0.01, `peak ${peakOf(audio)} should be above 0.01`);
+  } finally {
+    await rmTmp(ws);
+  }
+});
+
+// The VCSL darbuka WAVs have a 20-byte `fmt ` chunk that node-web-audio-api rejects ("malformed fmt_pcm chunk");
+// the fallback transcodes them through ffmpeg, so the events are audible and the warning names the file.
+test('music.render: a sample the decoder rejects is transcoded, not silent', needs('ffmpeg', 'samples'), async () => {
+  const ws = await mkTmp();
+  try {
+    const run = await runTool('music.render', { code: 's("darbuka*4")', cycles: 2, offline: true }, { workspace: ws });
+    const { audio } = await readOutput(run, 'music.wav');
+    assert.ok(peakOf(audio) > fromDb(-40), `peak ${peakOf(audio)} should be above -40 dBFS`);
+    const transcode = run.result.warnings.filter((w) => /decoded through ffmpeg/.test(w));
+    assert.equal(transcode.length, 1, JSON.stringify(run.result.warnings));
+    assert.match(transcode[0], /Darbuka/i);
+    assert.ok(
+      !run.result.warnings.some((w) => /event\(s\) skipped/.test(w)),
+      `no sample should be skipped: ${JSON.stringify(run.result.warnings)}`,
+    );
+  } finally {
+    await rmTmp(ws);
+  }
+});
+
+// The analyzer counts the silent render tail as "silent cycles"; the handler reports only cycles inside the song.
+test('music.render: tail-only silence does not warn about silent cycles', needs('ffmpeg'), async () => {
+  const ws = await mkTmp();
+  try {
+    const run = await runTool(
+      'music.render',
+      { code: 'note("c3").s("sawtooth")', cycles: 2, tail_s: 2, offline: true },
+      { workspace: ws },
+    );
+    const warnings = [...run.result.warnings, ...(run.result.analysis?.warnings ?? [])];
+    assert.deepEqual(
+      warnings.filter((w) => /silent cycles/.test(w)),
+      [],
+      JSON.stringify(run.result.analysis?.warnings),
+    );
+    // The song itself is audible, so the missing warning is not just a fully silent render.
+    assert.ok(run.result.peak_db > -40, `peak_db ${run.result.peak_db} should show signal`);
   } finally {
     await rmTmp(ws);
   }

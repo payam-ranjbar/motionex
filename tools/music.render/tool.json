@@ -219,7 +219,7 @@
         "items": {
           "type": "string"
         },
-        "description": "Human-readable warnings: events the engine could not play (unknown sound names, failed sample loads), a render that peaks above 0 dBFS in a format that clamps, and a silent render asked to reach `peak_db`. Empty when nothing went wrong."
+        "description": "Human-readable warnings: events the engine could not play (unknown sound names, failed sample loads), a sample file that had to be decoded through ffmpeg, a render that peaks above 0 dBFS in a format that clamps, and a silent render asked to reach `peak_db`. Empty when nothing went wrong."
       }
     }
   },
