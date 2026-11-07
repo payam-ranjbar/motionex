@@ -1,0 +1,45 @@
+# Publishes site/ to GitHub Pages. The example videos are not in git: they are assets of the
+# "examples-v1" release and are downloaded into site/media/ at build time.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths: ['site/**', '.github/workflows/pages.yml']
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download the example videos
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view examples-v1 --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release download examples-v1 --repo "$GITHUB_REPOSITORY" --pattern '*.mp4' --dir site/media
+          else
+            echo "::warning::release examples-v1 not found; publishing the page with posters only"
+          fi
+          ls -la site/media
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4
