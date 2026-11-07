@@ -242,6 +242,8 @@ export default async function run(input, ctx) {
     if (!info?.isFile() || info.size === 0) {
       throw new ToolError('tool-failed', `ffmpeg produced no output${stderr ? `: ${stderr.slice(-2000)}` : ''}`);
     }
+    const sizeBytes = info.size;
+    const bitrateK = Math.round((sizeBytes * 8) / seconds / 1000);
 
     // Provenance: sha256 of every workspace file the page pulled from the static server.
     const files = [];
@@ -270,6 +272,8 @@ export default async function run(input, ctx) {
         height: outHeight,
         render_s: renderS,
         stalls,
+        size_bytes: sizeBytes,
+        bitrate_k: bitrateK,
         page_errors: [...new Set(capture.pageErrors)].slice(0, 50),
         audio: Boolean(input.audio),
       },

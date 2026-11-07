@@ -2,7 +2,7 @@
 // driven by the page contract window.__motion = {ready, seek(t), duration?, size?}.
 // The pages come from test/fixtures/pages and are copied into a temp workspace like any other input.
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -301,6 +301,25 @@ test('picture.render: page-files.json lists the page and its files', { ...GATE, 
     const self = files.find((f) => f.path === 'pages/plain.html');
     assert.ok(self, `page-files.json does not list the page: ${JSON.stringify(files)}`);
     assert.match(self.sha256, /^[0-9a-f]{64}$/);
+  } finally {
+    await rmTmp(ws);
+  }
+});
+
+test('picture.render: reports the written size and average bitrate', { ...GATE, timeout: TEST_TIMEOUT }, async () => {
+  const ws = await mkTmp();
+  try {
+    await page(ws, 'plain.html');
+    const run = await runTool(
+      'picture.render',
+      { page: 'pages/plain.html', width: 64, height: 36, fps: 10, to_s: 0.3, workers: 1 },
+      { workspace: ws, timeoutMs: TEST_TIMEOUT },
+    );
+    const video = run.outputs.find((o) => o.name === 'video.mp4');
+    assert.ok(video, 'no video.mp4 output');
+    const onDisk = (await stat(video.abs)).size;
+    assert.equal(run.result.size_bytes, onDisk);
+    assert.ok(run.result.bitrate_k > 0, `bitrate_k ${run.result.bitrate_k}`);
   } finally {
     await rmTmp(ws);
   }

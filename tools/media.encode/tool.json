@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "title": "Video encoder (delivery)",
   "summary": "Encode a video with explicit quality, bitrate, size, scaling and audio controls, including fit-to-N-MB two-pass encoding and named delivery presets.",
-  "description": "The delivery encoder. It never guesses: quality (crf or bitrate), scale caps, fps, audio codec/bitrate and colour are explicit inputs. Use target_size_mb to hit a byte budget with a two-pass x264/x265 encode, or a preset from presets/encode/ for a known platform. Colour is converted only when asked: with video.color set (the default 'bt709') the scale filter maps in_color_matrix=auto/in_range=auto to the requested matrix and TV range, with matching tags; video.color null leaves colour untouched. Scaling never upscales and keeps the aspect ratio.",
+  "description": "The delivery encoder. It never guesses: quality (crf or bitrate), scale caps, fps, audio codec/bitrate and colour are explicit inputs. Use target_size_mb to hit a byte budget with a two-pass x264/x265 encode, or a preset from presets/encode/ for a known platform. When the audio codec is copy the stream is not re-encoded and the fit-to-size budget reserves its real source bitrate instead of audio.bitrate_k, so prefer audio: {codec: \"copy\"} when the source audio is already AAC at the delivery rate (it also avoids a second lossy pass). Colour is converted only when asked: with video.color set (the default 'bt709') the scale filter maps in_color_matrix=auto/in_range=auto to the requested matrix and TV range, with matching tags; video.color null leaves colour untouched. Scaling never upscales and keeps the aspect ratio.",
   "kind": "node",
   "handler": "handler.mjs",
   "deterministic": true,
@@ -111,7 +111,7 @@
           "codec": {
             "type": "string",
             "default": "aac",
-            "description": "Audio encoder, e.g. aac, libopus, copy. Default aac."
+            "description": "Audio encoder, e.g. aac, libopus, copy. Default aac. Use copy when the source audio is already AAC at the delivery rate: the stream is not re-encoded and the fit-to-size budget reserves its real source bitrate (0 when the source has no audio stream)."
           },
           "bitrate_k": {
             "type": "number",
@@ -192,13 +192,26 @@
   "output_schema": {
     "type": "object",
     "additionalProperties": false,
-    "required": ["size_bytes", "duration_s", "video_bitrate_k", "passes", "attempts", "width", "height"],
+    "required": [
+      "size_bytes",
+      "duration_s",
+      "video_bitrate_k",
+      "audio_bitrate_k",
+      "passes",
+      "attempts",
+      "width",
+      "height"
+    ],
     "properties": {
       "size_bytes": { "type": "integer", "description": "Size of the written file in bytes." },
       "duration_s": { "type": ["number", "null"], "description": "Duration of the output in seconds." },
       "video_bitrate_k": {
         "type": ["number", "null"],
         "description": "Video stream bitrate in kbit/s, from the output probe when available."
+      },
+      "audio_bitrate_k": {
+        "type": "integer",
+        "description": "Audio bitrate in kbit/s used in the fit-to-size budget: the real source stream bitrate when audio.codec is copy (0 when the source has no audio stream), else audio.bitrate_k."
       },
       "passes": { "type": "integer", "description": "Number of encoding passes used for the final attempt (1 or 2)." },
       "attempts": {

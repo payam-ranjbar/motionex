@@ -201,7 +201,19 @@
   },
   "output_schema": {
     "type": "object",
-    "required": ["frames", "fps", "seconds", "width", "height", "render_s", "stalls", "page_errors", "audio"],
+    "required": [
+      "frames",
+      "fps",
+      "seconds",
+      "width",
+      "height",
+      "render_s",
+      "stalls",
+      "size_bytes",
+      "bitrate_k",
+      "page_errors",
+      "audio"
+    ],
     "properties": {
       "frames": { "type": "integer", "description": "Number of frames written" },
       "fps": { "type": "number", "description": "Frames per second used" },
@@ -210,6 +222,11 @@
       "height": { "type": "integer", "description": "Video height in pixels (viewport height × device_scale_factor)" },
       "render_s": { "type": "number", "description": "Wall-clock seconds the whole render took" },
       "stalls": { "type": "integer", "description": "Frames that failed once and needed a retry" },
+      "size_bytes": { "type": "integer", "description": "Size of the written video file in bytes" },
+      "bitrate_k": {
+        "type": "integer",
+        "description": "Overall average bitrate of the written file in kbit/s (size_bytes × 8 / seconds / 1000)"
+      },
       "page_errors": {
         "type": "array",
         "items": { "type": "string" },
