@@ -25,9 +25,35 @@ function framePeak(audio, i) {
   return p;
 }
 
+/** Onset threshold: the first frame at or above this dBFS is where the file becomes audible. */
+const ONSET_THRESHOLD_DB = -30;
+
 /** New Audio holding frames [from, to) of every channel. */
 function sliceAudio(audio, from, to) {
   return { sampleRate: audio.sampleRate, channels: audio.channels.map((ch) => ch.slice(from, to)) };
+}
+
+/** Seconds of the first frame (any channel) at or above threshold_db, or null when the file is silent. */
+function onsetSeconds(audio, threshold_db) {
+  const thr = fromDb(threshold_db);
+  const len = framesOf(audio);
+  for (let i = 0; i < len; i++) if (framePeak(audio, i) >= thr) return i / audio.sampleRate;
+  return null;
+}
+
+/** Seconds of the first frame holding the file's largest peak, or null when the file is silent. */
+function peakAtSeconds(audio) {
+  const len = framesOf(audio);
+  let best = 0;
+  let at = null;
+  for (let i = 0; i < len; i++) {
+    const p = framePeak(audio, i);
+    if (p > best) {
+      best = p;
+      at = i;
+    }
+  }
+  return at === null ? null : at / audio.sampleRate;
 }
 
 /** Scale every sample by g, in place. */
@@ -241,6 +267,8 @@ export default async function run(input, ctx) {
       sample_rate: audio.sampleRate,
       channels: audio.channels.length,
       peak_db: p > 0 ? db(p) : null,
+      onset_s: onsetSeconds(audio, ONSET_THRESHOLD_DB),
+      peak_at_s: peakAtSeconds(audio),
       clipped_samples: clipped,
       chain,
     });

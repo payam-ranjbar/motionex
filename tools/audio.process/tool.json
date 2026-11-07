@@ -1,9 +1,9 @@
 {
   "name": "audio.process",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "title": "Process audio (pitch, tempo, trim, fades)",
-  "summary": "Run an ordered list of processing steps over audio takes: ffmpeg filters, pitch, tempo, gain, silence trim, pause tightening, fades and peak normalisation, written as wav, flac or mp3.",
-  "description": "The voice-fx and cleanup pass, for one file or a batch of takes. Each step does exactly one thing and the steps run in the order given, so a take can be pitched down for a deeper voice, its long pauses tightened, its edges faded and its peak normalised in one job. With no steps and no conversion options a file is only re-encoded. Presets such as deep-hero carry a whole named chain; a request's own steps replace a preset's steps. A step that needs real DSP is an ffmpeg chain, so it appears in the result's chain list in the order it ran; gain, trim, tightening, fades and normalisation are done in memory and do not add a chain. Nothing is enforced: no normalisation, no trimming, no resampling unless asked.",
+  "summary": "Run an ordered list of processing steps over audio takes: ffmpeg filters, pitch, tempo, gain, silence trim, pause tightening, fades and peak normalisation, written as wav, flac or mp3, with each file's audible onset and peak time.",
+  "description": "The voice-fx and cleanup pass, for one file or a batch of takes. Each step does exactly one thing and the steps run in the order given, so a take can be pitched down for a deeper voice, its long pauses tightened, its edges faded and its peak normalised in one job. With no steps and no conversion options a file is only re-encoded. Presets such as deep-hero carry a whole named chain; a request's own steps replace a preset's steps. A step that needs real DSP is an ffmpeg chain, so it appears in the result's chain list in the order it ran; gain, trim, tightening, fades and normalisation are done in memory and do not add a chain. Every output reports `onset_s` (where the file first becomes audible, at or above -30 dBFS, or null when silent) and `peak_at_s` (the time of the sample peak), so a cue can be lined up on the frame where the sound actually starts. Nothing is enforced: no normalisation, no trimming, no resampling unless asked.",
   "kind": "node",
   "handler": "handler.mjs",
   "deterministic": true,
@@ -151,7 +151,18 @@
         "type": "array",
         "items": {
           "type": "object",
-          "required": ["input", "name", "seconds", "sample_rate", "channels", "peak_db", "clipped_samples", "chain"],
+          "required": [
+            "input",
+            "name",
+            "seconds",
+            "sample_rate",
+            "channels",
+            "peak_db",
+            "onset_s",
+            "peak_at_s",
+            "clipped_samples",
+            "chain"
+          ],
           "properties": {
             "input": { "type": "string" },
             "name": { "type": "string" },
@@ -159,6 +170,8 @@
             "sample_rate": { "type": "integer" },
             "channels": { "type": "integer" },
             "peak_db": { "type": ["number", "null"] },
+            "onset_s": { "type": ["number", "null"] },
+            "peak_at_s": { "type": ["number", "null"] },
             "clipped_samples": { "type": "integer" },
             "chain": { "type": "array", "items": { "type": "string" } }
           }

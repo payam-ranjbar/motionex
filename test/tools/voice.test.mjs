@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { listVoices } from '../../src/lib/voices.mjs';
 import { readWav, secondsOf } from '../../src/lib/wav.mjs';
 import { needs } from '../helpers/needs.mjs';
@@ -10,6 +12,7 @@ import { runTool, testConfig } from '../helpers/tool-harness.mjs';
 
 const NORMAN = 'en_US-norman-medium';
 const JOHN = 'en_US-john-medium';
+const WORKER = fileURLToPath(new URL('../../tools/voice.piper/piper_worker.py', import.meta.url));
 
 /** Read one output file as planar audio. */
 async function readOutput(output) {
@@ -41,6 +44,8 @@ test(
       assert.equal(result.sample_rate, 22050);
       assert.equal(result.lines.length, 2);
       assert.equal(outputs.length, 2);
+      assert.ok(Array.isArray(result.warnings), 'result.warnings must be an array');
+      assert.deepEqual(result.warnings, [], 'a normal sentence must not warn');
       assert.deepEqual(outputs.map((o) => o.name).sort(), ['line-001.wav', 'line-002.wav']);
       for (const [index, line] of result.lines.entries()) {
         const output = outputs.find((o) => o.name === line.file);
@@ -57,6 +62,14 @@ test(
           line.seconds - line.speech_end_s <= 0.35,
           `line ${index}: speech ends ${line.seconds - line.speech_end_s} s before the file does`,
         );
+        assert.ok(
+          line.speech_start_s >= 0 && line.speech_start_s < line.speech_end_s,
+          `speech_start_s ${line.speech_start_s} must sit before speech_end_s ${line.speech_end_s}`,
+        );
+        assert.ok(
+          Math.abs(line.speech_s - (line.speech_end_s - line.speech_start_s)) <= 0.002,
+          `speech_s ${line.speech_s} must equal speech_end_s - speech_start_s`,
+        );
         assert.ok(peak(audio) > 0.1, `line ${index} is silent`);
         assert.equal(line.text, index === 0 ? 'Hello there.' : 'This is motionex.');
       }
@@ -65,6 +78,58 @@ test(
     }
   },
 );
+
+test(
+  'voice.piper: plain-string lines are shorthand for {text} and named line-001...',
+  needs('python', 'piper-voice'),
+  async () => {
+    const ws = await mkTmp();
+    try {
+      const { result, outputs } = await runTool(
+        'voice.piper',
+        { voice: NORMAN, lines: ['Hello there.', 'This is motionex.'] },
+        { workspace: ws },
+      );
+      assert.equal(result.lines.length, 2);
+      assert.deepEqual(
+        result.lines.map((line) => line.text),
+        ['Hello there.', 'This is motionex.'],
+      );
+      assert.deepEqual(
+        result.lines.map((line) => line.name),
+        ['line-001', 'line-002'],
+      );
+      assert.deepEqual(
+        result.lines.map((line) => line.file),
+        ['line-001.wav', 'line-002.wav'],
+      );
+      assert.deepEqual(outputs.map((o) => o.name).sort(), ['line-001.wav', 'line-002.wav']);
+    } finally {
+      await rmTmp(ws);
+    }
+  },
+);
+
+test('voice.piper: the babble rule warns on a babbling line and stays quiet on a normal one', needs('python'), () => {
+  const python = testConfig(process.cwd()).python;
+  const check = (payload) => {
+    const run = spawnSync(python, [WORKER, '--babble', JSON.stringify(payload)], {
+      encoding: 'utf8',
+      windowsHide: true,
+    });
+    assert.equal(run.status, 0, `python exited ${run.status}: ${run.stderr}`);
+    return run.stdout.trim();
+  };
+  // en_US-norman-medium turned the raw-IPA line into 3.26 s of babble (docs/backlog.md #5).
+  const ipa = check({ name: 'ha1', text: '[[hˈɑː!]]', speech_s: 3.26, length_scale: 1 });
+  assert.match(ipa, /^line "ha1": 3\.26 s of speech for a 3-character line; /);
+  assert.match(ipa, /Piper may be babbling/);
+  // "Hey!" is 3 characters too, so it warns with the same budget.
+  assert.match(check({ name: 'hey', text: 'Hey!', speech_s: 3.26, length_scale: 1 }), /3-character line/);
+  // A normal sentence fits its budget, and john's 0.58 s for the same IPA line is fine.
+  assert.equal(check({ name: 'normal', text: 'We were ten thousand sparks.', speech_s: 1.84, length_scale: 1 }), '');
+  assert.equal(check({ name: 'ha1', text: '[[hˈɑː!]]', speech_s: 0.58, length_scale: 1 }), '');
+});
 
 test('voice.piper: an IPA line inside [[ ]] synthesizes audible audio', needs('python', 'piper-voice'), async () => {
   const ws = await mkTmp();
