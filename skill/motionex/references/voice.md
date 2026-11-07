@@ -1,7 +1,7 @@
 # Voice
 
 ## Piper (local, free, fast)
-`voice.piper {voice, lines: [{name, text}], length_scale?, noise_scale?, noise_w_scale?}` writes one WAV per line. Each line's result has `speech_end_s`: Piper leaves 0.1–0.25 s of silence after each line, so place lines by their speech end, not the file end. `timeline.layout` does this for you.
+`voice.piper {voice, lines: [{name, text}] or ["text", ...], length_scale?, noise_scale?, noise_w_scale?}` writes one WAV per line. Each line's result has `speech_start_s` and `speech_end_s`: Piper leaves 0.1–0.25 s of silence around each line, so place lines by their speech, not the file. `timeline.layout` does this for you. `result.warnings` flags a line whose length is far beyond its text (Piper babbling; `norman` did it twice on one-word lines).
 
 **Voices** (see `GET /v1/capabilities`). The four shipped voices have commercially safe training data:
 
@@ -33,6 +33,13 @@ Extra voices can be mounted at `/voices`. Avoid `ryan` and `lessac` for commerci
 - **Space**: `aecho`. **Radio**: a band-pass.
 - **Watch the peak**: fx chains can push a take over 0 dBFS. Check `peak_db` and the warnings, and lower the gain in the chain.
 - **Trim and tighten**: `trim_silence` removes the silence around a take; `tighten_pauses {max_pause_s: 0.4}` shortens long internal pauses (useful for acted takes that run long).
+
+## Vocal cues (shouts, counts, laughs; not narration)
+Short lines, treated like instruments. Raw IPA keeps non-English words right, e.g. Persian `[[jˈɛk!]]` (one), `[[dʒˈɑːːːn!]]` (jaan), `[[hˈɑː!]]` (ha). Recipes that worked, as `audio.process` steps after `trim_silence`:
+- **Megaphone count**: `pitch_semitones -2`, then `highpass=f=380,lowpass=f=3600,acrusher=bits=9:mix=0.3,volume=5dB,alimiter=limit=0.9,apad=pad_dur=0.9,aecho=0.8:0.6:234|468:0.38|0.18` (echo throws on the half beat at 128 bpm).
+- **Shout stack**: the same word from 3–4 voices, each `highpass=f=160,acompressor=…,apad=pad_dur=0.6,aecho=0.8:0.5:31|57:0.3|0.2`, panned apart and offset by about 12 ms in the mix.
+- **Demon**: a main layer at `pitch_semitones -5` with `lowshelf=g=4:f=180`, a compressor, `asoftclip=type=tanh` and a 6-tap hall (`aecho` 61–521 ms), plus an octave-down layer (`-12`, `lowpass=f=1600`, `asoftclip=type=atan`) about 5 dB under it.
+Measure `onset_s` on the processed clip and place it that much early when it must land on a frame.
 
 ## ElevenLabs (optional, paid, acted reads)
 It is available when the operator put a key file in the service's secrets. `voice.elevenlabs {voice_id, text, model: "eleven_v3", stability}`:

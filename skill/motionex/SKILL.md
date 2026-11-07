@@ -70,13 +70,13 @@ Your "ears" are `audio.loudness`, `audio.levels`, `audio.speech-ratio`, `audio.s
 6. **Sound effects**: `sfx.synth`, the built-in generic recipes or your own recipe file.
 7. **Mix**: `audio.mix`. The default is a plain sum; add a preset or explicit options. Check with `audio.loudness` and `audio.speech-ratio`.
 8. **Render**: `picture.render` with `audio` set. It encodes once, video and audio together.
-9. **Check the encode**: `media.frames` and `media.probe`.
-10. **Deliver**: `media.encode` with a preset such as `fit-size` (Telegram), `instagram-reel` or `web-720p`.
+9. **Check the encode**: `media.frames` and `media.probe`. For an audio-only change later, `media.mux` the new mix onto the existing video (no new render).
+10. **Deliver two files**: the master, and a platform copy from `media.encode` (`fit-size` with `audio: {codec: "copy"}` for Telegram, `instagram-reel`, `web-720p`). `picture.render` reports `size_bytes` and `bitrate_k`, so you know at once whether a copy is needed.
 
 Every step is replaceable. A music-only piece, a silent loop, a title card or a pure SFX job are all fine.
 
 ## Time and cost (rough)
-- **Picture**: the container has no GPU. A 22 s 1080p30 canvas-heavy page took about 2 minutes with 6 workers (≈5 s of render per second of video); simple DOM/SVG pages are faster, heavy blur, filters and WebGL slower. Iterate with stills, a 960×540 draft or a `from_s`/`to_s` section, and render the full 1080p once.
+- **Picture**: the container has no GPU. A 22 s 1080p30 canvas page took about 2 minutes with 6 workers (≈5 s of render per second of video); a 30 s 1080×1920 page with five large images, canvas filters and particles took about 4.5 minutes with 4 workers (≈9 s per second). Simple DOM/SVG pages are faster; heavy blur, filters and WebGL slower. Iterate with stills, a 960×540 draft or a `from_s`/`to_s` section, and render the full 1080p once.
 - **Music**: a 60–90 s score takes 3–12 minutes to render. Run it while you work on picture.
 - **Piper**: seconds per line.
 - **Mix and encode**: seconds to a minute; a two-pass delivery encode takes 1–2 minutes.
@@ -89,6 +89,9 @@ Every step is replaceable. A music-only piece, a silent loop, a title card or a 
 - **The mixer default is a plain sum**: 32-bit float, no limiter. Ask for loudness explicitly when you want it.
 - **Size caps**: Telegram bots allow 50 MB, and Instagram reels need H.264, a closed GOP and AAC at 48 kHz. Use `media.encode` presets.
 - **Music renders take minutes**: render variants in parallel jobs, not in sequence.
+- **Read `warnings` on every result.** They carry the facts you cannot see: skipped or transcoded samples, clipping, a babbling Piper line, a clip cut by the mix length, a loudness or true-peak target that was missed.
+- **Piper can babble** on one-word lines (one voice made 3.5 s of a single "HA!"). `voice.piper` warns; try another voice.
+- **A clip is heard at its onset, not its start.** `audio.process` reports `onset_s` and `voice.piper` `speech_start_s`; place a cue early by that much when it must land on a frame.
 
 ## References
 - `references/api.md`: endpoints, job lifecycle, refs, pins, files, errors, and curl and CLI recipes.
@@ -97,7 +100,7 @@ Every step is replaceable. A music-only piece, a silent loop, a title card or a 
 - `references/voice.md`: voices, speed, IPA and pronunciation, character fx, ElevenLabs direction.
 - `references/music.md`: a Strudel cheat sheet, section markers, polyphony, reading the analysis.
 - `references/sound.md`: mix options and what real listeners accepted or rejected, loudness targets, SFX synthesis.
-- `references/pacing.md`: held beats, hits in the silences, comedy timing, cutting on the beat.
+- `references/pacing.md`: held beats, hits in the silences, comedy timing, cutting on the beat, impacts vs landings, cues on the frame, the rule of three.
 - `references/review-and-delivery.md`: review loops, encode presets, platform limits, covers.
 - `references/collaboration.md`: briefs, parallel agents (one file per act), decision logs.
 - `references/extending.md`: add your own tool (any language), presets and extensions.

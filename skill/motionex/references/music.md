@@ -42,12 +42,18 @@ $: note("<c2 g1>").s("sawtooth").lpf(500).mask(span(DARK, DROP)) // the dark par
 ## Reading the analysis (guides, not laws)
 `result.analysis` (and `audio.stats` on any file) gives peak, rms, crest, clipped samples, the spectrum split, stereo width, per-cycle loudness and warnings.
 - **Peak** at or below −1 dBFS with nothing clipped. Every render returns `peak_db`, and `warnings` says when integer formats clip overs. Lower `.gain()` on the loudest part, or set `peak_db: -1`: one gain on the float render before encoding, so nothing clips (absent = untouched). `format: "wav32"` keeps overs.
-- **Missing samples are silent**: read `warnings` after every render. Some listed sounds do not decode in this engine (seen: `darbuka`, `tom_mallet`); probe a sound with a 2-second render (`s("name*4")`) before building a part on it.
+- **Missing samples are silent**: read `warnings` after every render. A misspelled sound is skipped and named; a sample file the decoder rejects is transcoded through ffmpeg (a warning lists it). Probe an unfamiliar sound with a 2-second render (`s("name*4")`) before building a part on it. `music.sounds {filter: "dulcimer|sitar|flute"}` takes a regex.
 - **RMS** −20 to −12 dBFS is a healthy level for a bed before mixing.
 - **Crest** under ~6 dB sounds squashed; over ~20 dB is sparse or very dynamic.
 - **Spectrum**: more than 70% low is muddy (high-pass the non-bass parts); more than 35% high can be harsh.
 - **Stereo width** near 0 is mono: try `.pan()` or `.jux(rev)`.
-- **Per-cycle loudness** shows the structure. Use it, or `audio.levels` with a grid, to confirm the drop lands where the picture needs it.
+- **Per-cycle loudness** shows the structure. Use it, or `audio.levels` with a grid, to confirm the drop lands where the picture needs it. ("silent cycles" counts only the song itself, not the `tail_s`.)
+- **The build must not be louder than the drop.** Distortion, a drone and a snare roll made one song's "threat" bars louder (−14.6 LUFS) than its drop (−15.3). Check `audio.levels` per bar and balance by bar with a per-bar list:
+  ```js
+  const bars = (arr) => cat(...arr, ...Array(64).fill(arr[arr.length - 1]))   // one value per bar, the last one holds
+  $: note("d1 d2 d1 eb2").s("sawtooth").postgain(bars([1, 1, 1, 1, 0.5, 0.55, 0.75, 1.15]))
+  ```
+- **Strings are mini-notation.** `"<0 0 1>"` built at run time parses as a pattern; build per-bar masks from arrays with `cat(...)` (one value per cycle). `sequence(...)` puts all values INSIDE one cycle.
 
 ## Working with a listener
 Sketch small (2–4 layers), check, then let the human listen at `/listen`. Change one or two things per round and keep a log line per version ("v7: hats to 16ths, bass .8→.6; user: 'more drive'").

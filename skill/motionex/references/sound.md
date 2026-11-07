@@ -31,6 +31,11 @@ From one narrative short, mixed five times:
 
 The accepted balance is the preset `dialogue-anchored`. `ducked-bed` (classic ducking, −14 LUFS) still suits ads and explainers, where the voice must always win. Ask which the piece wants.
 
+**Later productions (vertical beat-driven shorts, no voice-over):**
+- **Glitter is loud to people.** Bright sparkle and "ching" SFX with sharp attacks were "too crisp and loud" even 6–10 dB under the music. Low-pass them (about 4.5–5 kHz), soften the attack (10 ms or more) and keep them about 15 dB under the music.
+- **Vocal cues are instruments.** Shouts and counts ("yek! do! se!", "jaan!", a demon's "HA… HA") worked; a crowd "hey!" was cut ("bad"). Each cue said ONCE beat the repeats (five "jaan"s became two), and a long echo tap reads as a second shout, so double with short taps (30–60 ms) instead.
+- **Match cue levels by absolute speech-band level**, `voice_db` from `audio.speech-ratio`, when the brief says "at the level of the other cues". The ratio over the music changes with whatever the music is doing under each cue.
+
 ## Measure with your "ears"
 - **`audio.loudness`**: integrated LUFS, LRA, true peak, and a curve (`curve: {step_s: 0.5}`) to find loud spots.
 - **`audio.speech-ratio {voice, background}`**: voice versus everything else in the speech band (300–3400 Hz), per line. In the accepted mix it was 14–23 dB before the climax, and 6–8 dB at the climax, where the lines got harder to hear. Under about 10 dB, ask the human whether the words are clear.

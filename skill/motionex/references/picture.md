@@ -47,6 +47,7 @@ So **every frame must be a pure function of t**:
 - `image.contact-sheet` makes a grid of 4–8 stills for a quick overview:
   - one per scene, plus 1–2 frames just after every cut;
   - check text overflow, safe margins and contrast.
+  - Build the sheet's `images` from the stills result: ``result.stills.map((s) => `job:${id}/${s.name}`)`` (`frames` for `media.frames`), with the times as `labels`.
 - Only then run `picture.render`.
 - Afterwards, pull frames from the ENCODED file with `media.frames` to catch encode problems: colour, banding, black frames.
 
@@ -55,7 +56,7 @@ So **every frame must be a pure function of t**:
 - **Sections**: re-render one act with `from_s`/`to_s`, and join with `media.concat` (`mode: copy`) when the settings match.
 - **The result** includes `stalls` (retried frames) and `page_errors`. Read `page_errors`; a missing font or 404 shows up there.
 - **Size and fps** are yours: 1920×1080, 1080×1920 (vertical), 1080×1080, 24/25/30/60 fps.
-- **Cost**: about 1–2 s of render per second of 1080p30 at 4 workers. Grain, noise and heavy blur make both the render AND the file bigger, which matters for size caps.
+- **Cost** in the container (no GPU): about 5–9 s of render per second of 1080p30 at 4–6 workers, depending on the page. Grain, noise, heavy blur and dense detail make both the render AND the file bigger: one detailed 30 s page came out at 72.7 MB at crf 19. The result reports `size_bytes` and `bitrate_k`.
 
 ## "Juice" that worked (options)
 These come from a comedy ad and a cinematic short:
@@ -67,6 +68,8 @@ These come from a comedy ad and a cinematic short:
 - seeded film grain or noise tiles for texture (watch the file size).
 
 ## Originality
-Use the user's own characters and assets (silhouettes can become alpha masks with `media.ffmpeg`: `alphaextract`, `colorkey`, `scale`). Illustrations on a dark or blurred ground: either screen-blend them onto a dark scene (fast, but a light aura washes the picture out), or cut them out first (a flood fill from the border through smooth pixels, stopped by the drawing's crisp outlines, gives clean mattes) and draw them normally with your own glow.
+Use the user's own characters and assets. Do not imitate franchise characters, logos or names.
+- **Cut-outs**: `image.matte {image}` cuts a figure out of a soft glowing or flat ground (a flood fill from the border through smooth pixels, stopped by the drawing's crisp outlines; glow trapped between an arm and the body is cleared too) and writes a PNG with alpha. Draw it normally and add your own halo (a blurred copy of the alpha, drawn additively, pulsing on the kick). Screen-blending the originals onto a dark scene is faster but a light aura washes every frame out. Silhouettes can also become masks with `media.ffmpeg` (`alphaextract`, `colorkey`).
+- **Layering**: draw the subject of the current story beat on top; a prop that lands on a hidden face is an invisible beat.
 - **Fonts**: the page may load Google Fonts (the capture has network unless `offline: true`); the container itself only has DejaVu/Liberation. Persian/Arabic: Noto Nastaliq Urdu (Nastaliq), Lalezar (display, Persian digits ۱۲۳), Aref Ruqaa. Await `document.fonts.load(font, sampleText)` with real sample text before `ready`. For RTL words in canvas set `ctx.direction = 'rtl'` and avoid trailing punctuation (bidi can put `!` on the wrong side).
-- **Image sequences from `media.ffmpeg`**: declare `outputs: ["f-%03d.png"]` and write `{out:f-%03d.png}`; every frame is listed and kept. Do not imitate franchise characters, logos or names.
+- **Image sequences from `media.ffmpeg`**: declare `outputs: ["f-%03d.png"]` and write `{out:f-%03d.png}`; every frame is listed and kept.

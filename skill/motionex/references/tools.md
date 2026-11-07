@@ -7,11 +7,12 @@ Every motionex tool takes a JSON object. Any file input is a ref: a workspace pa
 - **audio.levels** — RMS, sample peak and ungated LUFS per time window of an audio or video file, using explicit windows, a fixed step, or a musical bar/beat grid.
 - **audio.loudness** — Integrated loudness, loudness range, true peak and sample peak of an audio or video file, optionally with a momentary or short-term loudness curve.
 - **audio.mix** — Declarative track/bus mixer: places clips sample-accurately on tracks, sums them to an exact length, optional per-track fx, level, sidechain and master stage. Plain float sum by default.
-- **audio.process** — Run an ordered list of processing steps over audio takes: ffmpeg filters, pitch, tempo, gain, silence trim, pause tightening, fades and peak normalisation, written as wav, flac or mp3.
+- **audio.process** — Run an ordered list of processing steps over audio takes: ffmpeg filters, pitch, tempo, gain, silence trim, pause tightening, fades and peak normalisation, written as wav, flac or mp3, with each file's audible onset and peak time.
 - **audio.silence** — Finds silences (including leading and trailing) and where speech ends in an audio or video file, using 10 ms windows and a peak threshold.
 - **audio.speech-ratio** — How far a voice sits above its background inside the speech band (default 300-3400 Hz), per line or per given window, with the minimum and median ratio.
 - **audio.stats** — Peak, RMS, crest, clipping, DC offset, stereo width, band energy, silence percentage and per-cycle loudness of an audio or video file.
 - **image.contact-sheet** — Lay images out in a grid so a set of stills can be reviewed at a glance.
+- **image.matte** — Cut a figure out of an illustration whose background is a soft blurred glow or a flat colour, and return a PNG with alpha. Flood-fills the smooth background, clears glow trapped in small pockets, keeps the largest figure and softens the edge.
 - **media.concat** — Join two or more clips: stream copy for sections rendered with identical settings, or the concat filter to re-encode across differing sources.
 - **media.encode** — Encode a video with explicit quality, bitrate, size, scaling and audio controls, including fit-to-N-MB two-pass encoding and named delivery presets.
 - **media.ffmpeg** — Run an ffmpeg command on workspace files.
@@ -27,7 +28,7 @@ Every motionex tool takes a JSON object. Any file input is a ref: a workspace pa
 - **voice.elevenlabs** — Synthesize one line of speech with ElevenLabs and write take.mp3 plus take.wav. Optional provider: it needs an elevenlabs_api_key secret file and network access.
 - **voice.elevenlabs-voices** — List the ElevenLabs voices available to the key, optionally filtered by a search string. Optional provider: it needs an elevenlabs_api_key secret file and network access.
 - **voice.phonemize** — Show how a Piper voice will pronounce text as IPA, sentence by sentence, without synthesizing any audio. Use it to check a name, write [[raw phonemes]] lines, or debug odd pronunciation.
-- **voice.piper** — Synthesize voice-over lines to 16-bit mono WAV files with a local Piper voice, one file per line, with per-line durations and speech-end times.
+- **voice.piper** — Synthesize voice-over lines to 16-bit mono WAV files with a local Piper voice, one file per line, with per-line speech-start/end times and a warning when Piper babbles.
 
 ## audio.levels
 
@@ -226,11 +227,11 @@ class: audio · deterministic: yes · cache: auto · version 1.0.0 · presets: d
 
 ## audio.process
 
-**Process audio (pitch, tempo, trim, fades)**: Run an ordered list of processing steps over audio takes: ffmpeg filters, pitch, tempo, gain, silence trim, pause tightening, fades and peak normalisation, written as wav, flac or mp3.
+**Process audio (pitch, tempo, trim, fades)**: Run an ordered list of processing steps over audio takes: ffmpeg filters, pitch, tempo, gain, silence trim, pause tightening, fades and peak normalisation, written as wav, flac or mp3, with each file's audible onset and peak time.
 
-The voice-fx and cleanup pass, for one file or a batch of takes. Each step does exactly one thing and the steps run in the order given, so a take can be pitched down for a deeper voice, its long pauses tightened, its edges faded and its peak normalised in one job. With no steps and no conversion options a file is only re-encoded. Presets such as deep-hero carry a whole named chain; a request's own steps replace a preset's steps. A step that needs real DSP is an ffmpeg chain, so it appears in the result's chain list in the order it ran; gain, trim, tightening, fades and normalisation are done in memory and do not add a chain. Nothing is enforced: no normalisation, no trimming, no resampling unless asked.
+The voice-fx and cleanup pass, for one file or a batch of takes. Each step does exactly one thing and the steps run in the order given, so a take can be pitched down for a deeper voice, its long pauses tightened, its edges faded and its peak normalised in one job. With no steps and no conversion options a file is only re-encoded. Presets such as deep-hero carry a whole named chain; a request's own steps replace a preset's steps. A step that needs real DSP is an ffmpeg chain, so it appears in the result's chain list in the order it ran; gain, trim, tightening, fades and normalisation are done in memory and do not add a chain. Every output reports `onset_s` (where the file first becomes audible, at or above -30 dBFS, or null when silent) and `peak_at_s` (the time of the sample peak), so a cue can be lined up on the frame where the sound actually starts. Nothing is enforced: no normalisation, no trimming, no resampling unless asked.
 
-class: audio · deterministic: yes · cache: auto · version 1.0.0 · presets: deep-hero, uncanny-villain
+class: audio · deterministic: yes · cache: auto · version 1.1.0 · presets: deep-hero, uncanny-villain
 
 | field | type | required | default | description |
 | --- | --- | --- | --- | --- |
@@ -431,6 +432,46 @@ class: audio · deterministic: yes · cache: auto · version 1.0.0
 }
 ```
 
+## image.matte
+
+**Matte (cut a figure out of a glow)**: Cut a figure out of an illustration whose background is a soft blurred glow or a flat colour, and return a PNG with alpha. Flood-fills the smooth background, clears glow trapped in small pockets, keeps the largest figure and softens the edge.
+
+For miniature or illustration characters on a broad beige aura (five Persian miniatures on dark grounds was the real case). It smooths the image, flood-fills the background from the border through pixels whose gradient is below `threshold`, clears enclosed smooth pockets (glow trapped between an arm and the body) when they are large, smooth and close in colour to the glow reference, keeps the largest figure component, erodes `erode_px` pixels off the edge and softens the alpha. Output is a PNG with alpha; set `mask` to additionally write a grayscale `mask.png`. It cuts; it never invents colour.
+
+class: encode · deterministic: yes · cache: auto · version 1.0.0
+
+| field | type | required | default | description |
+| --- | --- | --- | --- | --- |
+| image | ref | yes |  | Illustration to cut: a PNG, JPEG or WebP workspace path, job:<id>/<output> or pin:<name>. Up to 16 megapixels. |
+| threshold | number |  | 9 | Gradient (max channel difference after smoothing) below which a pixel counts as smooth background. Raise it to reach further into a soft glow, lower it to stop at faint texture. |
+| erode_px | integer |  | 2 | Pixels to erode off the figure edge after the cut, which removes the aura fringe. 0 keeps the edge as found. |
+| pockets | object\|boolean |  | {"enabled":true,"min_px":250,"max_grad":2.8,"max_dist":60} | Clear enclosed smooth pockets (glow trapped between an arm and the body). Pass false to skip pocket clearing entirely, or an object: set enabled to false to skip it, and tune min_px (minimum pocket area), max_grad (maximum mean gradient) and max_dist (maximum distance from the glow reference colour). A pocket is cleared only when it is at least min_px pixels, its mean gradient is below max_grad and its mean colour is within max_dist of the glow reference. |
+| pockets.enabled | boolean |  | true | Whether to look for and clear enclosed pockets at all. |
+| pockets.min_px | integer |  | 250 | Smallest pocket (in pixels) that is considered for clearing. |
+| pockets.max_grad | number |  | 2.8 | Maximum mean gradient of a pocket for it to read as glow rather than texture; skin and fabric measured 3.6 or more, glow pockets 1.2 to 2.5. |
+| pockets.max_dist | number |  | 60 | Maximum RGB distance between a pocket's mean colour and the glow reference colour for it to be cleared. |
+| keep_largest | boolean |  | true | Keep only the largest connected figure component, which drops specks. Set false to keep every component. |
+| mask | boolean |  | false | Also write mask.png, a grayscale copy of the matte (white = figure), next to the output. |
+| name | string |  | "matte.png" | Output PNG path relative to the job's out folder, for example matte.png or cut/figure.png. |
+
+### Example: Cut a miniature figure off its beige aura
+
+```json
+{
+  "image": "characters/miniature.png",
+  "threshold": 9,
+  "erode_px": 2,
+  "pockets": {
+    "min_px": 250,
+    "max_grad": 2.8,
+    "max_dist": 60
+  },
+  "keep_largest": true,
+  "mask": false,
+  "name": "matte.png"
+}
+```
+
 ## media.concat
 
 **Media concat**: Join two or more clips: stream copy for sections rendered with identical settings, or the concat filter to re-encode across differing sources.
@@ -484,7 +525,7 @@ class: encode · deterministic: yes · cache: auto · version 1.0.0
 
 **Video encoder (delivery)**: Encode a video with explicit quality, bitrate, size, scaling and audio controls, including fit-to-N-MB two-pass encoding and named delivery presets.
 
-The delivery encoder. It never guesses: quality (crf or bitrate), scale caps, fps, audio codec/bitrate and colour are explicit inputs. Use target_size_mb to hit a byte budget with a two-pass x264/x265 encode, or a preset from presets/encode/ for a known platform. Colour is converted only when asked: with video.color set (the default 'bt709') the scale filter maps in_color_matrix=auto/in_range=auto to the requested matrix and TV range, with matching tags; video.color null leaves colour untouched. Scaling never upscales and keeps the aspect ratio.
+The delivery encoder. It never guesses: quality (crf or bitrate), scale caps, fps, audio codec/bitrate and colour are explicit inputs. Use target_size_mb to hit a byte budget with a two-pass x264/x265 encode, or a preset from presets/encode/ for a known platform. When the audio codec is copy the stream is not re-encoded and the fit-to-size budget reserves its real source bitrate instead of audio.bitrate_k, so prefer audio: {codec: "copy"} when the source audio is already AAC at the delivery rate (it also avoids a second lossy pass). Colour is converted only when asked: with video.color set (the default 'bt709') the scale filter maps in_color_matrix=auto/in_range=auto to the requested matrix and TV range, with matching tags; video.color null leaves colour untouched. Scaling never upscales and keeps the aspect ratio.
 
 class: encode · deterministic: yes · cache: auto · version 1.0.0 · presets: fit-size, instagram-reel, master, telegram-video, web-720p
 
@@ -512,7 +553,7 @@ class: encode · deterministic: yes · cache: auto · version 1.0.0 · presets: 
 | video.x264_params | string |  |  | Extra -x264-params value, passed through verbatim. |
 | video.color | string\|null |  | "bt709" | Output colour matrix, e.g. bt709, bt601, smpte240m. Adds an auto->target colour conversion plus matching tags. null adds no conversion and no tags. |
 | audio | object |  |  | Audio stream settings applied to the mapped audio (input or replace_audio). |
-| audio.codec | string |  | "aac" | Audio encoder, e.g. aac, libopus, copy. Default aac. |
+| audio.codec | string |  | "aac" | Audio encoder, e.g. aac, libopus, copy. Default aac. Use copy when the source audio is already AAC at the delivery rate: the stream is not re-encoded and the fit-to-size budget reserves its real source bitrate (0 when the source has no audio stream). |
 | audio.bitrate_k | number |  | 192 | Audio bitrate in kbit/s. Default 192. |
 | audio.sample_rate | integer |  |  | Output sample rate in Hz (-ar). Omit to keep the source rate. |
 | audio.channels | integer |  |  | Output channel count (-ac). Omit to keep the source layout. |
@@ -761,7 +802,7 @@ class: light · deterministic: no · cache: off · version 1.0.0
 
 | field | type | required | default | description |
 | --- | --- | --- | --- | --- |
-| filter | string |  |  | Only return sounds whose name contains this case-insensitive substring, or matches this regular expression when the value starts and ends with `/` (e.g. `/^gm_dulc/`). Omit to return every sound. |
+| filter | string |  |  | Only return sounds whose name contains this case-insensitive substring. When the value contains a regex metacharacter (`\|`, `^`, `$`, `(`, `[`, `*`, `+`, `?` or `\`), it is treated as a case-insensitive regular expression instead, e.g. `dulcimer\|sitar\|flute`; wrapping it in `/.../` always means regex, e.g. `/^gm_dulc/`. An invalid pattern is an invalid-input error. Omit to return every sound. |
 | kind | enum |  | "all" | Only return this kind of sound: `synth` for oscillators/noise, `sample` for sampler banks, `soundfont` for GM instruments, or `all`. |
 | offline | boolean |  | false | Only load sample maps and soundfonts from the sample cache, never the network. Omit (false) to allow downloading a missing map. Listing itself never loads audio. |
 
@@ -1219,19 +1260,18 @@ class: light · deterministic: yes · cache: auto · version 1.0.0
 
 ## voice.piper
 
-**Voice (Piper TTS)**: Synthesize voice-over lines to 16-bit mono WAV files with a local Piper voice, one file per line, with per-line durations and speech-end times.
+**Voice (Piper TTS)**: Synthesize voice-over lines to 16-bit mono WAV files with a local Piper voice, one file per line, with per-line speech-start/end times and a warning when Piper babbles.
 
-Speaks each line in `lines` with a Piper voice and writes <name or line-001>.wav into the job's output folder. Every take is different (Piper's VITS sampling), so results are never cached. `speech_end_s` is where the audible speech stops inside the file: useful for snapping cuts without trimming a natural tail. Pass raw IPA inside [[ ... ]] when a name must be pronounced exactly, and raise `length_scale` slightly (about 1.1) for gravitas.
+Speaks each line in `lines` with a Piper voice and writes <name or line-001>.wav into the job's output folder. Every take is different (Piper's VITS sampling), so results are never cached. Each line may be a plain string (shorthand for {text}) or an object with an optional name. `speech_start_s` and `speech_end_s` mark where the audible speech begins and ends inside the file, so a cue can be placed on the exact frame without guessing at leading or trailing silence; `speech_s` is their difference. `warnings` lists lines whose speech ran far longer than their text predicts, a sign that Piper is babbling: try another voice or reword the line. Pass raw IPA inside [[ ... ]] when a name must be pronounced exactly, and raise `length_scale` slightly (about 1.1) for gravitas.
 
-class: voice · deterministic: no · cache: off · version 1.0.0
+class: voice · deterministic: no · cache: off · version 1.1.0
 
 | field | type | required | default | description |
 | --- | --- | --- | --- | --- |
 | voice | string |  |  | Voice name as installed in the voice folders, e.g. en_US-norman-medium. Either voice or voice_file is required. |
 | voice_file | ref |  |  | A specific .onnx voice file (workspace path, job:<id>/<output> or pin:<name>) with its .onnx.json config beside it. Use instead of voice to pin an exact model. |
-| lines | array | yes |  | The lines to speak, in order; each one becomes its own WAV file. |
-| lines[].text | string | yes |  | What to say. Text inside [[ ... ]] is passed to Piper as raw IPA phonemes, for example "My name is [[ʃˈɒpˌuːə.]]"; the final punctuation must sit INSIDE the brackets, otherwise the model keeps the raw phonemes going through the next sentence. |
-| lines[].name | string |  |  | Output file name without .wav, e.g. who-0 writes who-0.wav. Omit to get line-001, line-002, ... Names must be unique inside one call. |
+| lines | array | yes |  | The lines to speak, in order; each one becomes its own WAV file. A line is either a plain string (shorthand for {"text": "<string>"}) or an object with an explicit text and an optional name. |
+| lines[] |  |  |  |  |
 | length_scale | number |  |  | Speaking rate control: above 1 is slower (about 1.1 for gravitas), below 1 is faster. Omit to use the voice's own setting (1.0). |
 | noise_scale | number |  |  | Generator noise; higher is more varied and expressive, lower is flatter. Omit to use the voice's own setting. |
 | noise_w_scale | number |  |  | Phoneme-width noise, i.e. timing variation; lower is more metronomic. Omit to use the voice's own setting. |
