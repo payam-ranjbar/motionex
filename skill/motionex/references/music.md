@@ -41,7 +41,8 @@ $: note("<c2 g1>").s("sawtooth").lpf(500).mask(span(DARK, DROP)) // the dark par
 
 ## Reading the analysis (guides, not laws)
 `result.analysis` (and `audio.stats` on any file) gives peak, rms, crest, clipped samples, the spectrum split, stereo width, per-cycle loudness and warnings.
-- **Peak** at or below −1 dBFS with nothing clipped. If it clips, lower `.gain()` on the loudest part, or everything with `all(x => x.gain(.8))`.
+- **Peak** at or below −1 dBFS with nothing clipped. Every render returns `peak_db`, and `warnings` says when integer formats clip overs. Lower `.gain()` on the loudest part, or set `peak_db: -1`: one gain on the float render before encoding, so nothing clips (absent = untouched). `format: "wav32"` keeps overs.
+- **Missing samples are silent**: read `warnings` after every render. Some listed sounds do not decode in this engine (seen: `darbuka`, `tom_mallet`); probe a sound with a 2-second render (`s("name*4")`) before building a part on it.
 - **RMS** −20 to −12 dBFS is a healthy level for a bed before mixing.
 - **Crest** under ~6 dB sounds squashed; over ~20 dB is sparse or very dynamic.
 - **Spectrum**: more than 70% low is muddy (high-pass the non-bass parts); more than 35% high can be harsh.

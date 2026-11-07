@@ -573,10 +573,10 @@ class: encode · deterministic: no · cache: off · version 1.0.0
 
 | field | type | required | default | description |
 | --- | --- | --- | --- | --- |
-| args | array | yes |  | The ffmpeg arguments, without the program name. Use {in:NAME}, {out:FILE} and {script:NAME} placeholders. |
+| args | array | yes |  | The ffmpeg arguments, without the program name. Use {in:NAME} for an input, {out:FILE} for a declared output and {script:NAME} for a script file. An {out:FILE} may be an image-sequence pattern with one %d or %0Nd frame counter (e.g. {out:f-%03d.png}). Bare braces that are not placeholders are passed through to ffmpeg. |
 | args[] | string |  |  |  |
 | inputs | object |  | {} | Map of input names to file references. The name is used in {in:NAME} placeholders. |
-| outputs | array | yes |  | File names to write into the job's output directory. Every name must exist after the run. |
+| outputs | array | yes |  | File names to write into the job's output directory. Every plain name must exist after the run. A name may be an image-sequence pattern with exactly one %d or %0Nd frame counter (N 1-9, e.g. f-%03d.png); at least one matching frame must exist, and every matching frame becomes a job output listed in frame order. |
 | outputs[] | string |  |  |  |
 | scripts | object |  | {} | Map of script names to their contents. Each script is written to a file in the scratch directory and can be used with {script:NAME}. |
 
@@ -703,7 +703,7 @@ class: light · deterministic: yes · cache: auto · version 1.0.0
 
 **Music render (Strudel)**: Render a Strudel song to audio with the Mucavex engine: seeded deterministic noise, named section markers, optional tempo override and an analysis report.
 
-Evaluates Strudel live-coding JavaScript with the same semantics as the strudel.cc REPL and renders it offline to WAV/MP3/FLAC/OGG/Opus/M4A. Named markers (lines like `let DROP = 34;`) let a build move song sections without regenerating the code. Strudel noise is seeded, so identical input gives byte-identical audio. `max_polyphony` must stay high: the engine's old default of 128 steals voices and fades sample voices in long renders. The tool renders; it never applies loudness normalisation, ducking or limiting.
+Evaluates Strudel live-coding JavaScript with the same semantics as the strudel.cc REPL and renders it offline to WAV/MP3/FLAC/OGG/Opus/M4A. Named markers (lines like `let DROP = 34;`) let a build move song sections without regenerating the code. Strudel noise is seeded, so identical input gives byte-identical audio. `max_polyphony` must stay high: the engine's old default of 128 steals voices and fades sample voices in long renders. The tool renders; it applies no loudness normalisation, ducking or limiting of its own (`peak_db` is the only gain it will add, and only when asked). It always measures the render's sample peak, warns when an over-hot render would be clamped by the chosen format, and never clips silently.
 
 class: music · deterministic: yes · cache: auto · version 1.0.0
 
@@ -719,8 +719,9 @@ class: music · deterministic: yes · cache: auto · version 1.0.0
 | beats_per_cycle | integer |  | 4 | Beats in one cycle, used only when `bpm` is given. 4 means one cycle is a 4/4 bar. |
 | tail_s | number |  | 0 | Extra seconds after the last cycle so reverb and release tails are not cut off. |
 | sample_rate | integer |  | 48000 | Output sample rate in Hz. |
-| format | enum |  | "wav" | Output container/codec. wav is 16-bit PCM, wav32 is 32-bit float; flac/ogg/opus/m4a need ffmpeg. |
+| format | enum |  | "wav" | Output container/codec. wav is 16-bit PCM, wav32 is 32-bit float (the only format that keeps overs above 0 dBFS); flac/ogg/opus/m4a need ffmpeg. Every other format clamps past ±1.0, which distorts an over-hot render. |
 | bitrate_k | integer |  |  | Bitrate in kbps for lossy formats (mp3, opus, m4a). Omit for the encoder default. |
+| peak_db | number |  |  | Scale the whole render by one gain so its sample peak lands exactly at this dBFS (for example -1), applied before encoding so nothing clips. Omit to leave the render untouched. `gain_db_applied` reports the gain used. A silent render is not scaled (it gets a warning instead). |
 | max_polyphony | integer |  | 4096 | Maximum simultaneous voices. Keep this high: Strudel's default of 128 steals voices, which fades earlier sample voices in long renders. Raise it further for very dense songs. |
 | seed | integer |  | 0 | Seed for the Math.random replacement Strudel noise uses. The same seed gives byte-identical audio; change it for a different noise take. |
 | analyze | boolean |  | true | Also measure the render (peak/RMS/crest/clipping/warnings) and write analysis.json. |

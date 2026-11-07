@@ -67,4 +67,6 @@ These come from a comedy ad and a cinematic short:
 - seeded film grain or noise tiles for texture (watch the file size).
 
 ## Originality
-Use the user's own characters and assets (silhouettes can become alpha masks with `media.ffmpeg`: `alphaextract`, `colorkey`, `scale`). Do not imitate franchise characters, logos or names.
+Use the user's own characters and assets (silhouettes can become alpha masks with `media.ffmpeg`: `alphaextract`, `colorkey`, `scale`). Illustrations on a dark or blurred ground: either screen-blend them onto a dark scene (fast, but a light aura washes the picture out), or cut them out first (a flood fill from the border through smooth pixels, stopped by the drawing's crisp outlines, gives clean mattes) and draw them normally with your own glow.
+- **Fonts**: the page may load Google Fonts (the capture has network unless `offline: true`); the container itself only has DejaVu/Liberation. Persian/Arabic: Noto Nastaliq Urdu (Nastaliq), Lalezar (display, Persian digits ۱۲۳), Aref Ruqaa. Await `document.fonts.load(font, sampleText)` with real sample text before `ready`. For RTL words in canvas set `ctx.direction = 'rtl'` and avoid trailing punctuation (bidi can put `!` on the wrong side).
+- **Image sequences from `media.ffmpeg`**: declare `outputs: ["f-%03d.png"]` and write `{out:f-%03d.png}`; every frame is listed and kept. Do not imitate franchise characters, logos or names.

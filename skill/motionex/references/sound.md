@@ -41,12 +41,13 @@ The accepted balance is the preset `dialogue-anchored`. `ducked-bed` (classic du
 - **−14 LUFS**: what streaming platforms normalise to; punchy.
 - **−16 LUFS**: calmer, and good for narrative pieces. It was chosen after "too loud" at −14.
 - **Telegram** does not normalise, so your master is what people hear.
-- **True peak**: keep it at −1 to −1.5 dBTP for lossy encodes.
+- **True peak**: keep it at −1 to −1.5 dBTP for lossy encodes. `gain+limiter` now honours the TRUE-peak ceiling (it re-limits on inter-sample overshoot and warns if it cannot). AAC adds roughly 0.1–0.4 dB, so master about 0.3–0.5 dB under the delivery ceiling, and measure the encoded MP4 with `audio.loudness`.
+- **Fades at the cut**: a clip longer than the mix (`duration_s`) gets its `fade_out_s` applied at the mix end, its audible end.
 - **`gain+limiter`** iterates until the limited mix lands on the target (±0.3 LU). If the material is too peaky to get there under the ceiling, the result says so in `warnings`; lower the target, or tame the transients (a gentle compressor on the drums or the bus) first. Pushing a master louder costs transient snap: check the drop with `audio.levels` afterwards.
 
 ## Sound effects (`sfx.synth`)
 - **Built-in generic recipes**, pure synthesis and seeded: `rain_bed`, `glitch_cut`, `glitch_micro`, `whoosh_by`, `swish`, `thump`, `burst`, `ui_blip`. Each takes `params`.
-- **Your own recipes**: a `.mjs` in the workspace exporting `sounds = {name(kit, params) { return [L, R]; }}`.
+- **Your own recipes**: a `.mjs` in the workspace exporting `sounds = {name(kit, params) { return [L, R]; }}`. `kit.rng()` returns the next random number (0..1) from the seeded stream, not a generator: write `const r = () => kit.rng();`.
   - `kit` has noise generators, oscillators, bells, filters (`svf`, `lp`, `hp`, `bpf`), saturation, bitcrush, stutter, reverb, echo, envelopes, resampling and `pal(name, k, slot)` for slicing palette audio.
   - A palette is any audio you pass in, for example one-shots rendered from Strudel sample banks with `music.render` (`s("gong")` and so on).
 - **What worked**:
