@@ -23,7 +23,7 @@
     "properties": {
       "filter": {
         "type": "string",
-        "description": "Only return sounds whose name contains this case-insensitive substring, or matches this regular expression when the value starts and ends with `/` (e.g. `/^gm_dulc/`). Omit to return every sound."
+        "description": "Only return sounds whose name contains this case-insensitive substring. When the value contains a regex metacharacter (`|`, `^`, `$`, `(`, `[`, `*`, `+`, `?` or `\\`), it is treated as a case-insensitive regular expression instead, e.g. `dulcimer|sitar|flute`; wrapping it in `/.../` always means regex, e.g. `/^gm_dulc/`. An invalid pattern is an invalid-input error. Omit to return every sound."
       },
       "kind": {
         "enum": ["synth", "sample", "soundfont", "all"],

@@ -20,18 +20,23 @@ function kindOf(name, data) {
   return 'sample';
 }
 
+/** Regex metacharacters that switch `filter` from a substring to a pattern (a `/.../` wrap also selects regex). */
+const REGEX_META = /[|^$([*+?\\]/;
+
 /**
- * Build a name matcher from `filter`: a case-insensitive substring, or a case-insensitive regular
- * expression when it starts and ends with `/`.
+ * Build a name matcher from `filter`: a case-insensitive substring by default, or a case-insensitive regular
+ * expression when the value contains regex metacharacters (`| ^ $ ( [ * + ? \`) or is wrapped in `/.../`.
+ * An unparsable pattern is invalid-input.
  * @param {string} [filter]
  * @returns {(name: string) => boolean}
  */
 function nameMatcher(filter) {
   if (filter == null || filter === '') return () => true;
-  if (filter.length >= 2 && filter.startsWith('/') && filter.endsWith('/')) {
+  const wrapped = filter.length >= 2 && filter.startsWith('/') && filter.endsWith('/');
+  if (wrapped || REGEX_META.test(filter)) {
     let re;
     try {
-      re = new RegExp(filter.slice(1, -1), 'i');
+      re = new RegExp(wrapped ? filter.slice(1, -1) : filter, 'i');
     } catch (err) {
       throw new ToolError('invalid-input', `invalid filter regex: ${err instanceof Error ? err.message : err}`);
     }
