@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>motionex · ON THE ONE</title>
-<meta name="description" content="Five vertical music videos made end to end by AI coding agents with motionex, a motion-graphics toolbox for agents.">
+<meta name="description" content="Ten vertical music videos made end to end by AI coding agents with motionex, a motion-graphics toolbox for agents.">
 <meta property="og:title" content="motionex · ON THE ONE">
-<meta property="og:description" content="Five vertical music videos made end to end by AI coding agents with motionex.">
+<meta property="og:description" content="Ten vertical music videos made end to end by AI coding agents with motionex.">
 <meta property="og:image" content="media/ep5-poster.jpg">
 <style>
   :root {
@@ -33,6 +33,10 @@
   .lede { max-width: 46rem; font-size: 1.12rem; color: #ddd7cc; margin: 0 0 12px; }
   .facts { display: flex; flex-wrap: wrap; gap: 8px; margin: 22px 0 40px; padding: 0; list-style: none; }
   .facts li { border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; font-size: .88rem; color: var(--muted); }
+  .group { margin: 0 0 18px; }
+  .group h2 { font-size: 1.25rem; letter-spacing: -.01em; margin: 0 0 6px; }
+  .group p { max-width: 46rem; margin: 0; color: #cfc8bc; font-size: .95rem; }
+  .grid + .group { margin-top: 56px; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 22px; }
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; }
   .card video { display: block; width: 100%; aspect-ratio: 9 / 16; background: #000; object-fit: cover; }
@@ -59,21 +63,31 @@
 <main>
   <p class="eyebrow">Made with motionex</p>
   <h1>ON THE <span>ONE</span></h1>
-  <p class="lede">Five vertical micro-stories where every cut, impact and word lands on the beat. Each one was made end to end by an AI coding agent from a one-page brief: it wrote the scene as an HTML page, composed the song in Strudel, synthesised the sound effects and the voice, mixed to −14 LUFS, checked its own stills, and rendered the MP4 through motionex.</p>
+  <p class="lede">Ten vertical micro-stories where every cut, impact and word lands on the beat. Each one was made end to end by an AI coding agent: it wrote the scene as an HTML page, composed the song in Strudel, built the sound effects and the voices, mixed to −14 LUFS, checked its own stills, and rendered the MP4 through motionex.</p>
   <p class="lede">Turn the sound on.</p>
   <ul class="facts">
     <li>1080 × 1920 · 30 fps</li>
-    <li>25–28 s each</li>
-    <li>one agent per episode, run in parallel</li>
-    <li>20–62 min and under $1 of model time each</li>
+    <li>25–72 s each</li>
+    <li>scene in HTML · song in Strudel</li>
+    <li>mixed to −14 LUFS</li>
   </ul>
 
-  <div class="grid" id="episodes"></div>
+  <div class="group">
+    <h2>Episodes 1–5 · one autonomous agent each</h2>
+    <p>Five agents ran in parallel, each from a one-page brief: 20–62 minutes and under $1 of model time per episode.</p>
+  </div>
+  <div class="grid" id="episodes-a"></div>
+
+  <div class="group">
+    <h2>Episodes 6–10 · with a director</h2>
+    <p>Made by Claude with the same tools, working with a human director; episodes 8–10 went through rounds of review notes. The pictures grow from pure particles (6) to the director's own Persian-miniature characters (7) and generated transparent cut-outs animated in code (8–10). Episode 10 adds recorded CC0 sounds and gibberish voices.</p>
+  </div>
+  <div class="grid" id="episodes-b"></div>
 
   <section class="how">
     <div>
       <h2>The brief</h2>
-      <p>A series bible and one page per episode: the beat map, the look, the word effect, the music sketch. The agents read the motionex skill first. <a href="https://github.com/payam-ranjbar/motionex/tree/main/examples/on-the-one">The briefs are in the repo.</a></p>
+      <p>A series bible and, for episodes 1–5, one page per episode: the beat map, the look, the word effect, the music sketch. The agents read the motionex skill first. <a href="https://github.com/payam-ranjbar/motionex/tree/main/examples/on-the-one">The briefs are in the repo.</a></p>
     </div>
     <div>
       <h2>The tools</h2>
@@ -81,7 +95,7 @@
     </div>
     <div>
       <h2>The source</h2>
-      <p>Every episode folder holds the agent's <code>scene.html</code>, <code>song.strudel</code>, SFX recipe, every job it submitted, and its production notes.</p>
+      <p>The folders of episodes 1–5 hold each agent's <code>scene.html</code>, <code>song.strudel</code>, SFX recipe, every job it submitted, and its production notes.</p>
     </div>
   </section>
 
@@ -92,18 +106,28 @@
 <script>
   const SRC = 'https://github.com/payam-ranjbar/motionex/tree/main/examples/on-the-one/';
   const EPISODES = [
-    { n: 1, id: 'ep1-kickdrum-kaiju', title: 'Kickdrum Kaiju', tags: 'hard techno · 132 bpm · 25.5 s',
+    { n: 1, src: true, id: 'ep1-kickdrum-kaiju', title: 'Kickdrum Kaiju', tags: 'hard techno · 132 bpm · 25.5 s',
       hook: 'A giant built out of speaker cones wakes the city, and its footsteps are the kick drum.' },
-    { n: 2, id: 'ep2-one-pixel', title: 'One Pixel', tags: 'deep house · 122 bpm · 25.6 s',
+    { n: 2, src: true, id: 'ep2-one-pixel', title: 'One Pixel', tags: 'deep house · 122 bpm · 25.6 s',
       hook: 'Nobody sees one pixel, until it finds a beat and becomes the eye of a whole picture.' },
-    { n: 3, id: 'ep3-offbeat-heist', title: 'Heist on the Offbeat', tags: 'funk breakbeat · 110 bpm · 26.2 s',
+    { n: 3, src: true, id: 'ep3-offbeat-heist', title: 'Heist on the Offbeat', tags: 'funk breakbeat · 110 bpm · 26.2 s',
       hook: 'Three raccoon thieves crack a vault where every single move has to land on the offbeat.' },
-    { n: 4, id: 'ep4-run-loop', title: 'Run Loop', tags: 'driving techno · 128 bpm · 28.1 s',
+    { n: 4, src: true, id: 'ep4-run-loop', title: 'Run Loop', tags: 'driving techno · 128 bpm · 28.1 s',
       hook: 'He has run this street a thousand times; the night he stops counting the loop, it turns into a groove.' },
-    { n: 5, id: 'ep5-sun-swallower', title: 'The Sun Swallower', tags: 'Persian techno · 124 bpm · 27.1 s',
+    { n: 5, src: true, id: 'ep5-sun-swallower', title: 'The Sun Swallower', tags: 'Persian techno · 124 bpm · 27.1 s',
       hook: 'A serpent swallows the sun, and one drummer drums it back up, on the one.' },
+    { n: 6, id: 'ep6-swarm', title: 'Swarm', tags: 'melodic techno · 126 bpm · 26.7 s',
+      hook: 'We were ten thousand sparks, scattered and silent, until the dark began to beat.' },
+    { n: 7, id: 'ep7-div', title: 'The Div', tags: 'Persian acid techno · 128 bpm · 30.0 s',
+      hook: 'A div crashes the poet’s garden party, and turns out to be the one who brought the drop. No words, only the beat.' },
+    { n: 8, id: 'ep8-final-boss', title: 'Final Boss', tags: 'acid · 140 bpm · 34.3 s',
+      hook: 'One hit point left, one beat of silence, and then the drop turns a tiny hero into a seventeen-hit combo.' },
+    { n: 9, id: 'ep9-silence-breaker', title: 'Silence Breaker', tags: 'acid · 132 bpm · 30.0 s',
+      hook: 'A villain shushes a whole comic page grey, and one clap on the drop punches him out through three panel borders.' },
+    { n: 10, id: 'ep10-death-battle', title: 'Death Battle', tags: 'fight score in D hijaz · 150 bpm · 72.0 s',
+      hook: 'Aghaye Imeni against Baba Barghi: a match, a short circuit, one whole planet switched off, and a fight that ends on somebody’s living-room TV.' },
   ];
-  const grid = document.getElementById('episodes');
+  const grids = [document.getElementById('episodes-a'), document.getElementById('episodes-b')];
   for (const e of EPISODES) {
     const card = document.createElement('article');
     card.className = 'card';
@@ -116,13 +140,13 @@
         <h3 class="title">${e.title}</h3>
         <p class="hook">${e.hook}</p>
         <p class="tags">${e.tags}</p>
-        <div class="links"><a href="${SRC}${e.id}">Source</a><a href="media/${e.id}.mp4" download>MP4</a></div>
+        <div class="links">${e.src ? `<a href="${SRC}${e.id}">Source</a>` : ''}<a href="media/${e.id}.mp4" download>MP4</a></div>
       </div>`;
-    grid.append(card);
+    grids[e.n <= 5 ? 0 : 1].append(card);
   }
   // One video at a time.
-  grid.addEventListener('play', (ev) => {
-    for (const v of grid.querySelectorAll('video')) if (v !== ev.target) v.pause();
+  document.addEventListener('play', (ev) => {
+    for (const v of document.querySelectorAll('video')) if (v !== ev.target) v.pause();
   }, true);
 </script>
 </body>
