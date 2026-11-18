@@ -1,0 +1,389 @@
+{
+  "name": "image.grade",
+  "version": "1.0.0",
+  "title": "Grade (colour-grade stills)",
+  "summary": "Colour-grade stills before they go into a page: ordered steps (Lab cast removal, saturation, tone curve, exposure, clarity, tint inside or outside a subject mask, vignette, .cube LUT), light sources kept on request, an optional glow layer, and before/after numbers.",
+  "description": "Each image goes through `steps` in order. A step changes only what its own fields say, and a step whose strength is 0 changes nothing; the tool has no look of its own. The ops: `cast` moves a colour cast in CIE Lab (D65, sRGB in): it removes a fraction of one side of a* or b* (yellow = +b*, blue = -b*, red = +a*, green = -a*) and leaves pixels on the other side alone. `saturation` multiplies Lab chroma, everywhere or only in a hue range (`rest` sets the multiplier outside it). `curve` is a per-channel tone curve on sRGB values: an S-shaped `contrast` around `pivot`, `gamma`, a `shoulder` that rolls the highlights off softly and `lift` for the blacks. `exposure` scales linear light by 2^ev. `clarity` adds local contrast to L*: value + amount x (value - blur). `tint` blends toward a colour everywhere, inside or outside the subject mask; `grow` and `feather` hold it off the subject's edge. `vignette` darkens (or, negative, lightens) toward the corners. `lut` applies a .cube 3D LUT with trilinear lookup. `protect` on cast and tint keeps the light sources (`lights`) or the subject (`mask`) as they were. The light mask is found in each image as it entered the grade: bright, saturated pixels in a hue range (orange to yellow by default) and the near-white cores touching them, widened by `spread`; `light_mask.write_masks` writes it out to check. `glow` writes a bloom layer of the light pixels on black, for a page to draw additively (mix-blend-mode: screen or plus-lighter) and pulse. Per image the result gives mean L* and mean a*/b* outside the lights, before and after, and with a mask the mean L* inside and outside the subject and their ratio in dB. The numbers do not replace looking: put the source and the graded image side by side with image.contact-sheet.",
+  "kind": "node",
+  "handler": "handler.mjs",
+  "deterministic": true,
+  "cache_default": "auto",
+  "resources": { "class": "encode", "slots": 1, "memory_mb": 2048 },
+  "timeout_s": 1800,
+  "requires": { "binaries": ["ffmpeg"] },
+  "input_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["images"],
+    "properties": {
+      "images": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 200,
+        "description": "The stills to grade, each with the same steps.",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["image"],
+          "properties": {
+            "image": {
+              "type": "string",
+              "x-mx-ref": true,
+              "description": "The still: a PNG, JPEG or WebP workspace path, job:<id>/<output> or pin:<name>. Up to 16 megapixels. Its alpha, if any, is kept in a PNG output."
+            },
+            "name": {
+              "type": "string",
+              "pattern": "^[\\w.-]{1,100}$",
+              "description": "Base name of the outputs (<name>.png, <name>-glow.png, <name>-lights.png), without folders. Default: the source file's name without its extension. Names must be unique within the call."
+            },
+            "mask": {
+              "type": "string",
+              "x-mx-ref": true,
+              "description": "The subject's matte (an image.matte output works): white or opaque = subject. Its alpha is used when any pixel is not opaque, otherwise its luminance. A mask of another size is resized to the image (with a warning)."
+            }
+          }
+        }
+      },
+      "steps": {
+        "type": "array",
+        "maxItems": 64,
+        "default": [],
+        "description": "The grade, applied in order. Each step is an object with `op` and that op's fields only; the handler names any field the op does not take. No steps: the images are only measured and re-encoded.",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["op"],
+          "properties": {
+            "op": {
+              "enum": ["cast", "saturation", "curve", "exposure", "clarity", "tint", "vignette", "lut"],
+              "description": "What the step does. cast: axis, amount, protect. saturation: amount, hue, rest. curve: contrast, pivot, lift, shoulder, gamma. exposure: ev. clarity: amount, radius. tint: amount, color, where, grow, feather, protect. vignette: amount, softness. lut: file, amount."
+            },
+            "axis": {
+              "enum": ["yellow", "blue", "red", "green"],
+              "description": "cast (required): the side of the cast to remove: yellow = +b*, blue = -b*, red = +a*, green = -a*. Only pixels on that side change."
+            },
+            "amount": {
+              "type": "number",
+              "minimum": -1,
+              "maximum": 10,
+              "description": "Strength; its meaning and range depend on the op. cast (required, 0..1): the fraction of that side's a* or b* removed. saturation (required, 0..10): the chroma multiplier (inside the hue range when hue is set). clarity (required, -1..4): local contrast added; negative softens. tint (required, 0..1): how far to blend toward the colour. vignette (required, -1..1): darkening at the corners; negative lightens. lut (0..1, default 1): blend between the original and the LUT."
+            },
+            "protect": {
+              "enum": ["lights", "mask", "none"],
+              "description": "cast and tint: what the step leaves as it was. lights: the light mask (lamps, fire, candles, glowing eyes). mask: the subject. none (default): nothing. With mask and an image without one, the step is skipped for that image with a warning."
+            },
+            "hue": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["center_deg", "width_deg"],
+              "description": "saturation: act only on this hue range of the colour wheel (0 red, 60 yellow, 120 green, 180 cyan, 240 blue, 300 magenta). Full strength within a quarter of the width of the centre, fading to nothing at half the width.",
+              "properties": {
+                "center_deg": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 360,
+                  "description": "Centre of the range in degrees."
+                },
+                "width_deg": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 360,
+                  "description": "Full width of the range in degrees, edge to edge."
+                }
+              }
+            },
+            "rest": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10,
+              "description": "saturation with hue: the chroma multiplier for every colour outside the range. Default 1 (unchanged)."
+            },
+            "contrast": {
+              "type": "number",
+              "exclusiveMinimum": -1,
+              "maximum": 4,
+              "description": "curve: S-curve strength around the pivot; the slope there is 1 + contrast, and black and white stay put. Negative flattens. Absent: no contrast change."
+            },
+            "pivot": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "exclusiveMaximum": 1,
+              "description": "curve: the sRGB value the contrast curve turns around. Default 0.5 (mid grey)."
+            },
+            "lift": {
+              "type": "number",
+              "exclusiveMinimum": -1,
+              "exclusiveMaximum": 1,
+              "description": "curve: raises black to this value (v = lift + (1 - lift) v); negative crushes, so values below -lift become black. Absent: blacks stay."
+            },
+            "shoulder": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "curve: soft highlight roll-off over the top `shoulder` of the range; values above white (after an exposure push) roll into white instead of clipping, and white itself lands at 1 - 0.37 x shoulder. Absent: no roll-off."
+            },
+            "gamma": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 10,
+              "description": "curve: midtone power, v^(1/gamma); above 1 brightens the midtones, below 1 darkens them. Absent: unchanged. The curve applies shoulder, then gamma, contrast and lift; gamma or contrast clip values to 0..1 first."
+            },
+            "ev": {
+              "type": "number",
+              "minimum": -10,
+              "maximum": 10,
+              "description": "exposure (required): stops; linear light is multiplied by 2^ev. Values above white are kept for a later curve shoulder and clipped only at the end."
+            },
+            "radius": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 0.25,
+              "description": "clarity: blur radius (Gaussian sigma) as a fraction of the image width, so it scales with the size. Default 0.02."
+            },
+            "color": {
+              "type": "string",
+              "pattern": "^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$",
+              "description": "tint: the colour to blend toward, as hex. Default \"#000000\" (darkening). Blended on sRGB values, like a layer in an image editor."
+            },
+            "where": {
+              "enum": ["outside-mask", "inside-mask", "everywhere"],
+              "description": "tint: where to blend. Default everywhere. outside-mask and inside-mask need the image's mask; an image without one skips the step with a warning."
+            },
+            "grow": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.5,
+              "description": "tint: distance (a fraction of the image width) beyond the subject's edge that an outside-mask tint keeps off (and an inside-mask tint reaches). Default 0."
+            },
+            "feather": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.5,
+              "description": "tint: distance (a fraction of the image width) over which the tint fades in beyond the grown edge, so no hard or dark halo touches the subject. Default 0."
+            },
+            "softness": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1,
+              "description": "vignette: how far in from the corners it reaches, on a scale where the centre is 0 and the corners 1: it starts at 1 - softness. Default 0.5."
+            },
+            "file": {
+              "type": "string",
+              "x-mx-ref": true,
+              "description": "lut (required): a .cube 3D LUT (LUT_3D_SIZE 2..129, DOMAIN_MIN/DOMAIN_MAX honoured), applied to the sRGB values with trilinear lookup."
+            }
+          }
+        }
+      },
+      "light_mask": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "How the light sources are found, from each image as it entered the grade. Used by protect: lights, by glow, and to leave the lights out of the cast numbers. The defaults pick warm light (orange to yellow); check them with write_masks.",
+        "properties": {
+          "hue_min_deg": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 360,
+            "default": 15,
+            "description": "Start of the light hue range (0 red, 30 orange, 60 yellow). A start above the end wraps through 0, e.g. 340 to 20 for reds."
+          },
+          "hue_max_deg": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 360,
+            "default": 65,
+            "description": "End of the light hue range in degrees."
+          },
+          "min_value": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.75,
+            "description": "Brightness (HSV value, the largest sRGB channel) a coloured pixel needs to count as light."
+          },
+          "min_saturation": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.35,
+            "description": "HSV saturation a pixel needs to count as coloured light. Paler pixels can only be cores."
+          },
+          "core_value": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.92,
+            "description": "Brightness a near-white pixel needs to count as a light's core (a blown lamp centre); cores count only when they touch the coloured light."
+          },
+          "spread": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 0.25,
+            "default": 0.01,
+            "description": "Widening, as a fraction of the image width: the mask is full within this distance of the light pixels and fades out over the same distance again. 0 keeps only the pixels themselves."
+          },
+          "write_masks": {
+            "type": "boolean",
+            "default": false,
+            "description": "Also write <name>-lights.png, the light mask in grey (white = protected), to check what was found."
+          }
+        }
+      },
+      "glow": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "When present, also write <name>-glow.png: the graded colour of the light pixels in linear light, blurred at each radius, averaged, normalised so the brightest channel reaches `strength`, on black. Absent: no glow layer.",
+        "properties": {
+          "radii": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 8,
+            "default": [0.004, 0.015, 0.05],
+            "description": "Blur radii (Gaussian sigma) as fractions of the image width; a few, from tight to wide, give a hot core with a soft halo.",
+            "items": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 0.5,
+              "description": "One radius as a fraction of the width."
+            }
+          },
+          "strength": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 4,
+            "default": 1,
+            "description": "Level of the brightest channel in linear light after normalising; above 1 clips the brightest part into a wider white core."
+          }
+        }
+      },
+      "format": {
+        "enum": ["png", "jpeg"],
+        "default": "png",
+        "description": "Format of the graded images (<name>.png or <name>.jpg). The glow and light-mask layers are always PNG."
+      },
+      "quality": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100,
+        "default": 92,
+        "description": "JPEG quality, 1 (smallest) to 100 (best). Ignored for PNG."
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["images", "warnings"],
+    "properties": {
+      "images": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["name", "file", "width", "height", "before", "after", "lights_pct", "skipped_steps"],
+          "properties": {
+            "name": { "type": "string" },
+            "file": { "type": "string" },
+            "width": { "type": "integer" },
+            "height": { "type": "integer" },
+            "before": {
+              "type": "object",
+              "required": ["luma", "cast_a", "cast_b"],
+              "properties": {
+                "luma": { "type": "number" },
+                "cast_a": { "type": "number" },
+                "cast_b": { "type": "number" }
+              }
+            },
+            "after": {
+              "type": "object",
+              "required": ["luma", "cast_a", "cast_b"],
+              "properties": {
+                "luma": { "type": "number" },
+                "cast_a": { "type": "number" },
+                "cast_b": { "type": "number" }
+              }
+            },
+            "lights_pct": { "type": "number" },
+            "skipped_steps": { "type": "array", "items": { "type": "integer" } },
+            "subject": {
+              "type": "object",
+              "required": ["mask_pct", "luma_in", "luma_out", "separation_db", "separation_db_before"],
+              "properties": {
+                "mask_pct": { "type": "number" },
+                "luma_in": { "type": ["number", "null"] },
+                "luma_out": { "type": ["number", "null"] },
+                "separation_db": { "type": ["number", "null"] },
+                "separation_db_before": { "type": ["number", "null"] }
+              }
+            },
+            "glow_file": { "type": "string" },
+            "lights_file": { "type": "string" }
+          }
+        }
+      },
+      "warnings": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "examples": [
+    {
+      "title": "Take the yellow cast out of a lamp-lit still, keep the lamp warm, darken the background behind the subject",
+      "input": {
+        "images": [{ "image": "stills/room.ppm", "mask": "stills/room-mask.pgm" }],
+        "steps": [
+          { "op": "cast", "axis": "yellow", "amount": 0.6, "protect": "lights" },
+          { "op": "curve", "contrast": 0.2, "shoulder": 0.1 },
+          { "op": "tint", "amount": 0.35, "where": "outside-mask", "grow": 0.04, "feather": 0.08, "protect": "lights" },
+          { "op": "vignette", "amount": 0.25 }
+        ],
+        "light_mask": { "write_masks": true },
+        "glow": { "radii": [0.05, 0.15] }
+      },
+      "fixtures": {
+        "stills/room.ppm": {
+          "text": "P3\n16 10\n255\n118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66\n118 98 66 255 168 56 255 168 56 255 168 56 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66\n118 98 66 255 168 56 255 250 238 255 168 56 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66\n118 98 66 255 168 56 255 168 56 255 168 56 118 98 66 118 98 66 156 128 104 156 128 104 156 128 104 156 128 104 156 128 104 156 128 104 118 98 66 118 98 66 118 98 66 118 98 66\n118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 156 128 104 156 128 104 156 128 104 156 128 104 156 128 104 156 128 104 118 98 66 118 98 66 118 98 66 118 98 66\n118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 156 128 104 156 128 104 156 128 104 156 128 104 156 128 104 156 128 104 118 98 66 118 98 66 118 98 66 118 98 66\n118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 156 128 104 156 128 104 156 128 104 156 128 104 156 128 104 156 128 104 118 98 66 118 98 66 118 98 66 118 98 66\n118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 156 128 104 156 128 104 156 128 104 156 128 104 156 128 104 156 128 104 118 98 66 118 98 66 118 98 66 118 98 66\n118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 156 128 104 156 128 104 156 128 104 156 128 104 156 128 104 156 128 104 118 98 66 118 98 66 118 98 66 118 98 66\n118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 156 128 104 156 128 104 156 128 104 156 128 104 156 128 104 156 128 104 118 98 66 118 98 66 118 98 66 118 98 66\n"
+        },
+        "stills/room-mask.pgm": {
+          "text": "P2\n16 10\n255\n0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n0 0 0 0 0 0 255 255 255 255 255 255 0 0 0 0\n0 0 0 0 0 0 255 255 255 255 255 255 0 0 0 0\n0 0 0 0 0 0 255 255 255 255 255 255 0 0 0 0\n0 0 0 0 0 0 255 255 255 255 255 255 0 0 0 0\n0 0 0 0 0 0 255 255 255 255 255 255 0 0 0 0\n0 0 0 0 0 0 255 255 255 255 255 255 0 0 0 0\n0 0 0 0 0 0 255 255 255 255 255 255 0 0 0 0\n"
+        }
+      }
+    },
+    {
+      "title": "Exposure, warm hues richer and the rest calmer, clarity, then half of a LUT, as JPEG",
+      "input": {
+        "images": [{ "image": "stills/room.ppm", "name": "room-look" }],
+        "steps": [
+          { "op": "exposure", "ev": 0.3 },
+          { "op": "saturation", "amount": 1.2, "hue": { "center_deg": 35, "width_deg": 60 }, "rest": 0.8 },
+          { "op": "clarity", "amount": 0.4, "radius": 0.1 },
+          { "op": "lut", "file": "looks/identity.cube", "amount": 0.5 }
+        ],
+        "format": "jpeg",
+        "quality": 90
+      },
+      "fixtures": {
+        "stills/room.ppm": {
+          "text": "P3\n16 10\n255\n118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66\n118 98 66 255 168 56 255 168 56 255 168 56 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66\n118 98 66 255 168 56 255 250 238 255 168 56 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66\n118 98 66 255 168 56 255 168 56 255 168 56 118 98 66 118 98 66 156 128 104 156 128 104 156 128 104 156 128 104 156 128 104 156 128 104 118 98 66 118 98 66 118 98 66 118 98 66\n118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 156 128 104 156 128 104 156 128 104 156 128 104 156 128 104 156 128 104 118 98 66 118 98 66 118 98 66 118 98 66\n118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 156 128 104 156 128 104 156 128 104 156 128 104 156 128 104 156 128 104 118 98 66 118 98 66 118 98 66 118 98 66\n118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 156 128 104 156 128 104 156 128 104 156 128 104 156 128 104 156 128 104 118 98 66 118 98 66 118 98 66 118 98 66\n118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 156 128 104 156 128 104 156 128 104 156 128 104 156 128 104 156 128 104 118 98 66 118 98 66 118 98 66 118 98 66\n118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 156 128 104 156 128 104 156 128 104 156 128 104 156 128 104 156 128 104 118 98 66 118 98 66 118 98 66 118 98 66\n118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 118 98 66 156 128 104 156 128 104 156 128 104 156 128 104 156 128 104 156 128 104 118 98 66 118 98 66 118 98 66 118 98 66\n"
+        },
+        "looks/identity.cube": {
+          "text": "TITLE \"identity\"\nLUT_3D_SIZE 2\n0 0 0\n1 0 0\n0 1 0\n1 1 0\n0 0 1\n1 0 1\n0 1 1\n1 1 1\n"
+        }
+      }
+    },
+    {
+      "title": "A batch of generated stills with their mattes, the same grade on each",
+      "input": {
+        "images": [
+          { "image": "stills/scene-01.png", "mask": "mattes/scene-01.png" },
+          { "image": "stills/scene-02.png", "mask": "mattes/scene-02.png" }
+        ],
+        "steps": [
+          { "op": "cast", "axis": "yellow", "amount": 0.5, "protect": "lights" },
+          { "op": "clarity", "amount": 0.25 },
+          { "op": "tint", "amount": 0.4, "where": "outside-mask", "grow": 0.01, "feather": 0.03 }
+        ],
+        "glow": {}
+      },
+      "run": false
+    }
+  ]
+}

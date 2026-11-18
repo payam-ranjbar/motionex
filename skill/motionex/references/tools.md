@@ -4,29 +4,34 @@ Every motionex tool takes a JSON object. Any file input is a ref: a workspace pa
 
 ## Index
 
+- **sfx.fetch** (contract) — Bring sounds from a library (freesound, or one an extension adds) into the job as WAV files, measured (where the sound starts, its loudest stretch, its peak) and with their licence and attribution, the same fields whichever library they come from.
+- **sfx.search** (contract) — Search a sound library (freesound, or one an extension adds) for recorded sound effects and ambiences, and get candidates with their length, licence, author and a preview link, the same fields whichever library answers.
 - **voice.list** (contract) — List the voices one voice provider can speak with, as {id, name} plus whatever else the provider knows. Pass an id as voice to voice.speak with the same provider.
 - **voice.speak** (contract) — Speak voice-over lines with any voice provider (piper: local, elevenlabs: cloud) and get one WAV per line with the same timing fields, so changing provider changes nothing downstream.
 - **audio.levels** — RMS, sample peak and ungated LUFS per time window of an audio or video file, using explicit windows, a fixed step, or a musical bar/beat grid.
 - **audio.loudness** — Integrated loudness, loudness range, true peak and sample peak of an audio or video file, optionally with a momentary or short-term loudness curve.
-- **audio.mix** — Declarative track/bus mixer: places clips sample-accurately on tracks, sums them to an exact length, optional per-track fx, level, sidechain and master stage. Plain float sum by default.
+- **audio.mix** — Declarative track/bus mixer: places clips sample-accurately on tracks, sums them to an exact length, optional per-track fx, gain automation, level, sidechain and master stage, and an optional per-cue level table. Plain float sum by default.
 - **audio.process** — Run an ordered list of processing steps over audio takes: ffmpeg filters, pitch, tempo, gain, silence trim, pause tightening, fades and peak normalisation, written as wav, flac or mp3, with each file's audible onset and peak time.
 - **audio.silence** — Finds silences (including leading and trailing) and where speech ends in an audio or video file, using 10 ms windows and a peak threshold.
 - **audio.speech-ratio** — How far a voice sits above its background inside the speech band (default 300-3400 Hz), per line or per given window, with the minimum and median ratio.
 - **audio.stats** — Peak, RMS, crest, clipping, DC offset, stereo width, band energy, silence percentage and per-cycle loudness of an audio or video file.
 - **image.contact-sheet** — Lay images out in a grid so a set of stills can be reviewed at a glance.
+- **image.grade** — Colour-grade stills before they go into a page: ordered steps (Lab cast removal, saturation, tone curve, exposure, clarity, tint inside or outside a subject mask, vignette, .cube LUT), light sources kept on request, an optional glow layer, and before/after numbers.
 - **image.matte** — Cut a figure out of an illustration whose background is a soft blurred glow or a flat colour, and return a PNG with alpha. Flood-fills the smooth background, clears glow trapped in small pockets, keeps the largest figure and softens the edge.
 - **media.concat** — Join two or more clips: stream copy for sections rendered with identical settings, or the concat filter to re-encode across differing sources.
-- **media.encode** — Encode a video with explicit quality, bitrate, size, scaling and audio controls, including fit-to-N-MB two-pass encoding and named delivery presets.
+- **media.encode** — Encode a video with explicit quality, bitrate, size, scaling, padding, picture fx and audio controls, including fit-to-N-MB two-pass encoding and named delivery presets.
 - **media.ffmpeg** — Run an ffmpeg command on workspace files.
 - **media.frames** — Grab still frames from a video at given times, as PNG or JPEG, optionally scaled to a width, to eyeball or compare an encode.
 - **media.mux** — Put an audio track onto a video without re-encoding the video: stream-copy the video and encode (or copy) the audio, with an optional audio delay.
 - **media.probe** — Inspect a media file with ffprobe: duration, size, format and bit rate plus a typed per-stream summary of codec, dimensions, frame rate, pixel format, colour tags, sample rate and channels.
-- **music.render** — Render a Strudel song to audio with the Mucavex engine: seeded deterministic noise, named section markers, optional tempo override and an analysis report.
+- **music.render** — Render a Strudel song to audio with the Mucavex engine: seeded deterministic noise, named section markers and the song's form, optional stems of named parts, a tempo override and an analysis report.
 - **music.sounds** — List the sounds the Strudel engine knows: name, kind (synth/sample/soundfont) and bank size, plus the bank names usable with .bank().
 - **picture.render** — Render an HTML page that exposes window.__motion (ready, seek(t), duration?, size?) to a video, frame by frame, with optional audio muxed in the same pass.
 - **picture.stills** — Write still frames of an HTML page that exposes window.__motion (ready, seek(t), duration?, size?) as PNG or JPEG, at the times you ask for.
+- **sfx.freesound** — The Freesound provider of sfx.fetch: bring Freesound sounds into a job as WAV files, measured (attack, loudest stretch, peak), with each sound's licence and a ready credit line in credits.json. Needs the freesound_api_key secret file and network access.
+- **sfx.freesound-search** — The Freesound provider of sfx.search: search Freesound's recorded sound effects and ambiences, filtered by licence and length, and list candidates with their licence, author and a preview link. Needs the freesound_api_key secret file and network access.
 - **sfx.synth** — Synthesize sound effects from a recipe module: a workspace .mjs or the built-in generic recipes. Each sound is finished (trim, fades, normalise), written as a WAV and measured.
-- **timeline.layout** — Lay scenes out from voice-over lines: cue times, scene lengths, optional beat snapping, music markers and named times. Writes timeline.json and dialogue-clips.json.
+- **timeline.layout** — Lay scenes out from voice-over lines, or cut them to a song's form (scenes in beats or bars, or until bar N): cue times, scene lengths, optional beat snapping, music markers, named times and a grid report. Writes timeline.json and dialogue-clips.json.
 - **voice.elevenlabs** — The ElevenLabs provider of voice.speak: speak lines with an ElevenLabs voice to one WAV per line (plus the original MP3), with speech-start/end times. Needs the elevenlabs_api_key secret file and network access.
 - **voice.elevenlabs-voices** — The ElevenLabs provider of voice.list: the voices the key can use, or a catalogue of premade voices when the key may not list them. Needs the elevenlabs_api_key secret file and network access.
 - **voice.phonemize** — Show how a Piper voice will pronounce text as IPA, sentence by sentence, without synthesizing any audio. Use it to check a name, write [[raw phonemes]] lines, or debug odd pronunciation.
@@ -36,6 +41,82 @@ Every motionex tool takes a JSON object. Any file input is a ref: a workspace pa
 # Contracts
 
 A contract is one capability with several providers (voice.speak: piper or elevenlabs). Submit a job with the contract as the tool and pick the provider in the input: `{"tool": "voice.speak", "input": {"provider": "piper", ...}}`. Every provider takes the contract fields below with the same meaning and returns the same result fields, so switching provider changes nothing downstream; each provider's own tool (listed) documents its extra fields.
+
+## sfx.fetch (contract)
+
+**Fetch recorded sound effects (any library provider)**: Bring sounds from a library (freesound, or one an extension adds) into the job as WAV files, measured (where the sound starts, its loudest stretch, its peak) and with their licence and attribution, the same fields whichever library they come from.
+
+Submit {"tool": "sfx.fetch", "input": {"provider": "freesound", "sounds": [{"id": "442773", "name": "splash"}]}} and the service runs the provider's own tool. Find ids with the sfx.search contract. Each sound becomes <name>.wav, and credits.json lists every sound's licence and attribution so the credits of a film can be written from it. The measurements help placement: put a hit so its `onset_s` lands on the cut, and start a texture or an ambience from its `loudest_s` so the busiest part plays under the shot. Each provider's tool documents what it downloads (an original or a preview) and its own fields.
+
+providers: freesound → sfx.freesound · version 1.0.0
+
+outputs: One <name>.wav per sound (PCM WAV) and credits.json. A provider may add files.
+
+| field | type | required | default | description |
+| --- | --- | --- | --- | --- |
+| provider | string | yes |  | Which library the ids come from: freesound (Freesound, needs its API key), or a provider an extension adds. GET /v1/contracts/sfx.fetch lists them and whether each can run here. |
+| sounds | array | yes |  | The sounds to fetch, in order. A sound is the library's id as a string (the file gets a name built from the id) or {id, name}. |
+| sounds[] |  |  |  |  |
+| licenses | array |  |  | Refuse any sound whose licence is not one of these codes: cc0, by, by-nc, sampling+. The job then fails with invalid-input naming the sound and its licence, before anything is downloaded. Omit to accept every licence (the result still reports each one). |
+| licenses[] | enum |  |  | A licence code. |
+
+### Example: Two sounds from Freesound, public domain only
+
+```json
+{
+  "tool": "sfx.fetch",
+  "input": {
+    "provider": "freesound",
+    "sounds": [
+      {
+        "id": "442773",
+        "name": "splash"
+      },
+      "188210"
+    ],
+    "licenses": [
+      "cc0"
+    ]
+  }
+}
+```
+
+## sfx.search (contract)
+
+**Search recorded sound effects (any library provider)**: Search a sound library (freesound, or one an extension adds) for recorded sound effects and ambiences, and get candidates with their length, licence, author and a preview link, the same fields whichever library answers.
+
+Submit {"tool": "sfx.search", "input": {"provider": "freesound", "query": "rain on a tent"}} and the service runs the provider's own tool with the rest of the input. Every provider takes the fields below with the same meaning and may take its own (sorting, raw filters). Pick sounds from the result and bring them in with the sfx.fetch contract, which converts them to WAV, measures them and keeps their credits. Licences differ per sound: read `license` before using one, and keep the attribution a licence asks for.
+
+providers: freesound → sfx.freesound-search · version 1.0.0
+
+outputs: No files: the result lists the candidates.
+
+| field | type | required | default | description |
+| --- | --- | --- | --- | --- |
+| provider | string | yes |  | Which library to search: freesound (Freesound, needs its API key), or a provider an extension adds. GET /v1/contracts/sfx.search lists them and whether each can run here. |
+| query | string | yes |  | What to look for, in plain words, for example "wooden door creak" or "small classroom murmur". |
+| limit | integer |  |  | How many candidates to return at most. Providers apply their own default. |
+| min_seconds | number |  |  | Keep only sounds at least this long. Omit for no lower bound. |
+| max_seconds | number |  |  | Keep only sounds at most this long. Omit for no upper bound. |
+| licenses | array |  |  | Keep only sounds under these licences, as short codes: cc0 (public domain), by (attribution), by-nc (attribution, non-commercial), sampling+ (Creative Commons Sampling Plus). Omit to see every licence the library has. |
+| licenses[] | enum |  |  | A licence code. |
+
+### Example: Public-domain door creaks under 5 seconds
+
+```json
+{
+  "tool": "sfx.search",
+  "input": {
+    "provider": "freesound",
+    "query": "wooden door creak",
+    "max_seconds": 5,
+    "licenses": [
+      "cc0"
+    ],
+    "limit": 10
+  }
+}
+```
 
 ## voice.list (contract)
 
@@ -228,11 +309,11 @@ class: audio · deterministic: yes · cache: auto · version 1.0.0
 
 ## audio.mix
 
-**Mix (tracks, buses, pan)**: Declarative track/bus mixer: places clips sample-accurately on tracks, sums them to an exact length, optional per-track fx, level, sidechain and master stage. Plain float sum by default.
+**Mix (tracks, buses, pan)**: Declarative track/bus mixer: places clips sample-accurately on tracks, sums them to an exact length, optional per-track fx, gain automation, level, sidechain and master stage, and an optional per-cue level table. Plain float sum by default.
 
-Sums audio clips on named tracks to an exact length. Processing order: (1) track_defaults are merged under each track with the same name; (2) every clip's `at` is resolved (seconds or a timespec against `timeline`); (3) each distinct (src, offset_s, duration_s, fx) is decoded once; (4) optional per-clip leveling; (5) per clip gain, linear fades, the pan law, then mix at its sample position; (6) track fx; (7) track gain_db; (8) optional track `level`; (9) optional sidechains; (10) mute; (11) bus fx and gain, then the master sum = buses + tracks without a bus; (12) optional master fx/gain/loudness; (13) fit to N samples and write. N = round(duration_s*sample_rate) or the latest clip end. Defaults are neutral: no ducking, no normalisation, no limiter; the default output is 32-bit float WAV so a sum above 0 dBFS does not clip. Pan law: mono into stereo is equal-power. Pan 0 gives 0.7071 per channel (matching ffmpeg's mono upmix); stereo into stereo at pan 0 is the identity; into mono a stereo clip becomes (L+R)/2 and pan is ignored.
+Sums audio clips on named tracks to an exact length. Processing order: (1) track_defaults are merged under each track with the same name; (2) every clip's `at` and every automation point's `at` is resolved (seconds or a timespec against `timeline`); (3) each distinct (src, offset_s, duration_s, fx) is decoded once; (4) optional per-clip leveling; (5) per clip gain, linear fades, the pan law, then mix at its sample position; (6) track fx; (7) track gain_db; (8) optional track `automation` (a gain curve in dB, ramped linearly between its points); (9) optional track `level` (measured after the automation); (10) optional sidechains; (11) mute; (12) bus fx and gain, then the master sum = buses + tracks without a bus; (13) optional master fx/gain/loudness; (14) fit to N samples and write; (15) optional `cues` table, measured on the stems (the tracks after steps 6-10). N = round(duration_s*sample_rate) or the latest clip end. A clip that runs past N is cut at N (a fade-out ends at the cut); a warning names it, with the seconds cut, only when the cut-off part peaks above -50 dBFS after the clip gain, so a file that runs on into silence is not reported. Defaults are neutral: no ducking, no normalisation, no limiter, no automation, no cue table; the default output is 32-bit float WAV so a sum above 0 dBFS does not clip. Pan law: mono into stereo is equal-power. Pan 0 gives 0.7071 per channel (matching ffmpeg's mono upmix); stereo into stereo at pan 0 is the identity; into mono a stereo clip becomes (L+R)/2 and pan is ignored.
 
-class: audio · deterministic: yes · cache: auto · version 1.0.0 · presets: dialogue-anchored, ducked-bed
+class: audio · deterministic: yes · cache: auto · version 1.1.0 · presets: dialogue-anchored, ducked-bed
 
 | field | type | required | default | description |
 | --- | --- | --- | --- | --- |
@@ -269,8 +350,13 @@ class: audio · deterministic: yes · cache: auto · version 1.0.0 · presets: d
 | output | object |  |  | Output files. |
 | output.name | string |  | "mix.wav" | Output file name. Default "mix.wav". |
 | output.format | enum |  | "wav32f" | Output WAV encoding: 32-bit float (no clipping), 24-bit or 16-bit. Default "wav32f". |
-| output.stems | boolean |  | false | Also write stems/<track>.wav (32-bit float) for every track, post-level and pre-bus. Default false. |
+| output.stems | boolean |  | false | Also write stems/<track>.wav (32-bit float) for every track, after its fx, gain_db, automation, level and sidechains and before the bus. Default false. |
 | output.preview_mp3 | boolean |  | false | Also write a 192 kbps preview.mp3. Default false. |
+| cues | object |  |  | Optional per-cue level table: for every clip of `tracks`, the level of its track over the clip's window next to the level of `reference` over the same window, measured on the stems (after the track fx, gain_db, automation, level and sidechains). A level is the K-weighted loudness of the window without gating (BS.1770 weighting, in LUFS); ratio_db = level_db - reference_db, so a positive ratio means the cue sits over the reference. report.json gets `cues` (one row per clip: track, clip index, name, at, end, level_db, reference_db, ratio_db; null where a window is empty or silent) and `cues_summary` (per track: clips, min, median and max ratio_db); the result gets `cues_summary`, and `cues` too when there are at most 100 rows. Omit for no table. |
+| cues.reference | string | yes |  | Track to compare every cue against, usually the music. Must name a track. |
+| cues.tracks | array |  |  | Tracks whose clips get one row each, in this order. Omit for every track except the reference. |
+| cues.tracks[] | string |  |  |  |
+| cues.window | enum |  | "audible" | The window measured for each clip: "audible" is the heard part of the clip (cut at the mix end) without its leading and trailing parts more than 30 dB under the clip's own peak (after its gain and fades); "clip" is the whole heard part. Rows report the window as at/end in mix seconds. Default "audible". |
 
 ### Example: Two sine clips on one track
 
@@ -319,6 +405,81 @@ class: audio · deterministic: yes · cache: auto · version 1.0.0 · presets: d
         {
           "src": "bed.wav",
           "at": 0
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Example: Gain automation: the music dips 12 dB for a middle section, with ramps in and out
+
+```json
+{
+  "duration_s": 4,
+  "tracks": [
+    {
+      "name": "music",
+      "automation": [
+        {
+          "at": 1,
+          "gain_db": 0
+        },
+        {
+          "at": 1.5,
+          "gain_db": -12
+        },
+        {
+          "at": 2.5,
+          "gain_db": -12
+        },
+        {
+          "at": 3,
+          "gain_db": 0
+        }
+      ],
+      "clips": [
+        {
+          "src": "bed.wav",
+          "at": 0
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Example: Per-cue level table: where each sound effect sits against the music
+
+```json
+{
+  "duration_s": 2,
+  "cues": {
+    "reference": "music"
+  },
+  "tracks": [
+    {
+      "name": "music",
+      "clips": [
+        {
+          "src": "bed.wav",
+          "at": 0
+        }
+      ]
+    },
+    {
+      "name": "sfx",
+      "clips": [
+        {
+          "src": "hit.wav",
+          "at": 0.5,
+          "name": "hit-1"
+        },
+        {
+          "src": "hit.wav",
+          "at": 1.2,
+          "gain_db": -9,
+          "name": "hit-2"
         }
       ]
     }
@@ -533,6 +694,181 @@ class: audio · deterministic: yes · cache: auto · version 1.0.0
 }
 ```
 
+## image.grade
+
+**Grade (colour-grade stills)**: Colour-grade stills before they go into a page: ordered steps (Lab cast removal, saturation, tone curve, exposure, clarity, tint inside or outside a subject mask, vignette, .cube LUT), light sources kept on request, an optional glow layer, and before/after numbers.
+
+Each image goes through `steps` in order. A step changes only what its own fields say, and a step whose strength is 0 changes nothing; the tool has no look of its own. The ops: `cast` moves a colour cast in CIE Lab (D65, sRGB in): it removes a fraction of one side of a* or b* (yellow = +b*, blue = -b*, red = +a*, green = -a*) and leaves pixels on the other side alone. `saturation` multiplies Lab chroma, everywhere or only in a hue range (`rest` sets the multiplier outside it). `curve` is a per-channel tone curve on sRGB values: an S-shaped `contrast` around `pivot`, `gamma`, a `shoulder` that rolls the highlights off softly and `lift` for the blacks. `exposure` scales linear light by 2^ev. `clarity` adds local contrast to L*: value + amount x (value - blur). `tint` blends toward a colour everywhere, inside or outside the subject mask; `grow` and `feather` hold it off the subject's edge. `vignette` darkens (or, negative, lightens) toward the corners. `lut` applies a .cube 3D LUT with trilinear lookup. `protect` on cast and tint keeps the light sources (`lights`) or the subject (`mask`) as they were. The light mask is found in each image as it entered the grade: bright, saturated pixels in a hue range (orange to yellow by default) and the near-white cores touching them, widened by `spread`; `light_mask.write_masks` writes it out to check. `glow` writes a bloom layer of the light pixels on black, for a page to draw additively (mix-blend-mode: screen or plus-lighter) and pulse. Per image the result gives mean L* and mean a*/b* outside the lights, before and after, and with a mask the mean L* inside and outside the subject and their ratio in dB. The numbers do not replace looking: put the source and the graded image side by side with image.contact-sheet.
+
+class: encode · deterministic: yes · cache: auto · version 1.0.0
+
+| field | type | required | default | description |
+| --- | --- | --- | --- | --- |
+| images | array | yes |  | The stills to grade, each with the same steps. |
+| images[].image | ref | yes |  | The still: a PNG, JPEG or WebP workspace path, job:<id>/<output> or pin:<name>. Up to 16 megapixels. Its alpha, if any, is kept in a PNG output. |
+| images[].name | string |  |  | Base name of the outputs (<name>.png, <name>-glow.png, <name>-lights.png), without folders. Default: the source file's name without its extension. Names must be unique within the call. |
+| images[].mask | ref |  |  | The subject's matte (an image.matte output works): white or opaque = subject. Its alpha is used when any pixel is not opaque, otherwise its luminance. A mask of another size is resized to the image (with a warning). |
+| steps | array |  | [] | The grade, applied in order. Each step is an object with `op` and that op's fields only; the handler names any field the op does not take. No steps: the images are only measured and re-encoded. |
+| steps[].op | enum | yes |  | What the step does. cast: axis, amount, protect. saturation: amount, hue, rest. curve: contrast, pivot, lift, shoulder, gamma. exposure: ev. clarity: amount, radius. tint: amount, color, where, grow, feather, protect. vignette: amount, softness. lut: file, amount. |
+| steps[].axis | enum |  |  | cast (required): the side of the cast to remove: yellow = +b*, blue = -b*, red = +a*, green = -a*. Only pixels on that side change. |
+| steps[].amount | number |  |  | Strength; its meaning and range depend on the op. cast (required, 0..1): the fraction of that side's a* or b* removed. saturation (required, 0..10): the chroma multiplier (inside the hue range when hue is set). clarity (required, -1..4): local contrast added; negative softens. tint (required, 0..1): how far to blend toward the colour. vignette (required, -1..1): darkening at the corners; negative lightens. lut (0..1, default 1): blend between the original and the LUT. |
+| steps[].protect | enum |  |  | cast and tint: what the step leaves as it was. lights: the light mask (lamps, fire, candles, glowing eyes). mask: the subject. none (default): nothing. With mask and an image without one, the step is skipped for that image with a warning. |
+| steps[].hue | object |  |  | saturation: act only on this hue range of the colour wheel (0 red, 60 yellow, 120 green, 180 cyan, 240 blue, 300 magenta). Full strength within a quarter of the width of the centre, fading to nothing at half the width. |
+| steps[].hue.center_deg | number | yes |  | Centre of the range in degrees. |
+| steps[].hue.width_deg | number | yes |  | Full width of the range in degrees, edge to edge. |
+| steps[].rest | number |  |  | saturation with hue: the chroma multiplier for every colour outside the range. Default 1 (unchanged). |
+| steps[].contrast | number |  |  | curve: S-curve strength around the pivot; the slope there is 1 + contrast, and black and white stay put. Negative flattens. Absent: no contrast change. |
+| steps[].pivot | number |  |  | curve: the sRGB value the contrast curve turns around. Default 0.5 (mid grey). |
+| steps[].lift | number |  |  | curve: raises black to this value (v = lift + (1 - lift) v); negative crushes, so values below -lift become black. Absent: blacks stay. |
+| steps[].shoulder | number |  |  | curve: soft highlight roll-off over the top `shoulder` of the range; values above white (after an exposure push) roll into white instead of clipping, and white itself lands at 1 - 0.37 x shoulder. Absent: no roll-off. |
+| steps[].gamma | number |  |  | curve: midtone power, v^(1/gamma); above 1 brightens the midtones, below 1 darkens them. Absent: unchanged. The curve applies shoulder, then gamma, contrast and lift; gamma or contrast clip values to 0..1 first. |
+| steps[].ev | number |  |  | exposure (required): stops; linear light is multiplied by 2^ev. Values above white are kept for a later curve shoulder and clipped only at the end. |
+| steps[].radius | number |  |  | clarity: blur radius (Gaussian sigma) as a fraction of the image width, so it scales with the size. Default 0.02. |
+| steps[].color | string |  |  | tint: the colour to blend toward, as hex. Default "#000000" (darkening). Blended on sRGB values, like a layer in an image editor. |
+| steps[].where | enum |  |  | tint: where to blend. Default everywhere. outside-mask and inside-mask need the image's mask; an image without one skips the step with a warning. |
+| steps[].grow | number |  |  | tint: distance (a fraction of the image width) beyond the subject's edge that an outside-mask tint keeps off (and an inside-mask tint reaches). Default 0. |
+| steps[].feather | number |  |  | tint: distance (a fraction of the image width) over which the tint fades in beyond the grown edge, so no hard or dark halo touches the subject. Default 0. |
+| steps[].softness | number |  |  | vignette: how far in from the corners it reaches, on a scale where the centre is 0 and the corners 1: it starts at 1 - softness. Default 0.5. |
+| steps[].file | ref |  |  | lut (required): a .cube 3D LUT (LUT_3D_SIZE 2..129, DOMAIN_MIN/DOMAIN_MAX honoured), applied to the sRGB values with trilinear lookup. |
+| light_mask | object |  |  | How the light sources are found, from each image as it entered the grade. Used by protect: lights, by glow, and to leave the lights out of the cast numbers. The defaults pick warm light (orange to yellow); check them with write_masks. |
+| light_mask.hue_min_deg | number |  | 15 | Start of the light hue range (0 red, 30 orange, 60 yellow). A start above the end wraps through 0, e.g. 340 to 20 for reds. |
+| light_mask.hue_max_deg | number |  | 65 | End of the light hue range in degrees. |
+| light_mask.min_value | number |  | 0.75 | Brightness (HSV value, the largest sRGB channel) a coloured pixel needs to count as light. |
+| light_mask.min_saturation | number |  | 0.35 | HSV saturation a pixel needs to count as coloured light. Paler pixels can only be cores. |
+| light_mask.core_value | number |  | 0.92 | Brightness a near-white pixel needs to count as a light's core (a blown lamp centre); cores count only when they touch the coloured light. |
+| light_mask.spread | number |  | 0.01 | Widening, as a fraction of the image width: the mask is full within this distance of the light pixels and fades out over the same distance again. 0 keeps only the pixels themselves. |
+| light_mask.write_masks | boolean |  | false | Also write <name>-lights.png, the light mask in grey (white = protected), to check what was found. |
+| glow | object |  |  | When present, also write <name>-glow.png: the graded colour of the light pixels in linear light, blurred at each radius, averaged, normalised so the brightest channel reaches `strength`, on black. Absent: no glow layer. |
+| glow.radii | array |  | [0.004,0.015,0.05] | Blur radii (Gaussian sigma) as fractions of the image width; a few, from tight to wide, give a hot core with a soft halo. |
+| glow.radii[] | number |  |  | One radius as a fraction of the width. |
+| glow.strength | number |  | 1 | Level of the brightest channel in linear light after normalising; above 1 clips the brightest part into a wider white core. |
+| format | enum |  | "png" | Format of the graded images (<name>.png or <name>.jpg). The glow and light-mask layers are always PNG. |
+| quality | integer |  | 92 | JPEG quality, 1 (smallest) to 100 (best). Ignored for PNG. |
+
+### Example: Take the yellow cast out of a lamp-lit still, keep the lamp warm, darken the background behind the subject
+
+```json
+{
+  "images": [
+    {
+      "image": "stills/room.ppm",
+      "mask": "stills/room-mask.pgm"
+    }
+  ],
+  "steps": [
+    {
+      "op": "cast",
+      "axis": "yellow",
+      "amount": 0.6,
+      "protect": "lights"
+    },
+    {
+      "op": "curve",
+      "contrast": 0.2,
+      "shoulder": 0.1
+    },
+    {
+      "op": "tint",
+      "amount": 0.35,
+      "where": "outside-mask",
+      "grow": 0.04,
+      "feather": 0.08,
+      "protect": "lights"
+    },
+    {
+      "op": "vignette",
+      "amount": 0.25
+    }
+  ],
+  "light_mask": {
+    "write_masks": true
+  },
+  "glow": {
+    "radii": [
+      0.05,
+      0.15
+    ]
+  }
+}
+```
+
+### Example: Exposure, warm hues richer and the rest calmer, clarity, then half of a LUT, as JPEG
+
+```json
+{
+  "images": [
+    {
+      "image": "stills/room.ppm",
+      "name": "room-look"
+    }
+  ],
+  "steps": [
+    {
+      "op": "exposure",
+      "ev": 0.3
+    },
+    {
+      "op": "saturation",
+      "amount": 1.2,
+      "hue": {
+        "center_deg": 35,
+        "width_deg": 60
+      },
+      "rest": 0.8
+    },
+    {
+      "op": "clarity",
+      "amount": 0.4,
+      "radius": 0.1
+    },
+    {
+      "op": "lut",
+      "file": "looks/identity.cube",
+      "amount": 0.5
+    }
+  ],
+  "format": "jpeg",
+  "quality": 90
+}
+```
+
+### Example: A batch of generated stills with their mattes, the same grade on each
+
+```json
+{
+  "images": [
+    {
+      "image": "stills/scene-01.png",
+      "mask": "mattes/scene-01.png"
+    },
+    {
+      "image": "stills/scene-02.png",
+      "mask": "mattes/scene-02.png"
+    }
+  ],
+  "steps": [
+    {
+      "op": "cast",
+      "axis": "yellow",
+      "amount": 0.5,
+      "protect": "lights"
+    },
+    {
+      "op": "clarity",
+      "amount": 0.25
+    },
+    {
+      "op": "tint",
+      "amount": 0.4,
+      "where": "outside-mask",
+      "grow": 0.01,
+      "feather": 0.03
+    }
+  ],
+  "glow": {}
+}
+```
+
 ## image.matte
 
 **Matte (cut a figure out of a glow)**: Cut a figure out of an illustration whose background is a soft blurred glow or a flat colour, and return a PNG with alpha. Flood-fills the smooth background, clears glow trapped in small pockets, keeps the largest figure and softens the edge.
@@ -624,17 +960,17 @@ class: encode · deterministic: yes · cache: auto · version 1.0.0
 
 ## media.encode
 
-**Video encoder (delivery)**: Encode a video with explicit quality, bitrate, size, scaling and audio controls, including fit-to-N-MB two-pass encoding and named delivery presets.
+**Video encoder (delivery)**: Encode a video with explicit quality, bitrate, size, scaling, padding, picture fx and audio controls, including fit-to-N-MB two-pass encoding and named delivery presets.
 
-The delivery encoder. It never guesses: quality (crf or bitrate), scale caps, fps, audio codec/bitrate and colour are explicit inputs. Use target_size_mb to hit a byte budget with a two-pass x264/x265 encode, or a preset from presets/encode/ for a known platform. When the audio codec is copy the stream is not re-encoded and the fit-to-size budget reserves its real source bitrate instead of audio.bitrate_k, so prefer audio: {codec: "copy"} when the source audio is already AAC at the delivery rate (it also avoids a second lossy pass). Colour is converted only when asked: with video.color set (the default 'bt709') the scale filter maps in_color_matrix=auto/in_range=auto to the requested matrix and TV range, with matching tags; video.color null leaves colour untouched. Scaling never upscales and keeps the aspect ratio.
+The delivery encoder. It never guesses: quality (crf or bitrate), scale caps, fps, audio codec/bitrate and colour are explicit inputs. Use target_size_mb to hit a byte budget with a two-pass x264/x265 encode, or a preset from presets/encode/ for a known platform. When the audio codec is copy the stream is not re-encoded and the fit-to-size budget reserves its real source bitrate instead of audio.bitrate_k, so prefer audio: {codec: "copy"} when the source audio is already AAC at the delivery rate (it also avoids a second lossy pass). With target_size_mb, an input file that already fits under the target is returned unchanged (no encode, passthrough true, and a warning says so) when nothing else is asked: no pad, lut, video_fx, replace_audio or fps change, no scale that changes the size (a cap the input already meets is fine), and the input's video codec, pixel format, colour matrix tag, audio codec, sample rate, channels and file extension already match the request. copy_if_fits: false always encodes. Colour is converted only when asked: with video.color set (the default 'bt709') the scale filter maps in_color_matrix=auto/in_range=auto to the requested matrix and TV range, with matching tags; video.color null leaves colour untouched. Scaling never upscales and keeps the aspect ratio. The picture steps run in this order, each only when its field is set: lut (a 3D LUT file), video_fx (your own ffmpeg filter chain), scale, then pad (fit inside a frame, scaling up or down, and fill the rest with a colour, for example a 16:9 master delivered as a 9:16 copy with black above and below, without re-rendering the picture).
 
-class: encode · deterministic: yes · cache: auto · version 1.0.0 · presets: fit-size, instagram-reel, master, telegram-video, web-720p
+class: encode · deterministic: yes · cache: auto · version 1.1.0 · presets: fit-size, instagram-reel, master, telegram-video, vertical-9x16, web-720p
 
 | field | type | required | default | description |
 | --- | --- | --- | --- | --- |
 | input | ref | yes |  | Video file to encode: a workspace path, job:<id>/<output> or pin:<name>. |
 | replace_audio | ref |  |  | Use this file's audio instead of the input's audio. Omit to keep the input audio (if any). |
-| preset | string |  |  | Name of an encode preset under presets/encode/ (master, web-720p, fit-size, telegram-video, instagram-reel). Explicit fields in this request override the preset. |
+| preset | string |  |  | Name of an encode preset under presets/encode/ (master, web-720p, fit-size, telegram-video, instagram-reel, vertical-9x16). Explicit fields in this request override the preset. |
 | video | object |  |  | Video stream settings. All optional; absent means the encoder default, except that with no crf, bitrate_k or target_size_mb the tool uses crf 18. |
 | video.codec | string |  | "libx264" | Video encoder, e.g. libx264, libx265, libvpx-vp9. Default libx264. |
 | video.preset | string |  | "medium" | Encoder speed preset, e.g. ultrafast, slow, veryslow. Default medium. |
@@ -663,10 +999,18 @@ class: encode · deterministic: yes · cache: auto · version 1.0.0 · presets: 
 | scale.height | integer |  |  | Exact output height. With width omitted, width is derived (-2). |
 | scale.max_long_side | integer |  |  | Fit the longer side to this many pixels (never upscales). |
 | scale.max_width | integer |  |  | Cap the output width to this many pixels (never upscales). |
+| pad | object |  |  | Fit the picture inside width x height and fill the rest with a colour, e.g. a 16:9 master as a 1080x1920 copy with bars above and below, without re-rendering the picture. The picture is scaled up or down to fit (lanczos, display aspect ratio kept, never cropped), then padded to exactly width x height with square pixels (SAR 1). Applied after scale, lut and video_fx. With a chroma-subsampled pixel format such as the default yuv420p, the sizes must be even. Omit for no padding. |
+| pad.width | integer | yes |  | Output frame width in pixels. Must be even for yuv420p (the default) and other 4:2:0 or 4:2:2 pixel formats. |
+| pad.height | integer | yes |  | Output frame height in pixels. Must be even for yuv420p (the default) and other 4:2:0 pixel formats. |
+| pad.color | string |  | "black" | Colour of the bars: an ffmpeg colour name (black, white, gray, navy, ...) or #rrggbb (0xrrggbb also works). Default black. |
+| pad.position | enum |  | "center" | Where the picture sits when the bars are above and below it: center (default), top or bottom. Bars at the sides are always split evenly. |
+| video_fx | string |  |  | Your own ffmpeg video filter chain (-vf syntax), applied to the input's pixels before scale and pad, for example "noise=alls=8:allf=t" (grain), "vignette=PI/5", "unsharp=5:5:0.6" (sharpening) or "eq=saturation=1.1". It is checked before use: filters and options that read or write files are refused (movie, lut3d, drawtext, subtitles, file=, textfile=, an option read from a file with /option=path, and similar). To apply a LUT file, use the lut field. Omit for none. |
+| lut | ref |  |  | A 3D LUT file (.cube, .3dl, .dat, .m3d or .csp) for a colour grade, applied with ffmpeg's lut3d filter first, before video_fx, scale and pad: a workspace path, job:<id>/<output> or pin:<name>. The picture is converted to RGB with its own colour matrix for the LUT, then to the output colour (video.color). Omit for none. |
 | fps | number |  |  | Output frame rate (-r). Omit to keep the source rate. |
 | two_pass | boolean |  | false | Run a two-pass encode (libx264/libx265 only; ignored for other codecs). Implied by target_size_mb. |
 | target_size_mb | number |  |  | Fit the output under this many megabytes (1 MB = 10^6 bytes). Computes a bitrate and runs a two-pass x264/x265 encode. |
 | size_margin | number |  | 0.04 | Fraction of the target bitrate held back for container overhead when fitting to a size. Default 0.04. |
+| copy_if_fits | boolean |  | true | With target_size_mb: when the input file already fits under the target and nothing else is asked (see the tool description), return it unchanged instead of encoding it, which could only make it bigger or lose quality. false always encodes. Default true. Ignored without target_size_mb. |
 | name | string |  | "video.mp4" | Output file name inside the job output, matching ^[\w.-]+$. Default video.mp4. |
 
 ### Example: Master preset
@@ -702,6 +1046,34 @@ class: encode · deterministic: yes · cache: auto · version 1.0.0 · presets: 
   "scale": {
     "max_long_side": 320
   }
+}
+```
+
+### Example: Letterbox a 16:9 master into a 9:16 frame on black
+
+```json
+{
+  "input": "master.mp4",
+  "pad": {
+    "width": 1080,
+    "height": 1920,
+    "color": "black",
+    "position": "center"
+  },
+  "audio": {
+    "codec": "copy"
+  },
+  "name": "vertical.mp4"
+}
+```
+
+### Example: Grade with a LUT, add grain and a vignette
+
+```json
+{
+  "input": "master.mp4",
+  "lut": "grades/warm.cube",
+  "video_fx": "noise=alls=6:allf=t,vignette=PI/5"
 }
 ```
 
@@ -843,11 +1215,11 @@ class: light · deterministic: yes · cache: auto · version 1.0.0
 
 ## music.render
 
-**Music render (Strudel)**: Render a Strudel song to audio with the Mucavex engine: seeded deterministic noise, named section markers, optional tempo override and an analysis report.
+**Music render (Strudel)**: Render a Strudel song to audio with the Mucavex engine: seeded deterministic noise, named section markers and the song's form, optional stems of named parts, a tempo override and an analysis report.
 
-Evaluates Strudel live-coding JavaScript with the same semantics as the strudel.cc REPL and renders it offline to WAV/MP3/FLAC/OGG/Opus/M4A. Named markers (lines like `let DROP = 34;`) let a build move song sections without regenerating the code. Strudel noise is seeded, so identical input gives byte-identical audio. `max_polyphony` must stay high: the engine's old default of 128 steals voices and fades sample voices in long renders. The tool renders; it applies no loudness normalisation, ducking or limiting of its own (`peak_db` is the only gain it will add, and only when asked). It always measures the render's sample peak, warns when an over-hot render would be clamped by the chosen format, and never clips silently.
+Evaluates Strudel live-coding JavaScript with the same semantics as the strudel.cc REPL and renders it offline to WAV/MP3/FLAC/OGG/Opus/M4A. Named markers (lines like `let DROP = 34;`) let a build move song sections without regenerating the code, and `markers_found` reports the song's form: every numeric marker with the time it lands at (markers count cycles from 0, so at_s = value / cps). `stems` renders named parts (`drums: s("bd*4")`, or `$:` lines by order) to separate files in the same job: each stem is the song again with every other part muted, so a stem costs a render of its own (`stems_only` skips the full mix). Strudel noise is seeded, so identical input gives byte-identical audio. `max_polyphony` must stay high: the engine's old default of 128 steals voices and fades sample voices in long renders. The tool renders; it applies no loudness normalisation, ducking or limiting of its own (`peak_db` is the only gain it will add, and only when asked). It always measures the render's sample peak, warns when an over-hot render would be clamped by the chosen format, and never clips silently.
 
-class: music · deterministic: yes · cache: auto · version 1.0.0
+class: music · deterministic: yes · cache: auto · version 1.1.0
 
 | field | type | required | default | description |
 | --- | --- | --- | --- | --- |
@@ -863,12 +1235,14 @@ class: music · deterministic: yes · cache: auto · version 1.0.0
 | sample_rate | integer |  | 48000 | Output sample rate in Hz. |
 | format | enum |  | "wav" | Output container/codec. wav is 16-bit PCM, wav32 is 32-bit float (the only format that keeps overs above 0 dBFS); flac/ogg/opus/m4a need ffmpeg. Every other format clamps past ±1.0, which distorts an over-hot render. |
 | bitrate_k | integer |  |  | Bitrate in kbps for lossy formats (mp3, opus, m4a). Omit for the encoder default. |
-| peak_db | number |  |  | Scale the whole render by one gain so its sample peak lands exactly at this dBFS (for example -1), applied before encoding so nothing clips. Omit to leave the render untouched. `gain_db_applied` reports the gain used. A silent render is not scaled (it gets a warning instead). |
+| peak_db | number |  |  | Scale the whole render by one gain so its sample peak lands exactly at this dBFS (for example -1), applied before encoding so nothing clips. Omit to leave the render untouched. `gain_db_applied` reports the gain used. A silent render is not scaled (it gets a warning instead). With `stems`, every stem gets the same gain as the mix, so the stems keep their balance. |
 | max_polyphony | integer |  | 4096 | Maximum simultaneous voices. Keep this high: Strudel's default of 128 steals voices, which fades earlier sample voices in long renders. Raise it further for very dense songs. |
 | seed | integer |  | 0 | Seed for the Math.random replacement Strudel noise uses. The same seed gives byte-identical audio; change it for a different noise take. |
 | analyze | boolean |  | true | Also measure the render (peak/RMS/crest/clipping/warnings) and write analysis.json. |
 | offline | boolean |  | false | Only load samples from the sample cache, never the network. A missing sample then fails the render instead of downloading it. |
 | name | string |  |  | Output file name for the rendered audio. Default music.<ext>. The extension always follows format (a given .wav/.mp3/... is replaced), e.g. name "score" with format mp3 writes score.mp3. |
+| stems | object |  |  | Also render named parts of the song to separate files, e.g. {"drums": ["kick", "hats"], "bass": ["bass"], "lead": ["$1"]}. After the full mix, the song is rendered once more per stem with every part outside the stem muted (the Strudel `_` mute), written to stems/<stem name>.<ext> (and the muted song to stems/<stem name>.strudel) with the same format, length, tail, seed and sample rate. Each stem is a full render, so stems multiply the render time. Unlabelled statements are not parts (Strudel does not play them once a song has labelled parts). An unknown or muted part is invalid-input that lists the parts found in the song. Omit for no stems. |
+| stems_only | boolean |  |  | With `stems`, skip the full mix: only the stems are rendered (no music.<ext>, no analysis.json, `analysis` and `peak_db` are null). Saves one render. Cannot be combined with `peak_db`, which scales by the full mix's peak. Omit (or false) to render the full mix too. |
 | (one of) |  |  |  | code \| file |
 
 ### Example: Two cycles of a sawtooth triad, offline
@@ -878,6 +1252,25 @@ class: music · deterministic: yes · cache: auto · version 1.0.0
   "code": "note(\"c3 e3 g3\").s(\"sawtooth\").lpf(800)",
   "cycles": 2,
   "offline": true
+}
+```
+
+### Example: A lead and a bass as two stems, and the bar where the bass enters (synths only, offline)
+
+```json
+{
+  "code": "let BASS = 1; // the bass enters at cycle 1\nlead: note(\"c4 e4 g4 e4\").s(\"square\").lpf(1200).gain(0.25)\nbass: note(\"c2*2\").s(\"sawtooth\").lpf(300).mask(cat(...Array(BASS).fill(0), 1))",
+  "cycles": 2,
+  "bpm": 120,
+  "offline": true,
+  "stems": {
+    "lead": [
+      "lead"
+    ],
+    "bass": [
+      "bass"
+    ]
+  }
 }
 ```
 
@@ -1021,6 +1414,84 @@ class: capture · deterministic: no · cache: off · version 1.0.0
 }
 ```
 
+## sfx.freesound
+
+**Sound fetch (Freesound)**: The Freesound provider of sfx.fetch: bring Freesound sounds into a job as WAV files, measured (attack, loudest stretch, peak), with each sound's licence and a ready credit line in credits.json. Needs the freesound_api_key secret file and network access.
+
+Looks every sound up on Freesound (API v2) first, so a sound whose licence is not in `licenses` fails the job before anything is downloaded. Then it downloads each sound's high-quality MP3 preview (an API key gives previews; Freesound's original files need its OAuth2 login, which this tool does not do), converts it to WAV at `sample_rate` and `channels`, and measures it: `onset_s` (where it becomes audible, so a hit can be placed on its cut), `loudest_s` (where its loudest one-second stretch starts, so a texture or ambience can start from its busiest part) and `peak_db`. credits.json lists every sound's title, author, link, licence and a credit line. Licences differ per sound: CC0 needs no credit, CC BY needs the credit line, CC BY-NC forbids commercial use. Identical requests reuse the earlier download (cache "reuse"); submit with cache "off" to download again. Reads the freesound_api_key secret file (an API key from freesound.org/apiv2/apply); the key is sent only in the Authorization header to the API, never to the preview server, and never appears in results or logs. Retries 429, 5xx and network errors.
+
+class: audio · deterministic: no · cache: reuse · version 1.0.0 · implements: sfx.fetch (provider freesound)
+
+| field | type | required | default | description |
+| --- | --- | --- | --- | --- |
+| sounds | array | yes |  | The sounds to fetch, in order: a Freesound id as a string (the file is named freesound-<id>.wav) or {id, name}. |
+| sounds[] |  |  |  |  |
+| licenses | array |  |  | Refuse any sound whose licence is not one of these: cc0, by, by-nc, sampling+ (invalid-input before any download). Omit to accept every licence. |
+| licenses[] | enum |  |  | A licence code. |
+| sample_rate | integer |  | 48000 | Sample rate of the WAV files in Hz. Default 48000. |
+| channels | enum |  | 2 | 1 (mono) or 2 (stereo; a mono sound is copied to both). Default 2. |
+| format | enum |  | "wav24" | WAV encoding: wav (16-bit), wav24 (24-bit) or wav32f (32-bit float). Default wav24. |
+
+### Example: Two sounds, public domain only
+
+```json
+{
+  "sounds": [
+    {
+      "id": "442773",
+      "name": "splash"
+    },
+    "188210"
+  ],
+  "licenses": [
+    "cc0"
+  ]
+}
+```
+
+## sfx.freesound-search
+
+**Sound search (Freesound)**: The Freesound provider of sfx.search: search Freesound's recorded sound effects and ambiences, filtered by licence and length, and list candidates with their licence, author and a preview link. Needs the freesound_api_key secret file and network access.
+
+Runs a Freesound text search (API v2) and returns the candidates in the sfx.search shape, plus Freesound's own fields (downloads, rating). Licence codes map to Freesound's licence filter (cc0 = Creative Commons 0, by = Attribution, by-nc = Attribution NonCommercial, sampling+ = Sampling+); min_seconds and max_seconds become a duration range. `filter` adds any raw Freesound filter (for example `samplerate:48000` or `tag:foley`), and `sort` picks the order. Reads the freesound_api_key secret file (an API key from freesound.org/apiv2/apply); the key is sent only in the Authorization header to the API and never appears in results or logs. Retries 429, 5xx and network errors. Bring a pick into a job with sfx.fetch (provider freesound).
+
+class: light · deterministic: no · cache: off · version 1.0.0 · implements: sfx.search (provider freesound)
+
+| field | type | required | default | description |
+| --- | --- | --- | --- | --- |
+| query | string | yes |  | What to look for, in plain words, for example "wooden door creak". |
+| limit | integer |  | 15 | How many candidates to return at most (one Freesound page). Default 15. |
+| min_seconds | number |  |  | Keep only sounds at least this long. |
+| max_seconds | number |  |  | Keep only sounds at most this long. |
+| licenses | array |  |  | Keep only sounds under these licences: cc0, by, by-nc, sampling+. Omit for every licence. |
+| licenses[] | enum |  |  | A licence code. |
+| filter | string |  |  | Extra raw Freesound filter terms, added to the licence and length filter, e.g. "tag:foley samplerate:48000". |
+| sort | enum |  |  | Result order: score (best text match, Freesound's default), rating_desc, downloads_desc, duration_asc or _desc, created_desc or _asc. Omit for score. |
+| page | integer |  |  | Which page of results (of `limit` each). Omit for the first. |
+
+### Example: Public-domain door creaks under 5 seconds
+
+```json
+{
+  "query": "wooden door creak",
+  "max_seconds": 5,
+  "licenses": [
+    "cc0"
+  ],
+  "limit": 10
+}
+```
+
+### Example: A calm room tone, best rated first
+
+```json
+{
+  "query": "room tone quiet classroom",
+  "min_seconds": 10,
+  "sort": "rating_desc"
+}
+```
+
 ## sfx.synth
 
 **SFX synthesis**: Synthesize sound effects from a recipe module: a workspace .mjs or the built-in generic recipes. Each sound is finished (trim, fades, normalise), written as a WAV and measured.
@@ -1069,11 +1540,11 @@ class: audio · deterministic: no · cache: off · version 1.0.0
 
 ## timeline.layout
 
-**Timeline layout**: Lay scenes out from voice-over lines: cue times, scene lengths, optional beat snapping, music markers and named times. Writes timeline.json and dialogue-clips.json.
+**Timeline layout**: Lay scenes out from voice-over lines, or cut them to a song's form (scenes in beats or bars, or until bar N): cue times, scene lengths, optional beat snapping, music markers, named times and a grid report. Writes timeline.json and dialogue-clips.json.
 
-A pure layout helper. Each scene is as long as its lines plus the lead, gaps and tail you ask for (all zero by default, nothing snapped), or a fixed duration_s. Audio lines are measured at their speech end (Piper leaves trailing silence), not their file length. Optional beat snapping, markers that align the music grid to a scene (the music_offset_s / beatOffset), named times, and a per-frame voice envelope are available when you want them. It never renders or mixes anything; it only computes numbers.
+A pure layout helper with two ways in. Voice first: each scene is as long as its lines plus the lead, gaps and tail you ask for (all zero by default, nothing snapped), or a fixed duration_s. Audio lines are measured at their speech end (Piper leaves trailing silence), not their file length. Music first, when the song is made before the picture: write the song's form as the grid (bpm, beats_per_bar, and offset_s = where bar 0 falls), give each scene its length in beats or bars, or let it run until a time ("bar:8", "beat:30" or seconds), then check grid_report in the result: every scene end with its time, its beat and whether it is on a beat. The report is information only; nothing is snapped or refused. Lines in such a scene keep their cues; when they need longer than the scene, a warning gives the overrun and the length is kept. The two ways mix freely, scene by scene. Optional beat snapping, markers that align the music grid to a scene (the music_offset_s / beatOffset), named times, and a per-frame voice envelope are available when you want them. It never renders or mixes anything; it only computes numbers.
 
-class: light · deterministic: yes · cache: auto · version 1.0.0 · presets: voice-driven-classic
+class: light · deterministic: yes · cache: auto · version 1.1.0 · presets: voice-driven-classic
 
 | field | type | required | default | description |
 | --- | --- | --- | --- | --- |
@@ -1083,20 +1554,23 @@ class: light · deterministic: yes · cache: auto · version 1.0.0 · presets: v
 | defaults.tail_s | number |  | 0 | Seconds after the last line before the scene ends (default 0). |
 | defaults.min_s | number |  | 0 | Minimum scene length in seconds (default 0). |
 | defaults.snap_beats | number\|null |  | null | Round every scene length up to a multiple of this many beats (needs grid). null = no snapping (default). |
-| grid | object |  |  | Musical grid. Required for snap_beats, for markers and for bar:/beat: times. |
+| grid | object |  |  | Musical grid: the song's form. Required for snap_beats, beats, bars, markers and bar:/beat: times (in times and until). When given, the result has grid_report. |
 | grid.bpm | number | yes |  | Beats per minute. |
 | grid.beats_per_bar | number |  | 4 | Beats in a bar (default 4). |
-| grid.offset_s | number |  | 0 | Seconds from 0 to bar 0 (default 0). |
+| grid.offset_s | number |  | 0 | Seconds from 0 to bar 0 (default 0). bar:/beat: times, beats/bars scenes and grid_report all count from here. |
 | preset | string |  |  | Named layout preset from presets/timeline/ (for example voice-driven-classic), merged under this request. |
 | scenes | array | yes |  | Scenes in playback order; each starts where the previous one ends. |
 | scenes[].id | string | yes |  | Scene id (letters, digits, _ or -), used by times and markers. |
-| scenes[].duration_s | number |  |  | Fixed scene length in seconds. Overrides the line-driven length and is used exactly (not snapped). |
+| scenes[].duration_s | number |  |  | Fixed scene length in seconds. Overrides the line-driven length and is used exactly (not snapped). Set at most one of duration_s, beats, bars and until. |
+| scenes[].beats | number |  |  | Scene length in beats of grid (needs grid), used exactly: not snapped, min_s ignored. Overrides the line-driven length; lines that need longer give a warning and the length is kept. Set at most one of duration_s, beats, bars and until. |
+| scenes[].bars | number |  |  | Scene length in bars of grid (one bar = beats_per_bar beats; needs grid), used exactly like beats. Set at most one of duration_s, beats, bars and until. |
+| scenes[].until | number\|string |  |  | The scene ends at this time and fills from its start up to it: seconds, or "bar:<n>[+-s]" / "beat:<n>[+-s]" on grid (0-based, counted from grid.offset_s; needs grid). Must be after the scene's start. Lines that need longer give a warning and the end is kept. Set at most one of duration_s, beats, bars and until. |
 | scenes[].lead_s | number |  |  | Overrides defaults.lead_s for this scene. |
 | scenes[].gap_s | number |  |  | Overrides defaults.gap_s for this scene. |
 | scenes[].tail_s | number |  |  | Overrides defaults.tail_s for this scene. |
 | scenes[].min_s | number |  |  | Overrides defaults.min_s for this scene. |
 | scenes[].snap_beats | number\|null |  |  | Overrides defaults.snap_beats for this scene (null = do not snap this scene). |
-| scenes[].lines | array |  |  | Voice-over lines in order. Omit for an empty scene or a fixed duration_s scene. |
+| scenes[].lines | array |  |  | Voice-over lines in order. Omit for an empty scene. In a scene of fixed length (duration_s, beats, bars or until) the cues are laid out the same way, from the scene start. |
 | scenes[].lines[].audio | ref |  |  | Audio for the line: a workspace path, job:<id>/<output> or pin:<name>. Its speech end (threshold speech_end_threshold_db) sets the cue length. |
 | scenes[].lines[].dur_s | number |  |  | Cue length in seconds when there is no audio. |
 | scenes[].lines[].text | string |  |  | Caption text, kept in the cue. |
@@ -1167,6 +1641,50 @@ class: light · deterministic: yes · cache: auto · version 1.0.0 · presets: v
       ]
     }
   ]
+}
+```
+
+### Example: Music first: a 132 bpm 4/4 song whose bar 0 falls at 0.5 s, cut in bars and beats and until bar 9; grid_report shows every cut on a beat
+
+```json
+{
+  "grid": {
+    "bpm": 132,
+    "beats_per_bar": 4,
+    "offset_s": 0.5
+  },
+  "scenes": [
+    {
+      "id": "pickup",
+      "until": "bar:0"
+    },
+    {
+      "id": "verse",
+      "bars": 4,
+      "lines": [
+        {
+          "dur_s": 2.5,
+          "text": "They called it a glitch."
+        }
+      ]
+    },
+    {
+      "id": "fill",
+      "beats": 2
+    },
+    {
+      "id": "chorus",
+      "until": "bar:9"
+    },
+    {
+      "id": "outro",
+      "bars": 1
+    }
+  ],
+  "times": {
+    "outro": "outro",
+    "bar_9": "bar:9"
+  }
 }
 ```
 

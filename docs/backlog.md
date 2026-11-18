@@ -6,8 +6,9 @@ suggested fix. Items fixed since are removed from this list; `docs/retro-2026-11
 ## music.sounds
 
 1. **Listed sounds whose files are missing upstream.** `tom_mallet` resolves to a VCSL URL that answers HTTP 404, so it can
-   never play. Since the November round, `music.render` names the URL in its skipped-events warning. Suggested fix: probe
-   the sample map once at image build time, and mark or omit sounds whose files 404 in `music.sounds`.
+   never play (met again in a later production; `tom2_mallet` works). Since the November round, `music.render` names the
+   URL in its skipped-events warning. Suggested fix: probe the sample map once at image build time, and mark or omit
+   sounds whose files 404 in `music.sounds`.
 
 ## image.contact-sheet
 
@@ -24,39 +25,42 @@ suggested fix. Items fixed since are removed from this list; `docs/retro-2026-11
    `media.frames` stops at 200 frames. Suggested fix: a `media.motion` tool taking `{video, grid?: {bpm, beats_per_bar},
    still_threshold?}` and returning per-frame change, the still stretches, and per-beat and per-bar rows.
 
-4. **No per-cue level table.** `audio.mix` knows every clip and writes the stems, but to learn whether a cue sits over
-   or under the music at its own moment a client downloads each stem and measures the windows itself, or calls
-   `audio.speech-ratio` once per cue (43 calls in one production). Suggested fix: with a `reference_track` named in the
-   input, `report.json` gains `cues[]`: `{track, name, at, level_db, reference_db, ratio_db}`.
-
-5. **Nothing tells what a voice line says.** A Farsi line was pronounced wrongly and went out, because no tool returns
+4. **Nothing tells what a voice line says.** A Farsi line was pronounced wrongly and went out, because no tool returns
    text or phonemes from audio, and an agent cannot listen. Suggested fix: a `voice.transcribe` tool (speech to text with
    a language hint, per-word times); `voice.piper` could also return the phonemes it spoke.
 
 ## music.render
 
-6. **Always renders from the start.** `picture.render` takes `from_s`/`to_s`; `music.render` takes only `seconds` or
+5. **Always renders from the start.** `picture.render` takes `from_s`/`to_s`; `music.render` takes only `seconds` or
    `cycles`, so changing one bar renders the whole song again (20 full renders, 49 minutes of machine time, in one
-   two-day production). Suggested fix: `from_cycle`/`to_cycle`, with the same seamless-join guarantee as the picture.
-
-## audio.mix
-
-7. **The truncation warning is noise.** "clip N extends past the mix length and was truncated" appears whenever a clip
-   is longer than the mix, which the music nearly always is (36 warnings in one production, none of them a problem).
-   Giving the clip a `duration_s` silences it. Suggested fix: warn only when the part that is cut off is audible (above
-   about −50 dB), and say how many seconds were cut.
+   two-day production; a dense score in a later one took over 13 minutes per render). Stems multiply this, since each
+   stem is a full render. Suggested fix: `from_cycle`/`to_cycle`, with the same seamless-join guarantee as the picture.
 
 ## picture.stills
 
-8. **The readiness timeout explains nothing.** A page that never set `window.__motion.ready` failed after about 61 s
+6. **The readiness timeout explains nothing.** A page that never set `window.__motion.ready` failed after about 61 s
    with "page never set window.__motion.ready: (no errors reported)". Suggested fix: report what the page was still
    waiting for: requests in flight, `document.fonts.status`, and the last console lines.
 
-## media.encode
+## Cut-outs
 
-9. **Fit-size can make a small file bigger.** Asked to fit 44 MB, a master that was already smaller came out larger,
-   with its audio encoded again. Taken from production notes, not reproduced since. Suggested fix: when the input
-   already fits, return it unchanged and say so in the result.
+7. **Subject masks need a segmentation model.** `image.matte` cuts figures off soft or flat grounds, but generated
+   stills with busy backgrounds needed masks from a segmentation model run outside motionex (for `image.grade`'s
+   background tint and for parallax). Suggested fix: the `image.cutout` contract designed in `docs/providers.md`, with
+   `image.matte` as its first provider and a segmentation model as the second. It adds a model download to the image,
+   so it is the owner's decision.
+
+## Sound libraries
+
+8. **Freesound gives previews, not originals.** With an API key, `sfx.freesound` downloads the high-quality MP3
+   preview. Original files need Freesound's OAuth2 login. Suggested fix: an optional OAuth2 token secret; with it,
+   download the original and report `source: "original"`.
+
+## timeline.layout
+
+9. **A fixed-length scene whose lines run over says nothing.** Scenes in `beats`, `bars` or `until` warn when their
+   lines need more time than the scene has; a `duration_s` scene does not, to keep voice-first results unchanged.
+   Suggested fix: the same warning for `duration_s` scenes.
 
 ## Left open on purpose (owner's decision)
 - The Docker image is about 2.3 GB.

@@ -1,0 +1,132 @@
+{
+  "name": "sfx.freesound",
+  "version": "1.0.0",
+  "title": "Sound fetch (Freesound)",
+  "summary": "The Freesound provider of sfx.fetch: bring Freesound sounds into a job as WAV files, measured (attack, loudest stretch, peak), with each sound's licence and a ready credit line in credits.json. Needs the freesound_api_key secret file and network access.",
+  "description": "Looks every sound up on Freesound (API v2) first, so a sound whose licence is not in `licenses` fails the job before anything is downloaded. Then it downloads each sound's high-quality MP3 preview (an API key gives previews; Freesound's original files need its OAuth2 login, which this tool does not do), converts it to WAV at `sample_rate` and `channels`, and measures it: `onset_s` (where it becomes audible, so a hit can be placed on its cut), `loudest_s` (where its loudest one-second stretch starts, so a texture or ambience can start from its busiest part) and `peak_db`. credits.json lists every sound's title, author, link, licence and a credit line. Licences differ per sound: CC0 needs no credit, CC BY needs the credit line, CC BY-NC forbids commercial use. Identical requests reuse the earlier download (cache \"reuse\"); submit with cache \"off\" to download again. Reads the freesound_api_key secret file (an API key from freesound.org/apiv2/apply); the key is sent only in the Authorization header to the API, never to the preview server, and never appears in results or logs. Retries 429, 5xx and network errors.",
+  "kind": "node",
+  "handler": "handler.mjs",
+  "deterministic": false,
+  "cache_default": "reuse",
+  "resources": { "class": "audio" },
+  "timeout_s": 600,
+  "requires": { "binaries": ["ffmpeg"], "secrets": ["freesound_api_key"] },
+  "implements": [{ "contract": "sfx.fetch", "provider": "freesound" }],
+  "input_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["sounds"],
+    "properties": {
+      "sounds": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 100,
+        "description": "The sounds to fetch, in order: a Freesound id as a string (the file is named freesound-<id>.wav) or {id, name}.",
+        "items": {
+          "oneOf": [
+            { "type": "string", "pattern": "^\\d{1,12}$", "description": "A Freesound sound id, e.g. \"442773\"." },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id"],
+              "description": "A sound with an explicit output name.",
+              "properties": {
+                "id": { "type": "string", "pattern": "^\\d{1,12}$", "description": "The Freesound sound id." },
+                "name": {
+                  "type": "string",
+                  "pattern": "^[\\w.-]{1,64}$",
+                  "description": "Output file name without .wav, e.g. door writes door.wav. Unique inside one call."
+                }
+              }
+            }
+          ]
+        }
+      },
+      "licenses": {
+        "type": "array",
+        "minItems": 1,
+        "description": "Refuse any sound whose licence is not one of these: cc0, by, by-nc, sampling+ (invalid-input before any download). Omit to accept every licence.",
+        "items": { "type": "string", "enum": ["cc0", "by", "by-nc", "sampling+"], "description": "A licence code." }
+      },
+      "sample_rate": {
+        "type": "integer",
+        "minimum": 8000,
+        "maximum": 192000,
+        "default": 48000,
+        "description": "Sample rate of the WAV files in Hz. Default 48000."
+      },
+      "channels": {
+        "enum": [1, 2],
+        "default": 2,
+        "description": "1 (mono) or 2 (stereo; a mono sound is copied to both). Default 2."
+      },
+      "format": {
+        "enum": ["wav", "wav24", "wav32f"],
+        "default": "wav24",
+        "description": "WAV encoding: wav (16-bit), wav24 (24-bit) or wav32f (32-bit float). Default wav24."
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["sounds", "warnings"],
+    "properties": {
+      "sounds": {
+        "type": "array",
+        "description": "One entry per sound, in input order.",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "file",
+            "id",
+            "title",
+            "seconds",
+            "license",
+            "license_url",
+            "author",
+            "url",
+            "attribution",
+            "onset_s",
+            "loudest_s",
+            "peak_db",
+            "source"
+          ],
+          "properties": {
+            "name": { "type": "string", "description": "The output name." },
+            "file": { "type": "string", "description": "Its WAV output, e.g. door.wav (ref job:<id>/door.wav)." },
+            "id": { "type": "string", "description": "The Freesound sound id." },
+            "title": { "type": "string", "description": "The sound's title on Freesound." },
+            "seconds": { "type": "number", "description": "Length of the WAV file." },
+            "license": { "type": "string", "description": "Licence code: cc0, by, by-nc, sampling+ or other." },
+            "license_url": { "type": "string", "description": "Freesound's licence link." },
+            "author": { "type": "string", "description": "The Freesound user who uploaded it." },
+            "url": { "type": "string", "description": "The sound's Freesound page." },
+            "attribution": { "type": "string", "description": "A credit line: title, author, link and licence." },
+            "onset_s": { "type": "number", "description": "Where the sound becomes audible in the file, in seconds." },
+            "loudest_s": {
+              "type": "number",
+              "description": "Where the loudest one-second stretch starts (0 when the sound is shorter)."
+            },
+            "peak_db": { "type": "number", "description": "Sample peak of the WAV in dBFS." },
+            "source": {
+              "enum": ["preview"],
+              "description": "What was downloaded: Freesound's high-quality MP3 preview."
+            }
+          }
+        }
+      },
+      "warnings": { "type": "array", "items": { "type": "string" }, "description": "Anything worth a second listen." }
+    }
+  },
+  "examples": [
+    {
+      "title": "Two sounds, public domain only",
+      "run": false,
+      "input": { "sounds": [{ "id": "442773", "name": "splash" }, "188210"], "licenses": ["cc0"] }
+    }
+  ]
+}

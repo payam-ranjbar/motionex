@@ -50,6 +50,25 @@ The accepted balance is the preset `dialogue-anchored`. `ducked-bed` (classic du
 - **Fades at the cut**: a clip longer than the mix (`duration_s`) gets its `fade_out_s` applied at the mix end, its audible end.
 - **`gain+limiter`** iterates until the limited mix lands on the target (±0.3 LU). If the material is too peaky to get there under the ceiling, the result says so in `warnings`; lower the target, or tame the transients (a gentle compressor on the drums or the bus) first. Pushing a master louder costs transient snap: check the drop with `audio.levels` afterwards.
 
+## Recorded effects (`sfx.search`, `sfx.fetch`)
+Two contracts with library providers (today `freesound`, which needs the `freesound_api_key` secret file):
+```json
+{"tool": "sfx.search", "input": {"provider": "freesound", "query": "wooden door creak", "licenses": ["cc0"], "max_seconds": 5}}
+{"tool": "sfx.fetch", "input": {"provider": "freesound", "sounds": [{"id": "<id from the search>", "name": "door"}], "licenses": ["cc0"]}}
+```
+- `sfx.fetch` writes `<name>.wav` and `credits.json`, and measures each sound: `onset_s` (where it becomes audible),
+  `loudest_s` (where its loudest stretch starts) and `peak_db`.
+- **Read the licence of every sound.** Public-domain sounds need no credit; attribution licences need the credit line
+  the result gives you; non-commercial licences rule a sound out of commercial work. `licenses` on both calls keeps
+  the others out.
+- **Search like a sound editor**: name the source and the action ("rope creak under tension"), not the feeling. Try a
+  few phrasings and listen to the previews (`preview` links) or measure the candidates before choosing.
+- **Place by the measurements**: a hit's onset on its cut; a texture or an ambience from its loudest stretch.
+- **Tame ambience beds before levelling them.** Recordings of fire, rain or crowds carry pops and peaks; levelling
+  them by loudness can make those peaks jump out. A gentle compressor and a limiter in the clip's `fx` first help.
+- **J- and L-cuts** are clip placement: let a scene's ambience start before its picture and run on after it
+  (`editing.md`).
+
 ## Sound effects (`sfx.synth`)
 - **Built-in generic recipes**, pure synthesis and seeded: `rain_bed`, `glitch_cut`, `glitch_micro`, `whoosh_by`, `swish`, `thump`, `burst`, `ui_blip`. Each takes `params`.
 - **Your own recipes**: a `.mjs` in the workspace exporting `sounds = {name(kit, params) { return [L, R]; }}`. `kit.rng()` returns the next random number (0..1) from the seeded stream, not a generator: write `const r = () => kit.rng();`.

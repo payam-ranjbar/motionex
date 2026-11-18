@@ -5,8 +5,9 @@ import { decodeAudio } from '../audio-io.mjs';
 import { ToolError } from '../errors.mjs';
 import { checkChain } from '../ffmpeg.mjs';
 import { integratedLufs } from '../loudness.mjs';
-import { fromDb } from '../signal.mjs';
+import { db, fromDb } from '../signal.mjs';
 import { framesOf, readWav } from '../wav.mjs';
+import { clipWindow } from './cues.mjs';
 import { levelClips } from './dynamics.mjs';
 import { computeN } from './plan.mjs';
 
@@ -165,21 +166,63 @@ export async function decodeClips(plan, { signal, concurrency = 4 } = {}) {
   return decoded;
 }
 
+/** A cut-off part of a clip whose peak (after the clip gain) is at or under this level is not worth a warning. */
+export const TRUNCATION_AUDIBLE_DB = -50;
+
+/** Absolute sample peak over all channels from sample `from` to the end (linear). */
+function peakFrom(channels, from) {
+  let p = 0;
+  for (const ch of channels)
+    for (let i = Math.max(0, from); i < ch.length; i++) {
+      const a = Math.abs(ch[i]);
+      if (a > p) p = a;
+    }
+  return p;
+}
+
+/**
+ * The warning for a clip the mix length cuts, or null when the part that is cut off is inaudible: its peak after
+ * the clip gain (and any clip_leveling gain) is at or under TRUNCATION_AUDIBLE_DB. Music files often run on into
+ * silence past the mix end, which is not worth a warning.
+ * @param {{name: string}} track @param {number} ci clip index @param {object} clip
+ * @param {import('../wav.mjs').Audio} audio the decoded clip @param {number} audibleLen samples heard
+ * @param {number} gainDb clip gain plus leveling gain
+ * @returns {string|null}
+ */
+export function truncationWarning(track, ci, clip, audio, audibleLen, gainDb) {
+  const cutFrames = framesOf(audio) - audibleLen;
+  if (cutFrames <= 0) return null;
+  const cutPeak = peakFrom(audio.channels, audibleLen) * fromDb(gainDb);
+  if (cutPeak <= fromDb(TRUNCATION_AUDIBLE_DB)) return null;
+  const seconds = Number((cutFrames / audio.sampleRate).toFixed(3));
+  const peakDb = db(cutPeak).toFixed(1);
+  const what =
+    `track "${track.name}" clip ${ci} extends past the mix length and was truncated: ` +
+    `${seconds} s cut, peaking at ${peakDb} dBFS`;
+  const fadeOut = clip.fade_out_s ?? 0;
+  return fadeOut > 0 ? `${what}; its ${fadeOut} s fade-out was applied at the cut` : what;
+}
+
 /**
  * Place every clip into its track buffer (post gain/fades/pan, before track fx). Also computes N.
- * When `track.clip_leveling` is set, clips are measured and levelled first.
+ * When `track.clip_leveling` is set, clips are measured and levelled first. When `plan.cues` is set, the
+ * measured window of every clip of a cue track is returned in `spans` (absolute samples, end exclusive).
  * @param {object} plan @param {Map<string, import('../wav.mjs').Audio>} decoded
- * @returns {{buffers: Map<string, import('../wav.mjs').Audio>, n: number, warnings: string[]}}
+ * @returns {{buffers: Map<string, import('../wav.mjs').Audio>, n: number, warnings: string[],
+ *   spans: Map<string, {clip: number, name: string|null, from: number, to: number}[]>}}
  */
 export function buildTrackBuffers(plan, decoded) {
   const warnings = [];
   const n = computeN(plan, (clip) => framesOf(decoded.get(clipKey(clip))));
   if (n <= 0) throw new ToolError('invalid-input', 'mix has no length: provide clips or duration_s');
 
+  const cueTracks = new Set(plan.cues?.tracks ?? []);
   const buffers = new Map();
+  const spans = new Map();
   for (const track of plan.tracks) {
     const trackCh = Array.from({ length: plan.channels }, () => new Float32Array(n));
     const clips = track.clips ?? [];
+    const trackSpans = cueTracks.has(track.name) ? [] : null;
     let levelGains = null;
     if (track.clip_leveling) {
       levelGains = levelClips(
@@ -193,19 +236,21 @@ export function buildTrackBuffers(plan, decoded) {
       const truncated = clip.atSample + frames > n;
       // A truncated clip is heard from atSample to the mix end only, so its fade-out must end there.
       const audibleLen = truncated ? Math.max(0, n - clip.atSample) : frames;
-      const processed = prepareClip(audio, clip, {
-        outCh: plan.channels,
-        extraGainDb: levelGains?.[ci] ?? 0,
-        audibleLen,
-      });
+      const extraGainDb = levelGains?.[ci] ?? 0;
+      const processed = prepareClip(audio, clip, { outCh: plan.channels, extraGainDb, audibleLen });
       if (truncated) {
-        const fadeOut = clip.fade_out_s ?? 0;
-        const what = `track "${track.name}" clip ${ci} extends past the mix length and was truncated`;
-        warnings.push(fadeOut > 0 ? `${what}; its ${fadeOut} s fade-out was applied at the cut` : what);
+        const warning = truncationWarning(track, ci, clip, audio, audibleLen, (clip.gain_db ?? 0) + extraGainDb);
+        if (warning) warnings.push(warning);
+      }
+      if (trackSpans) {
+        const { start, end } = clipWindow(processed, audibleLen, plan.cues.window);
+        const from = clip.atSample + start;
+        trackSpans.push({ clip: ci, name: clip.name ?? null, from, to: from + (end - start) });
       }
       mixInto(trackCh, processed, clip.atSample);
     });
     buffers.set(track.name, { sampleRate: plan.sampleRate, channels: trackCh });
+    if (trackSpans) spans.set(track.name, trackSpans);
   }
-  return { buffers, n, warnings };
+  return { buffers, n, warnings, spans };
 }

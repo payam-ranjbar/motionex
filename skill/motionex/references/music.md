@@ -26,6 +26,17 @@ $: note("<c2 g1>").s("sawtooth").lpf(500).mask(span(DARK, DROP)) // the dark par
 - `music.render {markers: {DROP: 31}}` rewrites `let DROP = …;` before rendering. `song.strudel` in the outputs shows exactly what was rendered.
 - Write the song so it works over a RANGE of marker values, and say which range in a comment. Then the edit can move without breaking the music.
 - `timeline.layout` can compute a marker's bar from a scene start (`markers: {DROP: {scene: "reveal"}}`, `align_to: "DROP"`). It returns `music_offset_s`, where to start the music so the drop lands on the cut. Moving the music start is easier than stretching scenes.
+- **The song's form comes back in every result**: `markers_found` lists each marker with its value, `at_s` (its time, counting cycles from 0) and `bar`, including markers computed from others (`let OUTRO = DROP + 8;`). When the music leads, lay the scenes out from these times (`timeline.layout` scenes in `beats`, `bars` or `until`), so the picture follows the song rather than the other way round.
+
+## Stems: balance parts after the render
+Name the parts you may want to balance separately (`drums: s("bd*4")`, `bass: note(...)`) and ask for stems:
+```json
+{"file": "song.strudel", "seconds": 64, "format": "wav32", "stems": {"drums": ["drums", "perc"], "low": ["bass"], "pads": ["$1"]}}
+```
+- Each stem is the song rendered again with every other part muted (Strudel's own `_` mute), written to `stems/<name>.<ext>`. `$1`, `$2`, … select the anonymous `$:` parts in song order. An unknown part fails before anything renders and lists the parts the song has.
+- Each stem is a full render, so stems cost about as much time again as the mix; `stems_only: true` skips the mix when you will build it from the stems.
+- Balance the stems per section with `audio.mix` track `automation` (gain points that ramp between sections) instead of cutting each stem into clips.
+- Strudel treats a label of two or more characters that starts with `S` as a solo (`Strings:` solos too); the result warns when it sees one. Pick other names.
 
 ## Strudel cheat sheet
 - **Parts**: one part per `$:` line; mute with `_$:`, solo with `S$:`.

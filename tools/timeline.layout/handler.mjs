@@ -1,5 +1,6 @@
 // timeline.layout: lay scenes out from voice-over lines, optionally snapped to a beat grid,
-// with markers that align the music and named times.
+// with markers that align the music and named times. Music first: scenes may instead be given in
+// beats or bars of the grid, or run until a time, and the result reports where every cut falls on the grid.
 //
 // Nothing is enforced: with all defaults at zero and no snapping, a scene is exactly as long as its lines.
 import { writeFile } from 'node:fs/promises';
@@ -7,12 +8,64 @@ import path from 'node:path';
 import { decodeAudio } from '../../src/lib/audio-io.mjs';
 import { ToolError } from '../../src/lib/errors.mjs';
 import { speechEnd } from '../../src/lib/signal.mjs';
-import { resolveTime } from '../../src/lib/timespec.mjs';
+import { parseTimespec, resolveTime } from '../../src/lib/timespec.mjs';
 
 const r4 = (x) => Math.round(x * 1e4) / 1e4;
 // Everything here is rounded to 1e-4, so a length or a scene start within this of a beat/bar
 // multiple is treated as exactly on it (build.mjs used 1e-6, which assumes unrounded inputs).
 const EPS = 1e-4;
+// The fields that fix a scene's length instead of its lines; a scene may set at most one.
+const LENGTH_FIELDS = ['duration_s', 'beats', 'bars', 'until'];
+// grid_report: a scene end within this many seconds of a beat counts as on it (information only, nothing moves).
+const ON_BEAT_S = 0.0005;
+// Float noise only: a start this close to a whole beat (in beats) is that beat, so whole-beat scenes add up exactly.
+const BEAT_NOISE = 1e-6;
+
+/**
+ * Check a scene's length fields: at most one of duration_s / beats / bars / until, and a grid for beats, bars
+ * and bar:/beat: untils.
+ * @param {{id: string, duration_s?: number, beats?: number, bars?: number, until?: number|string}} scene
+ * @param {{bpm: number, beats_per_bar?: number, offset_s?: number}|undefined} grid
+ * @param {number} beatsPerBar
+ * @returns {null | {field: 'duration_s'} | {field: 'beats'|'bars', beats: number, label: string}
+ *   | {field: 'until', label: string, seconds?: number, beat?: number, offset?: number}}
+ */
+function lengthSpec(scene, grid, beatsPerBar) {
+  const set = LENGTH_FIELDS.filter((k) => scene[k] !== undefined && scene[k] !== null);
+  if (set.length > 1) {
+    throw new ToolError(
+      'invalid-input',
+      `scene "${scene.id}": give at most one of ${LENGTH_FIELDS.join(', ')} (got ${set.join(' and ')})`,
+    );
+  }
+  const field = set[0];
+  if (!field) return null;
+  if (field === 'duration_s') return { field };
+  if (field === 'beats' || field === 'bars') {
+    if (!grid) throw new ToolError('invalid-input', `scene "${scene.id}": ${field} needs a grid {bpm, ...}`);
+    const n = scene[field];
+    const beats = field === 'beats' ? n : n * beatsPerBar;
+    return { field, beats, label: `${n} ${n === 1 ? field.slice(0, -1) : field}` };
+  }
+  const spec = scene.until;
+  const label = `until ${typeof spec === 'number' ? `${spec} s` : spec}`;
+  if (typeof spec === 'number') return { field, label, seconds: spec };
+  let ts;
+  try {
+    ts = parseTimespec(spec);
+  } catch (err) {
+    if (err instanceof ToolError) throw new ToolError('invalid-input', `scene "${scene.id}": until: ${err.detail}`);
+    throw err;
+  }
+  if (ts.kind !== 'bar' && ts.kind !== 'beat') {
+    throw new ToolError(
+      'invalid-input',
+      `scene "${scene.id}": until must be seconds, "bar:<n>[+-s]" or "beat:<n>[+-s]", got "${spec}"`,
+    );
+  }
+  if (!grid) throw new ToolError('invalid-input', `scene "${scene.id}": until "${spec}" needs a grid {bpm, ...}`);
+  return { field, label, beat: ts.kind === 'bar' ? ts.n * beatsPerBar : ts.n, offset: ts.offset };
+}
 
 /**
  * Per-frame voice loudness (0..1) for the lines of one speaker, ported from build.mjs:105-124.
@@ -67,6 +120,17 @@ export default async function run(input, ctx) {
   const gridOffset = grid?.offset_s ?? 0;
   const beatLen = grid ? 60 / grid.bpm : null;
   const barLen = grid ? beatsPerBar * beatLen : null;
+  // Grid positions, computed the way timespec.resolveTime computes bar:/beat: times, so a scene that ends on
+  // beat k ends at exactly the time "beat:k" (or "bar:n") resolves to in timeline.json.
+  const gridBeat = (sec) => ((sec - gridOffset) * grid.bpm) / 60;
+  const gridTime = (beat) => gridOffset + (beat * 60) / grid.bpm;
+  const cleanBeat = (b) => {
+    const k = Math.round(b);
+    return Math.abs(b - k) < BEAT_NOISE ? k : b;
+  };
+
+  // Length fields are checked up front, before any audio is decoded.
+  const lengths = input.scenes.map((s) => lengthSpec(s, grid, beatsPerBar));
 
   // ctx.rawInput keeps the original ref strings (input has them resolved to absolute paths).
   const rawScenes = ctx.rawInput?.scenes ?? input.scenes;
@@ -75,6 +139,10 @@ export default async function run(input, ctx) {
   const scenes = [];
   /** @type {{who: string|null, at: number, seconds: number, tempo: number, audio: import('../../src/lib/wav.mjs').Audio|null}[]} */
   const clips = [];
+  /** @type {string[]} */
+  const warnings = [];
+  /** Unrounded end of every scene, for grid_report. @type {number[]} */
+  const ends = [];
   let t = 0;
 
   for (let si = 0; si < input.scenes.length; si++) {
@@ -87,6 +155,21 @@ export default async function run(input, ctx) {
     const snap = scene.snap_beats === undefined ? dSnap : scene.snap_beats;
     if (snap != null && !grid) {
       throw new ToolError('invalid-input', `scene "${scene.id}": snap_beats needs a grid {bpm, ...}`);
+    }
+
+    // beats / bars / until fix the scene's end (exactly, never snapped); its lines do not change it.
+    const spec = lengths[si];
+    let end = null;
+    if (spec?.field === 'beats' || spec?.field === 'bars') {
+      end = gridTime(cleanBeat(gridBeat(t)) + spec.beats);
+    } else if (spec?.field === 'until') {
+      end = spec.seconds ?? gridTime(spec.beat) + spec.offset;
+      if (r4(end) <= r4(t)) {
+        throw new ToolError(
+          'invalid-input',
+          `scene "${scene.id}": ${spec.label} is ${r4(end)} s, at or before the scene's start (${r4(t)} s)`,
+        );
+      }
     }
 
     const lines = scene.lines ?? [];
@@ -125,6 +208,22 @@ export default async function run(input, ctx) {
 
     // The trailing gap is never added: speechEnd is the end of the last line. An empty scene is max(tail, min).
     const speechEndT = lines.length ? at : t;
+    if (end !== null) {
+      // The given length is kept; lines that need longer only earn a warning (their cues run past the end).
+      const length = end - t;
+      const needed = speechEndT + tail - t;
+      if (lines.length && r4(needed) > r4(length)) {
+        warnings.push(
+          `scene "${scene.id}": its lines need ${r4(needed)} s (lead, lines, gaps and tail) but the scene is ` +
+            `${r4(length)} s (${spec.label}); they run ${r4(needed - length)} s over and the length is kept`,
+        );
+      }
+      // start + dur is the next start, as rounded in the output.
+      scenes.push({ id: scene.id, start: r4(t), dur: r4(r4(end) - r4(t)), cues });
+      t = end;
+      ends.push(t);
+      continue;
+    }
     let dur;
     if (scene.duration_s != null) {
       dur = scene.duration_s; // fixed: used exactly, never snapped
@@ -140,8 +239,30 @@ export default async function run(input, ctx) {
     }
     scenes.push({ id: scene.id, start: r4(t), dur: r4(dur), cues });
     t += dur;
+    ends.push(t);
   }
   const total = r4(t);
+
+  // grid_report (information only): where every scene ends on the grid, beat 0 being grid.offset_s (bar 0).
+  // The start of the first scene (0) is the start of the timeline, not a cut, so it is not listed.
+  let gridReport;
+  if (grid) {
+    const boundaries = scenes.map((s, i) => {
+      const beat = gridBeat(ends[i]);
+      const onBeat = Math.abs(beat - Math.round(beat)) * beatLen <= ON_BEAT_S;
+      return { scene: s.id, time: r4(ends[i]), beat: r4(beat) || 0, on_beat: onBeat }; // || 0 turns -0 into 0
+    });
+    const off = boundaries.filter((b) => !b.on_beat);
+    gridReport = { boundaries, off_grid: off.length };
+    // One summary, and only when the layout is cut to the grid (a voice-first layout may use the grid for markers).
+    if (off.length && lengths.some((l) => l && l.field !== 'duration_s')) {
+      const names = off.slice(0, 5).map((b) => `"${b.scene}"`);
+      if (off.length > 5) names.push('...');
+      warnings.push(
+        `${off.length} of ${boundaries.length} scene ends are off the beat grid (${names.join(', ')}); see grid_report`,
+      );
+    }
+  }
 
   // Markers and the music offset. align_to's marker picks the global offset so a bar (or beat) lands on its scene.
   const markersIn = input.markers ?? {};
@@ -237,6 +358,8 @@ export default async function run(input, ctx) {
       scenes: scenes.map(({ id, start, dur }) => ({ id, start, dur })),
       markers,
       music_offset_s: musicOffset,
+      ...(gridReport ? { grid_report: gridReport } : {}),
+      warnings,
     },
     outputs: [
       { name: 'timeline.json', media_type: 'application/json' },

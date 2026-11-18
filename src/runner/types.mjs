@@ -35,6 +35,7 @@ export {};
  * @property {string} logLevel
  * @property {string} elevenlabsUrl
  * @property {number} elevenlabsDailyCharLimit
+ * @property {string} freesoundUrl
  * @property {number} musicMaxSeconds
  * @property {boolean} allowOverride
  * @property {Record<string, string>} libDirs   URL prefix under /_mx/lib/ -> folder

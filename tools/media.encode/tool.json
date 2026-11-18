@@ -1,9 +1,9 @@
 {
   "name": "media.encode",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "title": "Video encoder (delivery)",
-  "summary": "Encode a video with explicit quality, bitrate, size, scaling and audio controls, including fit-to-N-MB two-pass encoding and named delivery presets.",
-  "description": "The delivery encoder. It never guesses: quality (crf or bitrate), scale caps, fps, audio codec/bitrate and colour are explicit inputs. Use target_size_mb to hit a byte budget with a two-pass x264/x265 encode, or a preset from presets/encode/ for a known platform. When the audio codec is copy the stream is not re-encoded and the fit-to-size budget reserves its real source bitrate instead of audio.bitrate_k, so prefer audio: {codec: \"copy\"} when the source audio is already AAC at the delivery rate (it also avoids a second lossy pass). Colour is converted only when asked: with video.color set (the default 'bt709') the scale filter maps in_color_matrix=auto/in_range=auto to the requested matrix and TV range, with matching tags; video.color null leaves colour untouched. Scaling never upscales and keeps the aspect ratio.",
+  "summary": "Encode a video with explicit quality, bitrate, size, scaling, padding, picture fx and audio controls, including fit-to-N-MB two-pass encoding and named delivery presets.",
+  "description": "The delivery encoder. It never guesses: quality (crf or bitrate), scale caps, fps, audio codec/bitrate and colour are explicit inputs. Use target_size_mb to hit a byte budget with a two-pass x264/x265 encode, or a preset from presets/encode/ for a known platform. When the audio codec is copy the stream is not re-encoded and the fit-to-size budget reserves its real source bitrate instead of audio.bitrate_k, so prefer audio: {codec: \"copy\"} when the source audio is already AAC at the delivery rate (it also avoids a second lossy pass). With target_size_mb, an input file that already fits under the target is returned unchanged (no encode, passthrough true, and a warning says so) when nothing else is asked: no pad, lut, video_fx, replace_audio or fps change, no scale that changes the size (a cap the input already meets is fine), and the input's video codec, pixel format, colour matrix tag, audio codec, sample rate, channels and file extension already match the request. copy_if_fits: false always encodes. Colour is converted only when asked: with video.color set (the default 'bt709') the scale filter maps in_color_matrix=auto/in_range=auto to the requested matrix and TV range, with matching tags; video.color null leaves colour untouched. Scaling never upscales and keeps the aspect ratio. The picture steps run in this order, each only when its field is set: lut (a 3D LUT file), video_fx (your own ffmpeg filter chain), scale, then pad (fit inside a frame, scaling up or down, and fill the rest with a colour, for example a 16:9 master delivered as a 9:16 copy with black above and below, without re-rendering the picture).",
   "kind": "node",
   "handler": "handler.mjs",
   "deterministic": true,
@@ -30,7 +30,7 @@
       },
       "preset": {
         "type": "string",
-        "description": "Name of an encode preset under presets/encode/ (master, web-720p, fit-size, telegram-video, instagram-reel). Explicit fields in this request override the preset."
+        "description": "Name of an encode preset under presets/encode/ (master, web-720p, fit-size, telegram-video, instagram-reel, vertical-9x16). Explicit fields in this request override the preset."
       },
       "video": {
         "type": "object",
@@ -159,6 +159,46 @@
           }
         }
       },
+      "pad": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["width", "height"],
+        "description": "Fit the picture inside width x height and fill the rest with a colour, e.g. a 16:9 master as a 1080x1920 copy with bars above and below, without re-rendering the picture. The picture is scaled up or down to fit (lanczos, display aspect ratio kept, never cropped), then padded to exactly width x height with square pixels (SAR 1). Applied after scale, lut and video_fx. With a chroma-subsampled pixel format such as the default yuv420p, the sizes must be even. Omit for no padding.",
+        "properties": {
+          "width": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Output frame width in pixels. Must be even for yuv420p (the default) and other 4:2:0 or 4:2:2 pixel formats."
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Output frame height in pixels. Must be even for yuv420p (the default) and other 4:2:0 pixel formats."
+          },
+          "color": {
+            "type": "string",
+            "pattern": "^(?:[A-Za-z]+|#[0-9A-Fa-f]{6}|0x[0-9A-Fa-f]{6})$",
+            "default": "black",
+            "description": "Colour of the bars: an ffmpeg colour name (black, white, gray, navy, ...) or #rrggbb (0xrrggbb also works). Default black."
+          },
+          "position": {
+            "type": "string",
+            "enum": ["center", "top", "bottom"],
+            "default": "center",
+            "description": "Where the picture sits when the bars are above and below it: center (default), top or bottom. Bars at the sides are always split evenly."
+          }
+        }
+      },
+      "video_fx": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Your own ffmpeg video filter chain (-vf syntax), applied to the input's pixels before scale and pad, for example \"noise=alls=8:allf=t\" (grain), \"vignette=PI/5\", \"unsharp=5:5:0.6\" (sharpening) or \"eq=saturation=1.1\". It is checked before use: filters and options that read or write files are refused (movie, lut3d, drawtext, subtitles, file=, textfile=, an option read from a file with /option=path, and similar). To apply a LUT file, use the lut field. Omit for none."
+      },
+      "lut": {
+        "type": "string",
+        "x-mx-ref": true,
+        "description": "A 3D LUT file (.cube, .3dl, .dat, .m3d or .csp) for a colour grade, applied with ffmpeg's lut3d filter first, before video_fx, scale and pad: a workspace path, job:<id>/<output> or pin:<name>. The picture is converted to RGB with its own colour matrix for the LUT, then to the output colour (video.color). Omit for none."
+      },
       "fps": {
         "type": "number",
         "exclusiveMinimum": 0,
@@ -181,6 +221,11 @@
         "default": 0.04,
         "description": "Fraction of the target bitrate held back for container overhead when fitting to a size. Default 0.04."
       },
+      "copy_if_fits": {
+        "type": "boolean",
+        "default": true,
+        "description": "With target_size_mb: when the input file already fits under the target and nothing else is asked (see the tool description), return it unchanged instead of encoding it, which could only make it bigger or lose quality. false always encodes. Default true. Ignored without target_size_mb."
+      },
       "name": {
         "type": "string",
         "pattern": "^[\\w.-]+$",
@@ -200,7 +245,9 @@
       "passes",
       "attempts",
       "width",
-      "height"
+      "height",
+      "passthrough",
+      "warnings"
     ],
     "properties": {
       "size_bytes": { "type": "integer", "description": "Size of the written file in bytes." },
@@ -211,15 +258,27 @@
       },
       "audio_bitrate_k": {
         "type": "integer",
-        "description": "Audio bitrate in kbit/s used in the fit-to-size budget: the real source stream bitrate when audio.codec is copy (0 when the source has no audio stream), else audio.bitrate_k."
+        "description": "Audio bitrate in kbit/s used in the fit-to-size budget: the real source stream bitrate when audio.codec is copy (0 when the source has no audio stream), else audio.bitrate_k. When the input was returned unchanged, the bitrate of its own audio stream (0 when it has none)."
       },
-      "passes": { "type": "integer", "description": "Number of encoding passes used for the final attempt (1 or 2)." },
+      "passes": {
+        "type": "integer",
+        "description": "Number of encoding passes used for the final attempt (1 or 2; 0 when the input was returned unchanged)."
+      },
       "attempts": {
         "type": "integer",
-        "description": "Number of encode attempts (2 when the first fit-to-size attempt was over target)."
+        "description": "Number of encode attempts (2 when the first fit-to-size attempt was over target; 0 when the input was returned unchanged)."
       },
       "width": { "type": ["integer", "null"], "description": "Output video width in pixels." },
-      "height": { "type": ["integer", "null"], "description": "Output video height in pixels." }
+      "height": { "type": ["integer", "null"], "description": "Output video height in pixels." },
+      "passthrough": {
+        "type": "boolean",
+        "description": "true when the input already fitted under target_size_mb, nothing else was asked, and the file was returned unchanged without encoding (see copy_if_fits)."
+      },
+      "warnings": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Facts worth reading: the input was returned unchanged, or the output is still over target_size_mb after the last attempt."
+      }
     }
   },
   "examples": [
@@ -241,6 +300,21 @@
     {
       "title": "Scale to 320 px and replace audio",
       "input": { "input": "render.mp4", "replace_audio": "voice.wav", "scale": { "max_long_side": 320 } },
+      "run": false
+    },
+    {
+      "title": "Letterbox a 16:9 master into a 9:16 frame on black",
+      "input": {
+        "input": "master.mp4",
+        "pad": { "width": 1080, "height": 1920, "color": "black", "position": "center" },
+        "audio": { "codec": "copy" },
+        "name": "vertical.mp4"
+      },
+      "run": false
+    },
+    {
+      "title": "Grade with a LUT, add grain and a vignette",
+      "input": { "input": "master.mp4", "lut": "grades/warm.cube", "video_fx": "noise=alls=6:allf=t,vignette=PI/5" },
       "run": false
     }
   ]

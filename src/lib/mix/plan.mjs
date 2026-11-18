@@ -1,10 +1,12 @@
-// audio.mix planner: turn a validated request into a plan (track_defaults applied, every clip's
-// `at` time resolved to samples, mix length N, and cross-references checked). Pure apart from
-// reading the optional timeline JSON file.
+// audio.mix planner: turn a validated request into a plan (track_defaults applied, every clip's and
+// automation point's `at` time resolved to samples, mix length N, and cross-references checked). Pure
+// apart from reading the optional timeline JSON file.
 import { readFile } from 'node:fs/promises';
 import { ToolError } from '../errors.mjs';
 import { deepMerge } from '../presets.mjs';
 import { resolveTime } from '../timespec.mjs';
+import { resolveAutomation } from './automation.mjs';
+import { resolveCues } from './cues.mjs';
 
 const DEFAULT_OUTPUT = { name: 'mix.wav', format: 'wav32f', stems: false, preview_mp3: false };
 
@@ -132,19 +134,27 @@ export function computeN(plan, clipFrames) {
  * @param {object} input the validated input (refs resolved to absolute paths)
  * @param {{signal?: AbortSignal}} [opts]
  * @returns {Promise<{sampleRate: number, channels: number, durationFrames: number|null,
- *   tracks: object[], buses: object[], sidechain: object[], master: object, output: object, timeline: object|null}>}
+ *   tracks: object[], buses: object[], sidechain: object[], master: object, output: object, timeline: object|null,
+ *   cues: {reference: string, tracks: string[], window: string}|null, warnings: string[]}>}
  */
 export async function buildPlan(input, { signal } = {}) {
   const sampleRate = input.sample_rate ?? 48000;
   const channels = input.channels ?? 2;
   const timeline = input.timeline ? await loadTimeline(input.timeline, { signal }) : null;
-  const tracks = resolveClipTimes(applyTrackDefaults(input.tracks, input.track_defaults ?? {}), timeline, sampleRate);
+  const warnings = [];
+  const tracks = resolveAutomation(
+    resolveClipTimes(applyTrackDefaults(input.tracks, input.track_defaults ?? {}), timeline, sampleRate),
+    timeline,
+    sampleRate,
+    warnings,
+  );
   const buses = input.buses ?? [];
 
   if (!tracks.length) throw new ToolError('invalid-input', 'tracks must contain at least one track');
   const sidechain = validateSidechainRefs(input.sidechain ?? [], tracks);
   validateBusRefs(tracks, buses);
   validateClipLeveling(tracks);
+  const cues = resolveCues(input.cues, tracks);
 
   return {
     sampleRate,
@@ -156,5 +166,7 @@ export async function buildPlan(input, { signal } = {}) {
     master: input.master ?? {},
     output: { ...DEFAULT_OUTPUT, ...(input.output ?? {}) },
     timeline,
+    cues,
+    warnings,
   };
 }

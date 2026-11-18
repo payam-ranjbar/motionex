@@ -116,8 +116,28 @@ function matchChannels(key, targetCh) {
   return { sampleRate: key.sampleRate, channels: key.channels.slice(0, targetCh) };
 }
 
+/** Seconds of silence both sidechain inputs run past the target's end. ffmpeg's sidechaincompress can end its output
+ * before its inputs end when both reach their end together (by a different part of a second from run to run, up to
+ * more than a second was measured); fitting the result back to length then replaced the lost tail with silence, so
+ * the ducked track stopped dead instead of fading. Running both inputs on into silence and trimming afterwards keeps
+ * every sample of the target. */
+const SIDECHAIN_PAD_S = 2;
+
+/** `audio` with `frames` of silence appended to every channel. */
+function padEnd(audio, frames) {
+  return {
+    sampleRate: audio.sampleRate,
+    channels: audio.channels.map((ch) => {
+      const out = new Float32Array(ch.length + frames);
+      out.set(ch);
+      return out;
+    }),
+  };
+}
+
 /** Apply sidechain compression to TRACK buffers, in array order. Key = buffers[key] advanced by lookahead_s and padded to the target's length.
  * ffmpeg sidechaincompress=threshold:ratio:attack:release:knee:makeup with the target as input 0 and the key as input 1.
+ * Both inputs run SIDECHAIN_PAD_S past the end on silence, and the result is trimmed back to the target's length.
  * @param {Record<string, import('../wav.mjs').Audio>} buffers @param {{target: string, key: string, threshold?: number, ratio?: number, attack_ms?: number, release_ms?: number, knee?: number, makeup?: number, lookahead_s?: number}[]} sidechains
  * @returns {Promise<Record<string, import('../wav.mjs').Audio>>} new map; untouched tracks are passed through; every buffer keeps its length */
 export async function applySidechains(buffers, sidechains, { signal } = {}) {
@@ -132,8 +152,10 @@ export async function applySidechains(buffers, sidechains, { signal } = {}) {
     }
     const sampleRate = targetAudio.sampleRate;
     const targetFrames = targetAudio.channels[0]?.length ?? 0;
+    const padFrames = Math.round(SIDECHAIN_PAD_S * sampleRate);
+    const paddedTarget = padEnd(targetAudio, padFrames);
     const preparedKey = matchChannels(
-      advanceKey(keyAudio, targetFrames, sampleRate, entry.lookahead_s),
+      advanceKey(keyAudio, targetFrames + padFrames, sampleRate, entry.lookahead_s),
       targetAudio.channels.length,
     );
     const opts = { ...SIDECHAIN_DEFAULTS, ...entry };
@@ -145,7 +167,7 @@ export async function applySidechains(buffers, sidechains, { signal } = {}) {
     try {
       const targetFile = path.join(dir, 'target.wav');
       const keyFile = path.join(dir, 'key.wav');
-      await writeFile(targetFile, encodeWav(targetAudio, { format: 'f32' }));
+      await writeFile(targetFile, encodeWav(paddedTarget, { format: 'f32' }));
       await writeFile(keyFile, encodeWav(preparedKey, { format: 'f32' }));
       const args = [
         '-hide_banner',

@@ -78,6 +78,25 @@ test('ffmpeg helpers', () => {
     (e) => e.type === 'invalid-input',
   );
   assert.equal(checkChain('volume=2dB,aecho=0.8:0.9:40:0.3'), 'volume=2dB,aecho=0.8:0.9:40:0.3');
+  // Chains must not read files into the output or write files, however the name or option is spelled.
+  for (const bad of [
+    'drawtext=textfile=/run/secrets/key',
+    "drawtext='textfile'=/run/secrets/key",
+    'drawtext=/text=/run/secrets/key',
+    'movie@x=/etc/passwd',
+    'mov\\ie=/etc/passwd',
+    'subtitles=/run/secrets/key',
+    'ametadata=mode=print:file=/app/x',
+    'ssim=stats_file=/app/x',
+    'signature=filename=/app/x',
+  ])
+    assert.throws(
+      () => checkChain(bad),
+      (e) => e.type === 'invalid-input',
+      bad,
+    );
+  for (const ok of ['lut3d=file=grade.cube', 'lut3d=grade.cube', 'drawtext=text=Hi:fontsize=40', 'volume=1/2'])
+    assert.equal(checkChain(ok), ok);
   const a = videoArgs({ crf: 18, maxrate_k: 9000, gop: 60, keyint_min: 60, sc_threshold: 0, closed_gop: true });
   assert.ok(a.join(' ').includes('-crf 18 -maxrate 9000k -bufsize 18000k'));
   assert.ok(a.join(' ').includes('-g 60 -keyint_min 60 -sc_threshold 0 -flags +cgop'));

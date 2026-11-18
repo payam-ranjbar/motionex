@@ -7,6 +7,7 @@ import { ToolError } from '../errors.mjs';
 import { checkChain } from '../ffmpeg.mjs';
 import { integratedLufs, measureAudio } from '../loudness.mjs';
 import { fitLength, fromDb, peak } from '../signal.mjs';
+import { applyAutomation } from './automation.mjs';
 import { applySidechains, trackLevelGains } from './dynamics.mjs';
 import { applyMaster } from './master.mjs';
 
@@ -41,10 +42,10 @@ export function applyGainDb(audio, gainDb) {
 }
 
 /**
- * Apply track fx and gain, optional `level`, optional sidechains, then mute and sum through buses.
+ * Apply track fx and gain, optional automation, optional `level`, optional sidechains, then mute and sum through buses.
  * @param {object} plan @param {Map<string, import('../wav.mjs').Audio>} trackBuffers @param {number} n
  * @returns {Promise<{mix: import('../wav.mjs').Audio, stems: Map<string, import('../wav.mjs').Audio>,
- *   gains: Record<string, number>}>} stems are post-fx/gain/level/sidechain, pre-bus.
+ *   gains: Record<string, number>}>} stems are post-fx/gain/automation/level/sidechain, pre-bus.
  */
 export async function buildMix(plan, trackBuffers, n, { signal } = {}) {
   const stems = new Map();
@@ -53,7 +54,7 @@ export async function buildMix(plan, trackBuffers, n, { signal } = {}) {
     let audio = trackBuffers.get(track.name);
     if (track.fx) audio = await applyTrackFx(audio, track.fx, n, { signal });
     const g = track.gain_db ?? 0;
-    audio = applyGainDb(audio, g);
+    audio = applyAutomation(applyGainDb(audio, g), track.automation);
     gains[track.name] = g;
     stems.set(track.name, audio);
   }

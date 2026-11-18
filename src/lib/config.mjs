@@ -99,6 +99,7 @@ export function loadConfig(env = process.env) {
     logLevel: env.MX_LOG_LEVEL || 'info',
     elevenlabsUrl: env.MX_ELEVENLABS_URL || 'https://api.elevenlabs.io',
     elevenlabsDailyCharLimit: int(env.MX_ELEVENLABS_DAILY_CHAR_LIMIT, 0),
+    freesoundUrl: env.MX_FREESOUND_URL || 'https://freesound.org',
     musicMaxSeconds: int(env.MX_MUSIC_MAX_SECONDS, 1800),
     allowOverride: bool(env.MX_ALLOW_OVERRIDE),
     libDirs: {

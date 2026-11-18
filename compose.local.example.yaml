@@ -5,9 +5,12 @@ services:
   motionex:
     secrets:
       - elevenlabs_api_key          # enables voice.elevenlabs and voice.elevenlabs-voices
+      - freesound_api_key           # enables sfx.freesound-search and sfx.freesound
     volumes:
       - ./fonts:/fonts:ro            # extra fonts (e.g. Google Fonts .ttf files) for offline renders
       - ./voices-extra:/voices:ro    # extra Piper voices (<name>.onnx + <name>.onnx.json)
 secrets:
   elevenlabs_api_key:
     file: ./secrets/elevenlabs_api_key
+  freesound_api_key:
+    file: ./secrets/freesound_api_key

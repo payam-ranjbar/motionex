@@ -190,6 +190,8 @@ test('the built-in voice contracts load with piper and elevenlabs providers', as
       .sort();
   assert.deepEqual(providers('voice.speak'), ['elevenlabs:voice.elevenlabs', 'piper:voice.piper']);
   assert.deepEqual(providers('voice.list'), ['elevenlabs:voice.elevenlabs-voices', 'piper:voice.piper-voices']);
+  assert.deepEqual(providers('sfx.search'), ['freesound:sfx.freesound-search']);
+  assert.deepEqual(providers('sfx.fetch'), ['freesound:sfx.freesound']);
   // Each contract example must be a valid input for the provider it names.
   for (const c of registry.listContracts()) {
     for (const ex of c.examples) {

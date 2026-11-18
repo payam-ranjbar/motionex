@@ -18,7 +18,11 @@
 | `telegram-video` | fit to 45 MB, long side 1920 | Telegram bots cap videos at 50 MB. 88 s of 1080p fit in about 40 MB at about 3.4 Mbps |
 | `instagram-reel` | High@4.2, 5.3 Mbps, closed 60-frame GOP, AAC 48 kHz 128k | reels need H.264, a closed GOP and 48 kHz AAC (≤128k), ≤25 Mbps, 3 s–15 min; 9:16 is recommended, and 16:9 is letterboxed |
 
+| `vertical-9x16` | pad to 1080×1920 on black, master quality, audio copied | a vertical copy of a landscape master without re-rendering; pass AAC audio settings when the source audio is not AAC |
+
 Every preset is JSON (`presets/encode/*.json`) and every field can be overridden in the request. "MB" means 10^6 bytes.
+
+**Other shapes and finishing**: `pad: {width, height, color, position}` fits the picture inside a new frame and fills the rest; `video_fx` applies a finishing filter chain (grain, sharpening, a vignette) and `lut` a 3D LUT file, both before scaling. With a size target, a file that already fits is returned unchanged (`passthrough: true`); `copy_if_fits: false` encodes it anyway. `grade.md` has when to pad and when to re-compose.
 
 **Upload limits upstream**: a publishing service may cap uploads lower than the platform does (one we used accepts 64 MiB). Ask where the file is going before you choose a preset.
 

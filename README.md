@@ -23,12 +23,12 @@ Five [pi](https://pi.dev) agents (DeepSeek V4.1 Flash) ran in parallel against o
 | Area | Tools |
 |---|---|
 | Voice | `voice.speak` contract: `piper` (local TTS, raw IPA) or `elevenlabs` (acted, optional), one result shape; `voice.list`; `voice.phonemize`; `audio.process` (pitch, tempo, trim, tighten pauses, fx) |
-| Picture | `picture.render` (any page with `window.__motion` → H.264, audio muxed in one encode), `picture.stills`, `image.contact-sheet` |
-| Music | `music.render` (Strudel via the vendored Mucavex engine, section markers, seeded, polyphony 4096) |
-| Sound | `sfx.synth` (DSP kit + recipes), `audio.mix` (exact-length track/bus mixer; neutral by default; presets) |
+| Picture | `picture.render` (any page with `window.__motion` → H.264, audio muxed in one encode), `picture.stills`, `image.contact-sheet`, `image.grade` (batch colour steps with protected lights, subject masks, glow layers, before/after numbers), `image.matte` |
+| Music | `music.render` (Strudel via the vendored Mucavex engine, section markers and the song's form, stems, seeded, polyphony 4096) |
+| Sound | `sfx.search` / `sfx.fetch` contracts: `freesound` (recorded effects with licences, credits and measured attacks, optional); `sfx.synth` (DSP kit + recipes); `audio.mix` (exact-length track/bus mixer, gain automation, per-cue level report; neutral by default; presets) |
 | Analysis | `audio.loudness`, `audio.levels`, `audio.speech-ratio`, `audio.stats`, `audio.silence`, `media.probe`, `media.frames` |
-| Timing | `timeline.layout` (optional: voice-driven scenes, beat snapping, music markers, time specs) |
-| Delivery | `media.encode` (presets: master, web-720p, fit-size, telegram-video, instagram-reel), `media.mux`, `media.concat`, `media.ffmpeg` (escape hatch) |
+| Timing | `timeline.layout` (optional: scenes from voice lines or in beats and bars of the music's grid, a grid report, music markers, time specs) |
+| Delivery | `media.encode` (pad to a new shape, a finishing filter; presets: master, web-720p, fit-size, telegram-video, instagram-reel, vertical-9x16), `media.mux`, `media.concat`, `media.ffmpeg` (escape hatch) |
 
 **Design rule: do not enforce.** Every tool is a primitive. Every opinion is a parameter or a named preset, and every default is neutral. Outputs are immutable and pinnable; deterministic tools are cached. New tools are folders with a manifest, written in any language, and can be mounted from outside the image. **One capability, several providers**: a contract such as `voice.speak` names the shared fields and result, and any tool can implement it (`{"tool": "voice.speak", "input": {"provider": "elevenlabs", ...}}`), so switching provider changes nothing downstream. See [`docs/providers.md`](docs/providers.md).
 
@@ -49,6 +49,8 @@ curl -s http://127.0.0.1:8095/readyz
 - **Claude Code**: `docker exec motionex mx skill install /tmp/s && docker cp motionex:/tmp/s/motionex ~/.claude/skills/`, or copy `skill/motionex` into `~/.claude/skills/`.
 - **pi**: `pi --skill <repo>/skill/motionex`.
 - **Anything else**: `GET /v1/skill/SKILL.md` and `GET /v1/skill/references/<file>`.
+
+Two optional skills sit in [`skill/suggested/`](skill/suggested/README.md): quality rules with a measuring gate for short films cut to music, and a working path with checkpoints. They are opinions on top of the toolbox; the service enforces none of them.
 
 ## Use it
 ```bash

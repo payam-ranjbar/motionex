@@ -150,22 +150,41 @@ export function atempoChain(k) {
   return parts.map((x) => `atempo=${Number(x.toFixed(6))}`).join(',');
 }
 
-const FORBIDDEN = /(?:^|[,;\]\s])\s*(a?movie|sendcmd|asendcmd|a?zmq)\s*(?=[=,;[\s]|$)/i;
+// Filters that read a file or a socket into the output, or render a text file into the picture.
+const FORBIDDEN = /(?:^|[,;\]\s])\s*(a?movie|sendcmd|asendcmd|a?zmq|subtitles|ass)\s*(?=[=,;[@\s]|$)/i;
+// Options whose value is a file the filter reads into its output or writes to (stats, logs, metadata dumps).
+// `file`/`filename` stay allowed only on the LUT filters, which read a colour table and output nothing of it.
+const FILE_OPTION = /(?:^|[=:,;\]\s])\s*(textfile|stats_file|log_path|psfile|result|filename|file)\s*=/i;
+const LUT_FILTER = /(?:^|[,;\]\s])\s*(?:lut1d|lut3d|haldclut)(?:@[\w-]+)?\s*=/i;
+// ffmpeg's "/option=path" syntax reads an option's value from a file.
+const OPTION_FROM_FILE = /(?:^|[=:,;\]\s@])\s*\/[A-Za-z_][\w-]*\s*=/;
+
 /**
- * Check an agent-supplied filter chain. Source filters that read files or sockets (movie, amovie, sendcmd, zmq)
- * are refused, because chains run with the service's file access.
+ * Check an agent-supplied filter chain. Chains run with the service's file access, so anything that reads a file or
+ * a socket into the output, or writes a file, is refused: source filters (movie, amovie, sendcmd, zmq), text-file
+ * renderers (subtitles, ass), file options (textfile, filename, stats_file, ...) and "/option=path" values.
+ * Escapes and quotes are removed before matching, so `mov\ie` or `'textfile'=` cannot slip through.
  * @returns {string} the chain
  * @throws {ToolError} invalid-input
  */
 export function checkChain(chain, what = 'filter chain') {
   if (chain == null || chain === '') return chain;
   if (typeof chain !== 'string') throw new ToolError('invalid-input', `${what} must be a string`);
-  const m = FORBIDDEN.exec(chain);
+  const plain = chain.replace(/[\\'"]/g, '');
+  const m = FORBIDDEN.exec(plain);
   if (m)
     throw new ToolError(
       'invalid-input',
       `${what}: the "${m[1]}" filter is not allowed in chains (use an input ref instead)`,
     );
+  for (const segment of plain.split(/[,;]/)) {
+    const o = FILE_OPTION.exec(segment);
+    if (!o) continue;
+    if (/^file(name)?$/i.test(o[1]) && LUT_FILTER.test(segment)) continue;
+    throw new ToolError('invalid-input', `${what}: the "${o[1]}" option names a file and is not allowed in chains`);
+  }
+  if (OPTION_FROM_FILE.test(plain))
+    throw new ToolError('invalid-input', `${what}: option values read from a file ("/option=path") are not allowed`);
   return chain;
 }
 

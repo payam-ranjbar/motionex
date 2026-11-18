@@ -63,16 +63,17 @@ You measure; the human listens. After each audio change:
 Your "ears" are `audio.loudness`, `audio.levels`, `audio.speech-ratio`, `audio.stats` and `audio.silence`. The human is at `$MX/listen`, the listening room: recent jobs with players, one file with `?ref=<ref>`, A/B with `?compare=<ref>,<ref>`, and a scrubbable live preview with `?page=<workspace .html>&audio=<ref>&timeline=<ref>`. Any workspace file also opens directly at `$MX/w/<path>`. When the numbers and the human disagree, the human wins.
 
 ## One way to make a film (an example path, not a rule)
-1. **Brief**: the story, the length, the platform (16:9 or 9:16, any size cap) and the look. Ask at most 2–3 questions, then sketch.
-2. **Voice drafts**: `voice.phonemize` names and odd words first, then `voice.speak` with provider `piper` (local, free) or `elevenlabs` (acted, paid), and `audio.process` for character (pitch, EQ, speed). Changing provider keeps the file names and timing fields, so nothing downstream changes.
-3. **Timing**: `timeline.layout` turns the takes into scene times and cues (`timeline.json`). It is optional; you may also hand-write absolute times.
-4. **Picture**: HTML pages that expose `window.__motion`. Review with `picture.stills` and `image.contact-sheet` BEFORE a full render.
-5. **Music**: look sound names up with `music.sounds`, then write a Strudel song for `music.render`, with markers for the sections, checked with `audio.stats` or `audio.levels`.
-6. **Sound effects**: `sfx.synth`, the built-in generic recipes or your own recipe file.
-7. **Mix**: `audio.mix`. The default is a plain sum; add a preset or explicit options. Check with `audio.loudness` and `audio.speech-ratio`.
+Plan first, then make the sound, then make the picture to fit it: sound sets the time, and pictures can be made to any length. `references/workflow.md` explains the order.
+1. **Brief and plan**: the story, the length, the platform (shape, any size cap) and the look. Ask a few questions, then write the plan in your notes: what leads (the music or the voice), the sections in order, and per section what is seen, said and heard. Show it before rendering anything slow.
+2. **Voice drafts** (when there are words): `voice.phonemize` names and odd words first, then `voice.speak` with provider `piper` (local, free) or `elevenlabs` (acted, paid), and `audio.process` for character (pitch, EQ, speed). The measured lengths tell the plan how much room each line needs. Changing provider keeps the file names and timing fields, so nothing downstream changes.
+3. **Music**: look sound names up with `music.sounds`, then write a Strudel song for `music.render` with a marker per section. The result's `markers_found` is the song's form; `stems` renders parts separately for balancing. Check it with `audio.levels` per bar, and settle it before cutting to it.
+4. **Timing**: `timeline.layout` turns the form or the takes into scene times and cues (`timeline.json`): scenes in `beats` or `bars` (or `until` a bar) when the music leads, scenes from `lines` when the voice leads. You may also hand-write absolute times. `references/editing.md` has the cutting craft.
+5. **Picture**: make the shots the timeline asks for, grade stills as one batch with `image.grade` (`references/grade.md`), and build HTML pages that expose `window.__motion`. Review with `picture.stills` and `image.contact-sheet` BEFORE a full render.
+6. **Sound effects**: recorded sounds with `sfx.search` and `sfx.fetch` (provider `freesound`; licences and credits come with each sound), or synthesized with `sfx.synth`. Take their times from the timeline's events.
+7. **Mix**: `audio.mix`. The default is a plain sum; add a preset or explicit options. Check with `audio.loudness`, `audio.speech-ratio` and the mix's `cues` report (each effect against the music at its moment).
 8. **Render**: `picture.render` with `audio` set. It encodes once, video and audio together.
 9. **Check the encode**: `media.frames` and `media.probe`. For an audio-only change later, `media.mux` the new mix onto the existing video (no new render).
-10. **Deliver two files**: the master, and a platform copy from `media.encode` (`fit-size` with `audio: {codec: "copy"}` for Telegram, `instagram-reel`, `web-720p`). `picture.render` reports `size_bytes` and `bitrate_k`, so you know at once whether a copy is needed.
+10. **Deliver**: the master, and platform copies from `media.encode` (`fit-size` with `audio: {codec: "copy"}` for Telegram, `instagram-reel`, `web-720p`; `pad` or `vertical-9x16` for a different shape without re-rendering; `video_fx` for a finishing LUT or grain). `picture.render` reports `size_bytes` and `bitrate_k`, so you know at once whether a copy is needed.
 
 Every step is replaceable. A music-only piece, a silent loop, a title card or a pure SFX job are all fine.
 
@@ -100,9 +101,13 @@ Every step is replaceable. A music-only piece, a silent loop, a title card or a 
 - `references/picture.md`: the `__motion` contract, the optional Motion runtime and GSAP, adapters, stills review, fonts, lip sync, "juice".
 - `references/voice.md`: providers (`voice.speak`, `voice.list`), voices, speed, IPA and pronunciation, character fx, ElevenLabs direction.
 - `references/music.md`: a Strudel cheat sheet, section markers, polyphony, reading the analysis.
-- `references/sound.md`: mix options and what real listeners accepted or rejected, loudness targets, SFX synthesis.
+- `references/sound.md`: mix options and what real listeners accepted or rejected, loudness targets, recorded and synthesized effects.
+- `references/workflow.md`: the order of work: a plan first, then sound, then picture; what to redo when something changes.
+- `references/editing.md`: cutting to the form, dialogue cuts, J- and L-cuts, a sound for every shot, cards, endings.
+- `references/grade.md`: post-processing and colour: where to grade, protecting lights and subjects, one look across a film, delivery copies.
 - `references/pacing.md`: held beats, hits in the silences, comedy timing, cutting on the beat, impacts vs landings, cues on the frame, the rule of three.
 - `references/review-and-delivery.md`: review loops, encode presets, platform limits, covers.
 - `references/collaboration.md`: briefs, parallel agents (one file per act), decision logs.
 - `references/extending.md`: add your own tool (any language), presets and extensions.
 - `references/example-tiny-film.md`: a complete 6-second film as a sequence of jobs (copy the shapes).
+- Optional, in the repo and not served here: `skill/suggested/beat-film-quality` (quality rules and a gate that measures motion, beat hits and levels of a finished cut) and `skill/suggested/beat-film-workflow` (a working path with checkpoints).

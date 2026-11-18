@@ -1,0 +1,6 @@
+{
+  "description": "A 9:16 copy of a landscape master without re-rendering the picture: the frame is fitted inside 1080x1920 (scaled up or down, never cropped) and padded with black above and below. Video as in master: H.264 crf 18, medium preset, BT.709 colour. The audio is copied as it is (audio codec copy), which suits motionex masters, whose audio is already AAC; when the source audio is not AAC, pass audio: {codec: \"aac\", bitrate_k: 192}. Override pad.color or pad.position for other bars.",
+  "pad": { "width": 1080, "height": 1920, "color": "black", "position": "center" },
+  "video": { "crf": 18, "preset": "medium", "color": "bt709" },
+  "audio": { "codec": "copy" }
+}

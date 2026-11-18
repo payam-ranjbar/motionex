@@ -1,9 +1,9 @@
 {
   "name": "music.render",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "title": "Music render (Strudel)",
-  "summary": "Render a Strudel song to audio with the Mucavex engine: seeded deterministic noise, named section markers, optional tempo override and an analysis report.",
-  "description": "Evaluates Strudel live-coding JavaScript with the same semantics as the strudel.cc REPL and renders it offline to WAV/MP3/FLAC/OGG/Opus/M4A. Named markers (lines like `let DROP = 34;`) let a build move song sections without regenerating the code. Strudel noise is seeded, so identical input gives byte-identical audio. `max_polyphony` must stay high: the engine's old default of 128 steals voices and fades sample voices in long renders. The tool renders; it applies no loudness normalisation, ducking or limiting of its own (`peak_db` is the only gain it will add, and only when asked). It always measures the render's sample peak, warns when an over-hot render would be clamped by the chosen format, and never clips silently.",
+  "summary": "Render a Strudel song to audio with the Mucavex engine: seeded deterministic noise, named section markers and the song's form, optional stems of named parts, a tempo override and an analysis report.",
+  "description": "Evaluates Strudel live-coding JavaScript with the same semantics as the strudel.cc REPL and renders it offline to WAV/MP3/FLAC/OGG/Opus/M4A. Named markers (lines like `let DROP = 34;`) let a build move song sections without regenerating the code, and `markers_found` reports the song's form: every numeric marker with the time it lands at (markers count cycles from 0, so at_s = value / cps). `stems` renders named parts (`drums: s(\"bd*4\")`, or `$:` lines by order) to separate files in the same job: each stem is the song again with every other part muted, so a stem costs a render of its own (`stems_only` skips the full mix). Strudel noise is seeded, so identical input gives byte-identical audio. `max_polyphony` must stay high: the engine's old default of 128 steals voices and fades sample voices in long renders. The tool renders; it applies no loudness normalisation, ducking or limiting of its own (`peak_db` is the only gain it will add, and only when asked). It always measures the render's sample peak, warns when an over-hot render would be clamped by the chosen format, and never clips silently.",
   "kind": "node",
   "handler": "handler.mjs",
   "deterministic": true,
@@ -102,7 +102,7 @@
         "type": "number",
         "minimum": -60,
         "maximum": 0,
-        "description": "Scale the whole render by one gain so its sample peak lands exactly at this dBFS (for example -1), applied before encoding so nothing clips. Omit to leave the render untouched. `gain_db_applied` reports the gain used. A silent render is not scaled (it gets a warning instead)."
+        "description": "Scale the whole render by one gain so its sample peak lands exactly at this dBFS (for example -1), applied before encoding so nothing clips. Omit to leave the render untouched. `gain_db_applied` reports the gain used. A silent render is not scaled (it gets a warning instead). With `stems`, every stem gets the same gain as the mix, so the stems keep their balance."
       },
       "max_polyphony": {
         "type": "integer",
@@ -129,13 +129,48 @@
         "type": "string",
         "pattern": "^[\\w.-]{1,128}$",
         "description": "Output file name for the rendered audio. Default music.<ext>. The extension always follows format (a given .wav/.mp3/... is replaced), e.g. name \"score\" with format mp3 writes score.mp3."
+      },
+      "stems": {
+        "type": "object",
+        "minProperties": 1,
+        "propertyNames": {
+          "type": "string",
+          "pattern": "^[\\w-]{1,64}$"
+        },
+        "additionalProperties": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "A part of the song: a label as written (`drums` for `drums: s(\"bd*4\")` or `.p('drums')`; every statement with that label), or `$1`, `$2`, ... for the anonymous `$:` parts, counted in song order (a muted `_$:` line counts too)."
+          },
+          "description": "The parts this stem keeps audible."
+        },
+        "description": "Also render named parts of the song to separate files, e.g. {\"drums\": [\"kick\", \"hats\"], \"bass\": [\"bass\"], \"lead\": [\"$1\"]}. After the full mix, the song is rendered once more per stem with every part outside the stem muted (the Strudel `_` mute), written to stems/<stem name>.<ext> (and the muted song to stems/<stem name>.strudel) with the same format, length, tail, seed and sample rate. Each stem is a full render, so stems multiply the render time. Unlabelled statements are not parts (Strudel does not play them once a song has labelled parts). An unknown or muted part is invalid-input that lists the parts found in the song. Omit for no stems."
+      },
+      "stems_only": {
+        "type": "boolean",
+        "description": "With `stems`, skip the full mix: only the stems are rendered (no music.<ext>, no analysis.json, `analysis` and `peak_db` are null). Saves one render. Cannot be combined with `peak_db`, which scales by the full mix's peak. Omit (or false) to render the full mix too."
       }
     }
   },
   "output_schema": {
     "type": "object",
     "additionalProperties": false,
-    "required": ["seconds", "cps", "events", "render_ms", "markers_applied", "peak_db", "gain_db_applied", "analysis"],
+    "required": [
+      "seconds",
+      "cps",
+      "events",
+      "render_ms",
+      "markers_applied",
+      "markers_found",
+      "peak_db",
+      "gain_db_applied",
+      "analysis"
+    ],
     "properties": {
       "seconds": {
         "type": "number",
@@ -147,11 +182,87 @@
       },
       "events": {
         "type": "integer",
-        "description": "Number of note/trigger events rendered."
+        "description": "Number of note/trigger events rendered in the full mix (with stems_only: summed over the stem renders)."
       },
       "render_ms": {
         "type": "number",
-        "description": "Wall-clock milliseconds spent rendering the audio."
+        "description": "Wall-clock milliseconds spent rendering the audio, the full mix and every stem together."
+      },
+      "markers_found": {
+        "type": "array",
+        "description": "The song's form: every marker line in the rendered code (after `markers` rewrites) whose value is a number, or arithmetic over numbers and earlier markers (`let OUTRO = DROP + 8;`), in file order. Lines holding anything else (functions, patterns, strings) are not listed.",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "value", "line"],
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Marker identifier."
+            },
+            "value": {
+              "type": ["number", "string"],
+              "description": "The marker's value in cycles, or its text when it uses a name that is not a marker (then at_s and bar are absent)."
+            },
+            "line": {
+              "type": "integer",
+              "description": "1-based line number of the marker."
+            },
+            "expression": {
+              "type": "string",
+              "description": "The text the value was computed from, when it is not a plain number (e.g. \"DROP + 8\")."
+            },
+            "at_s": {
+              "type": "number",
+              "description": "Seconds from the start of the render where the marker lands: value / cps. Markers count Strudel cycles from 0 (the convention in the music guide)."
+            },
+            "bar": {
+              "type": "number",
+              "description": "The same value read as a bar counted from 0, assuming one cycle is one bar (what beats_per_cycle means): bar 6 is the 7th bar."
+            }
+          }
+        }
+      },
+      "stems": {
+        "type": "array",
+        "description": "One entry per requested stem, in request order. Present only when `stems` was given.",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "file", "parts", "lines", "peak_db", "render_ms"],
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Stem name, as requested."
+            },
+            "file": {
+              "type": "string",
+              "description": "Output path of the stem audio, e.g. stems/drums.wav (job:<id>/stems/drums.wav)."
+            },
+            "parts": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "The part selectors this stem kept audible, as requested."
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "description": "1-based lines of the statements the stem kept audible, to check that $N is the part you meant."
+            },
+            "peak_db": {
+              "type": ["number", "null"],
+              "description": "Sample peak of the written stem in dBFS (after the mix's peak_db gain, if any), or null when the stem is silent."
+            },
+            "render_ms": {
+              "type": "number",
+              "description": "Wall-clock milliseconds spent rendering this stem."
+            }
+          }
+        }
       },
       "markers_applied": {
         "type": "array",
@@ -178,15 +289,15 @@
       },
       "peak_db": {
         "type": ["number", "null"],
-        "description": "Sample peak of the written render in dBFS (after any `peak_db` scaling), or null when the render is silent."
+        "description": "Sample peak of the written render in dBFS (after any `peak_db` scaling), or null when the render is silent or stems_only skipped the full mix."
       },
       "gain_db_applied": {
         "type": ["number", "null"],
-        "description": "Gain in dB applied to reach `peak_db`, or null when no scaling was requested (or the render is silent)."
+        "description": "Gain in dB applied to reach `peak_db` (to the mix and every stem), or null when no scaling was requested (or the render is silent)."
       },
       "analysis": {
         "type": ["object", "null"],
-        "description": "Render analysis, or null when analyze is false.",
+        "description": "Analysis of the full mix, or null when analyze is false or stems_only skipped the mix.",
         "required": ["peakDb", "rmsDb", "crestDb", "clippedSamples", "warnings"],
         "properties": {
           "peakDb": {
@@ -219,7 +330,7 @@
         "items": {
           "type": "string"
         },
-        "description": "Human-readable warnings: events the engine could not play (unknown sound names, failed sample loads), a sample file that had to be decoded through ffmpeg, a render that peaks above 0 dBFS in a format that clamps, and a silent render asked to reach `peak_db`. Empty when nothing went wrong."
+        "description": "Human-readable warnings: events the engine could not play (unknown sound names, failed sample loads), a sample file that had to be decoded through ffmpeg, a render that peaks above 0 dBFS in a format that clamps, and a silent render asked to reach `peak_db`. A stem's own warnings start with `stem \"<name>\": `, and a song that solos parts (labels starting with S) is named, because Strudel then leaves the other parts out. Empty when nothing went wrong."
       }
     }
   },
@@ -230,6 +341,20 @@
         "code": "note(\"c3 e3 g3\").s(\"sawtooth\").lpf(800)",
         "cycles": 2,
         "offline": true
+      },
+      "fixtures": {}
+    },
+    {
+      "title": "A lead and a bass as two stems, and the bar where the bass enters (synths only, offline)",
+      "input": {
+        "code": "let BASS = 1; // the bass enters at cycle 1\nlead: note(\"c4 e4 g4 e4\").s(\"square\").lpf(1200).gain(0.25)\nbass: note(\"c2*2\").s(\"sawtooth\").lpf(300).mask(cat(...Array(BASS).fill(0), 1))",
+        "cycles": 2,
+        "bpm": 120,
+        "offline": true,
+        "stems": {
+          "lead": ["lead"],
+          "bass": ["bass"]
+        }
       },
       "fixtures": {}
     },

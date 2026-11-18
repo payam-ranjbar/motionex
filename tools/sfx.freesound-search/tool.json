@@ -1,0 +1,117 @@
+{
+  "name": "sfx.freesound-search",
+  "version": "1.0.0",
+  "title": "Sound search (Freesound)",
+  "summary": "The Freesound provider of sfx.search: search Freesound's recorded sound effects and ambiences, filtered by licence and length, and list candidates with their licence, author and a preview link. Needs the freesound_api_key secret file and network access.",
+  "description": "Runs a Freesound text search (API v2) and returns the candidates in the sfx.search shape, plus Freesound's own fields (downloads, rating). Licence codes map to Freesound's licence filter (cc0 = Creative Commons 0, by = Attribution, by-nc = Attribution NonCommercial, sampling+ = Sampling+); min_seconds and max_seconds become a duration range. `filter` adds any raw Freesound filter (for example `samplerate:48000` or `tag:foley`), and `sort` picks the order. Reads the freesound_api_key secret file (an API key from freesound.org/apiv2/apply); the key is sent only in the Authorization header to the API and never appears in results or logs. Retries 429, 5xx and network errors. Bring a pick into a job with sfx.fetch (provider freesound).",
+  "kind": "node",
+  "handler": "handler.mjs",
+  "deterministic": false,
+  "cache_default": "off",
+  "resources": { "class": "light", "slots": 0 },
+  "timeout_s": 60,
+  "requires": { "secrets": ["freesound_api_key"] },
+  "implements": [{ "contract": "sfx.search", "provider": "freesound" }],
+  "input_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["query"],
+    "properties": {
+      "query": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 300,
+        "description": "What to look for, in plain words, for example \"wooden door creak\"."
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 150,
+        "default": 15,
+        "description": "How many candidates to return at most (one Freesound page). Default 15."
+      },
+      "min_seconds": { "type": "number", "minimum": 0, "description": "Keep only sounds at least this long." },
+      "max_seconds": { "type": "number", "exclusiveMinimum": 0, "description": "Keep only sounds at most this long." },
+      "licenses": {
+        "type": "array",
+        "minItems": 1,
+        "description": "Keep only sounds under these licences: cc0, by, by-nc, sampling+. Omit for every licence.",
+        "items": { "type": "string", "enum": ["cc0", "by", "by-nc", "sampling+"], "description": "A licence code." }
+      },
+      "filter": {
+        "type": "string",
+        "maxLength": 500,
+        "description": "Extra raw Freesound filter terms, added to the licence and length filter, e.g. \"tag:foley samplerate:48000\"."
+      },
+      "sort": {
+        "type": "string",
+        "enum": [
+          "score",
+          "rating_desc",
+          "downloads_desc",
+          "duration_asc",
+          "duration_desc",
+          "created_desc",
+          "created_asc"
+        ],
+        "description": "Result order: score (best text match, Freesound's default), rating_desc, downloads_desc, duration_asc or _desc, created_desc or _asc. Omit for score."
+      },
+      "page": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Which page of results (of `limit` each). Omit for the first."
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["sounds", "total", "warnings"],
+    "properties": {
+      "sounds": {
+        "type": "array",
+        "description": "The candidates in Freesound's order.",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "name", "seconds", "license", "author", "url"],
+          "properties": {
+            "id": { "type": "string", "description": "Freesound sound id; pass it to sfx.fetch." },
+            "name": { "type": "string", "description": "The sound's title on Freesound." },
+            "seconds": { "type": "number", "description": "Length in seconds." },
+            "license": { "type": "string", "description": "Licence code: cc0, by, by-nc, sampling+ or other." },
+            "license_url": { "type": "string", "description": "Freesound's licence link." },
+            "author": { "type": "string", "description": "The Freesound user who uploaded it." },
+            "url": { "type": "string", "description": "The sound's Freesound page." },
+            "tags": { "type": "array", "items": { "type": "string" }, "description": "Freesound tags." },
+            "preview": { "type": "string", "description": "Link to the high-quality MP3 preview a human can play." },
+            "downloads": {
+              "type": "integer",
+              "description": "How often it was downloaded, when Freesound reports it."
+            },
+            "rating": { "type": "number", "description": "Average rating 0..5, when Freesound reports it." }
+          }
+        }
+      },
+      "total": { "type": "integer", "description": "How many sounds match in all of Freesound." },
+      "warnings": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Anything worth knowing about the search."
+      }
+    }
+  },
+  "examples": [
+    {
+      "title": "Public-domain door creaks under 5 seconds",
+      "run": false,
+      "input": { "query": "wooden door creak", "max_seconds": 5, "licenses": ["cc0"], "limit": 10 }
+    },
+    {
+      "title": "A calm room tone, best rated first",
+      "run": false,
+      "input": { "query": "room tone quiet classroom", "min_seconds": 10, "sort": "rating_desc" }
+    }
+  ]
+}

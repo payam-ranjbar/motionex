@@ -1,9 +1,9 @@
 {
   "name": "timeline.layout",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "title": "Timeline layout",
-  "summary": "Lay scenes out from voice-over lines: cue times, scene lengths, optional beat snapping, music markers and named times. Writes timeline.json and dialogue-clips.json.",
-  "description": "A pure layout helper. Each scene is as long as its lines plus the lead, gaps and tail you ask for (all zero by default, nothing snapped), or a fixed duration_s. Audio lines are measured at their speech end (Piper leaves trailing silence), not their file length. Optional beat snapping, markers that align the music grid to a scene (the music_offset_s / beatOffset), named times, and a per-frame voice envelope are available when you want them. It never renders or mixes anything; it only computes numbers.",
+  "summary": "Lay scenes out from voice-over lines, or cut them to a song's form (scenes in beats or bars, or until bar N): cue times, scene lengths, optional beat snapping, music markers, named times and a grid report. Writes timeline.json and dialogue-clips.json.",
+  "description": "A pure layout helper with two ways in. Voice first: each scene is as long as its lines plus the lead, gaps and tail you ask for (all zero by default, nothing snapped), or a fixed duration_s. Audio lines are measured at their speech end (Piper leaves trailing silence), not their file length. Music first, when the song is made before the picture: write the song's form as the grid (bpm, beats_per_bar, and offset_s = where bar 0 falls), give each scene its length in beats or bars, or let it run until a time (\"bar:8\", \"beat:30\" or seconds), then check grid_report in the result: every scene end with its time, its beat and whether it is on a beat. The report is information only; nothing is snapped or refused. Lines in such a scene keep their cues; when they need longer than the scene, a warning gives the overrun and the length is kept. The two ways mix freely, scene by scene. Optional beat snapping, markers that align the music grid to a scene (the music_offset_s / beatOffset), named times, and a per-frame voice envelope are available when you want them. It never renders or mixes anything; it only computes numbers.",
   "kind": "node",
   "handler": "handler.mjs",
   "deterministic": true,
@@ -53,7 +53,7 @@
       "grid": {
         "type": "object",
         "additionalProperties": false,
-        "description": "Musical grid. Required for snap_beats, for markers and for bar:/beat: times.",
+        "description": "Musical grid: the song's form. Required for snap_beats, beats, bars, markers and bar:/beat: times (in times and until). When given, the result has grid_report.",
         "required": ["bpm"],
         "properties": {
           "bpm": { "type": "number", "exclusiveMinimum": 0, "description": "Beats per minute." },
@@ -63,7 +63,11 @@
             "default": 4,
             "description": "Beats in a bar (default 4)."
           },
-          "offset_s": { "type": "number", "default": 0, "description": "Seconds from 0 to bar 0 (default 0)." }
+          "offset_s": {
+            "type": "number",
+            "default": 0,
+            "description": "Seconds from 0 to bar 0 (default 0). bar:/beat: times, beats/bars scenes and grid_report all count from here."
+          }
         }
       },
       "preset": {
@@ -88,7 +92,22 @@
             "duration_s": {
               "type": "number",
               "minimum": 0,
-              "description": "Fixed scene length in seconds. Overrides the line-driven length and is used exactly (not snapped)."
+              "description": "Fixed scene length in seconds. Overrides the line-driven length and is used exactly (not snapped). Set at most one of duration_s, beats, bars and until."
+            },
+            "beats": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Scene length in beats of grid (needs grid), used exactly: not snapped, min_s ignored. Overrides the line-driven length; lines that need longer give a warning and the length is kept. Set at most one of duration_s, beats, bars and until."
+            },
+            "bars": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Scene length in bars of grid (one bar = beats_per_bar beats; needs grid), used exactly like beats. Set at most one of duration_s, beats, bars and until."
+            },
+            "until": {
+              "type": ["number", "string"],
+              "pattern": "^(bar|beat):\\d+([+-]\\d*\\.?\\d+)?$",
+              "description": "The scene ends at this time and fills from its start up to it: seconds, or \"bar:<n>[+-s]\" / \"beat:<n>[+-s]\" on grid (0-based, counted from grid.offset_s; needs grid). Must be after the scene's start. Lines that need longer give a warning and the end is kept. Set at most one of duration_s, beats, bars and until."
             },
             "lead_s": { "type": "number", "description": "Overrides defaults.lead_s for this scene." },
             "gap_s": { "type": "number", "description": "Overrides defaults.gap_s for this scene." },
@@ -100,7 +119,7 @@
             },
             "lines": {
               "type": "array",
-              "description": "Voice-over lines in order. Omit for an empty scene or a fixed duration_s scene.",
+              "description": "Voice-over lines in order. Omit for an empty scene. In a scene of fixed length (duration_s, beats, bars or until) the cues are laid out the same way, from the scene start.",
               "items": {
                 "type": "object",
                 "additionalProperties": false,
@@ -206,10 +225,42 @@
   "output_schema": {
     "type": "object",
     "additionalProperties": false,
-    "required": ["total", "scenes", "markers", "music_offset_s"],
+    "required": ["total", "scenes", "markers", "music_offset_s", "warnings"],
     "properties": {
       "total": { "type": "number" },
       "music_offset_s": { "type": "number" },
+      "grid_report": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["boundaries", "off_grid"],
+        "description": "Only when grid is given. Where every scene ends on the grid (information only: nothing is snapped or refused).",
+        "properties": {
+          "boundaries": {
+            "type": "array",
+            "description": "One entry per scene, in order: its end, which is the cut into the next scene (the last one is the end of the timeline). The timeline start (0) is not listed.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["scene", "time", "beat", "on_beat"],
+              "properties": {
+                "scene": { "type": "string", "description": "Id of the scene that ends here." },
+                "time": { "type": "number", "description": "Seconds (the next scene's start, or total)." },
+                "beat": {
+                  "type": "number",
+                  "description": "Position in beats from grid.offset_s (beat 0 = bar 0); bar = beat / beats_per_bar."
+                },
+                "on_beat": { "type": "boolean", "description": "true when within 0.5 ms of a beat." }
+              }
+            }
+          },
+          "off_grid": { "type": "integer", "description": "How many boundaries are not on a beat." }
+        }
+      },
+      "warnings": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Facts worth a look: lines that need longer than a beats, bars or until scene (with the overrun), and one summary when a layout cut to the grid has scene ends off the beat grid. Empty when there is nothing to say."
+      },
       "scenes": {
         "type": "array",
         "items": {
@@ -255,6 +306,20 @@
         "grid": { "bpm": 120, "beats_per_bar": 4 },
         "defaults": { "snap_beats": 4 },
         "scenes": [{ "id": "scene", "lines": [{ "dur_s": 3 }] }]
+      }
+    },
+    {
+      "title": "Music first: a 132 bpm 4/4 song whose bar 0 falls at 0.5 s, cut in bars and beats and until bar 9; grid_report shows every cut on a beat",
+      "input": {
+        "grid": { "bpm": 132, "beats_per_bar": 4, "offset_s": 0.5 },
+        "scenes": [
+          { "id": "pickup", "until": "bar:0" },
+          { "id": "verse", "bars": 4, "lines": [{ "dur_s": 2.5, "text": "They called it a glitch." }] },
+          { "id": "fill", "beats": 2 },
+          { "id": "chorus", "until": "bar:9" },
+          { "id": "outro", "bars": 1 }
+        ],
+        "times": { "outro": "outro", "bar_9": "bar:9" }
       }
     },
     {

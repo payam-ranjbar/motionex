@@ -5,7 +5,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { ToolError } from '../../src/lib/errors.mjs';
 import { ebur128, integratedLufs, kWeight, windowLufs } from '../../src/lib/loudness.mjs';
-import { levelClips, trackLevelGains } from '../../src/lib/mix/dynamics.mjs';
+import { applySidechains, levelClips, trackLevelGains } from '../../src/lib/mix/dynamics.mjs';
 import { fromDb, mono, mulberry32, rmsDb } from '../../src/lib/signal.mjs';
 import { encodeWav, readWav } from '../../src/lib/wav.mjs';
 import { writeFixture } from '../helpers/fixtures.mjs';
@@ -204,6 +204,27 @@ test('sidechain ducks the target under the key and leaves the rest alone', needs
     }
   } finally {
     await rmTmp(ws);
+  }
+});
+
+test('a ducked track keeps its last samples (the sidechain does not cut the tail)', needs('ffmpeg'), async () => {
+  // ffmpeg 7's sidechaincompress could end its output early when target and key ended together; the lost tail came
+  // back as silence, so the ducked track stopped dead before the mix end. Several runs, since the loss varied.
+  const frames = 3 * SR;
+  const target = { sampleRate: SR, channels: sineCh(frames, 220, 0.25, 2) };
+  const keyCh = sineCh(frames, 1000, 0.5, 2);
+  for (const ch of keyCh) ch.fill(0, SR);
+  const key = { sampleRate: SR, channels: keyCh };
+  for (let run = 0; run < 4; run++) {
+    const out = await applySidechains({ target, key }, [{ target: 'target', key: 'key', ratio: 4 }]);
+    const ch = mono(out.target);
+    assert.equal(ch.length, frames, 'the ducked track keeps its length');
+    const tail = rmsDb(ch, frames - Math.round(0.02 * SR), frames);
+    const body = rmsDb(ch, Math.round(2 * SR), Math.round(2.5 * SR));
+    assert.ok(
+      Math.abs(tail - body) < 1,
+      `run ${run}: last 20 ms at ${tail.toFixed(1)} dB, body at ${body.toFixed(1)} dB`,
+    );
   }
 });
 

@@ -192,7 +192,7 @@ test('a fade-out ends at the mix cut when duration_s truncates the clip', needs(
     const ramp = [peakBetween(ch, 1.0, 1.1), peakBetween(ch, 1.2, 1.3), peakBetween(ch, 1.4, 1.5)];
     assert.ok(ramp[0] > ramp[1] && ramp[1] > ramp[2], `the fade should fall over 1.0-1.5 s, got ${ramp.join(', ')}`);
     assert.ok(
-      faded.result.warnings.some((w) => /clip 0 extends past the mix length and was truncated/.test(w)),
+      faded.result.warnings.some((w) => /clip 0 extends past the mix length and was truncated: 0\.5 s cut/.test(w)),
       JSON.stringify(faded.result.warnings),
     );
     assert.ok(
@@ -214,6 +214,51 @@ test('a fade-out ends at the mix cut when duration_s truncates the clip', needs(
       hard.result.warnings.every((w) => !/fade-out was applied/.test(w)),
       JSON.stringify(hard.result.warnings),
     );
+  } finally {
+    await rmTmp(ws);
+  }
+});
+
+// Found in real productions: the truncation warning came for nearly every music clip (36 in one production), because
+// music files run on past the mix end, mostly into silence. It is only worth a line when the cut-off part is heard.
+test('the truncation warning comes only when the cut-off part is audible', needs('ffmpeg'), async () => {
+  const ws = await mkTmp();
+  try {
+    // 1.4 s of a 0.5 sine, then 0.6 s of silence: a 1.5 s mix cuts only silence.
+    const silentTail = sineCh(SR * 2, 100, 0.5, 2).map((ch) => {
+      ch.fill(0, Math.round(1.4 * SR));
+      return ch;
+    });
+    await writeWavFile(ws, 'tail.wav', silentTail);
+    // The same, with a tail at -45 dBFS: audible on its own, inaudible after a -10 dB clip gain.
+    const quietTail = sineCh(SR * 2, 100, 0.5, 2).map((ch) => {
+      for (let i = Math.round(1.4 * SR); i < ch.length; i++) ch[i] *= 10 ** (-45 / 20) / 0.5;
+      return ch;
+    });
+    await writeWavFile(ws, 'quiet.wav', quietTail);
+    const mix = (clip) =>
+      runTool('audio.mix', { duration_s: 1.5, tracks: [{ name: 'music', clips: [clip] }] }, { workspace: ws });
+
+    const silent = await mix({ src: 'tail.wav', at: 0, fade_out_s: 0.5 });
+    assert.deepEqual(silent.result.warnings, [], 'a silent cut gives no warning');
+    // The fade-out still ends at the cut, exactly as before (the warning is the only change).
+    const ch = (await readOutput(silent)).channels[0];
+    assert.ok(peakBetween(ch, 1.3, 1.4) < 0.25, `the fade-out runs into the cut, got ${peakBetween(ch, 1.3, 1.4)}`);
+    assert.ok(Math.abs(peakBetween(ch, 0.5, 0.9) - 0.5) < 0.01, 'full level before the fade');
+
+    const quietGained = await mix({ src: 'quiet.wav', at: 0, gain_db: -10 });
+    assert.deepEqual(quietGained.result.warnings, [], 'a -55 dBFS cut (after the clip gain) gives no warning');
+
+    const quiet = await mix({ src: 'quiet.wav', at: 0 });
+    assert.equal(quiet.result.warnings.length, 1, JSON.stringify(quiet.result.warnings));
+    assert.match(
+      quiet.result.warnings[0],
+      /^track "music" clip 0 extends past the mix length and was truncated: 0\.5 s cut, peaking at -45\.\d dBFS$/,
+    );
+
+    // A clip that starts after the mix end is cut whole.
+    const late = await mix({ src: 'tail.wav', at: 1.6 });
+    assert.match(late.result.warnings[0], /clip 0 extends past the mix length and was truncated: 2 s cut/);
   } finally {
     await rmTmp(ws);
   }

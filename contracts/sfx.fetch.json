@@ -1,0 +1,121 @@
+{
+  "name": "sfx.fetch",
+  "version": "1.0.0",
+  "title": "Fetch recorded sound effects (any library provider)",
+  "summary": "Bring sounds from a library (freesound, or one an extension adds) into the job as WAV files, measured (where the sound starts, its loudest stretch, its peak) and with their licence and attribution, the same fields whichever library they come from.",
+  "description": "Submit {\"tool\": \"sfx.fetch\", \"input\": {\"provider\": \"freesound\", \"sounds\": [{\"id\": \"442773\", \"name\": \"splash\"}]}} and the service runs the provider's own tool. Find ids with the sfx.search contract. Each sound becomes <name>.wav, and credits.json lists every sound's licence and attribution so the credits of a film can be written from it. The measurements help placement: put a hit so its `onset_s` lands on the cut, and start a texture or an ambience from its `loudest_s` so the busiest part plays under the shot. Each provider's tool documents what it downloads (an original or a preview) and its own fields.",
+  "outputs": "One <name>.wav per sound (PCM WAV) and credits.json. A provider may add files.",
+  "input_schema": {
+    "type": "object",
+    "required": ["provider", "sounds"],
+    "properties": {
+      "provider": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]*$",
+        "description": "Which library the ids come from: freesound (Freesound, needs its API key), or a provider an extension adds. GET /v1/contracts/sfx.fetch lists them and whether each can run here."
+      },
+      "sounds": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 100,
+        "description": "The sounds to fetch, in order. A sound is the library's id as a string (the file gets a name built from the id) or {id, name}.",
+        "items": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "description": "A library id, shorthand for {\"id\": \"<this string>\"}."
+            },
+            {
+              "type": "object",
+              "required": ["id"],
+              "description": "A sound with an explicit output name.",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100,
+                  "description": "The sound's id in the library."
+                },
+                "name": {
+                  "type": "string",
+                  "pattern": "^[\\w.-]{1,64}$",
+                  "description": "Output file name without .wav, e.g. door writes door.wav. Unique inside one call."
+                }
+              }
+            }
+          ]
+        }
+      },
+      "licenses": {
+        "type": "array",
+        "minItems": 1,
+        "description": "Refuse any sound whose licence is not one of these codes: cc0, by, by-nc, sampling+. The job then fails with invalid-input naming the sound and its licence, before anything is downloaded. Omit to accept every licence (the result still reports each one).",
+        "items": { "type": "string", "enum": ["cc0", "by", "by-nc", "sampling+"], "description": "A licence code." }
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["sounds", "warnings"],
+    "properties": {
+      "sounds": {
+        "type": "array",
+        "description": "One entry per sound, in input order.",
+        "items": {
+          "type": "object",
+          "required": [
+            "name",
+            "file",
+            "id",
+            "seconds",
+            "license",
+            "author",
+            "url",
+            "attribution",
+            "onset_s",
+            "loudest_s",
+            "peak_db"
+          ],
+          "properties": {
+            "name": { "type": "string", "description": "The output name." },
+            "file": { "type": "string", "description": "Its WAV output, e.g. door.wav (ref job:<id>/door.wav)." },
+            "id": { "type": "string", "description": "The sound's id in the library." },
+            "title": { "type": "string", "description": "The sound's title in the library." },
+            "seconds": { "type": "number", "description": "Length of the WAV file." },
+            "license": { "type": "string", "description": "Licence code: cc0, by, by-nc, sampling+ or other." },
+            "license_url": { "type": "string", "description": "The licence's own link, when the library gives one." },
+            "author": { "type": "string", "description": "Who uploaded or recorded it." },
+            "url": { "type": "string", "description": "The sound's page in the library." },
+            "attribution": { "type": "string", "description": "A ready credit line: title, author, link and licence." },
+            "onset_s": {
+              "type": "number",
+              "description": "Where the sound becomes audible in the file (its attack), in seconds."
+            },
+            "loudest_s": {
+              "type": "number",
+              "description": "Where the file's loudest one-second stretch starts (the whole file when shorter), in seconds."
+            },
+            "peak_db": { "type": "number", "description": "Sample peak of the WAV in dBFS." }
+          }
+        }
+      },
+      "warnings": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Anything worth a second listen, e.g. a sound that is very quiet or only available as a preview."
+      }
+    }
+  },
+  "examples": [
+    {
+      "title": "Two sounds from Freesound, public domain only",
+      "input": {
+        "provider": "freesound",
+        "sounds": [{ "id": "442773", "name": "splash" }, "188210"],
+        "licenses": ["cc0"]
+      }
+    }
+  ]
+}

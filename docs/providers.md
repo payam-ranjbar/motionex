@@ -52,6 +52,13 @@ to the contract; the registry refuses a contract that sets defaults.
 |---|---|---|---|
 | `voice.speak` | `piper` → `voice.piper`, `elevenlabs` → `voice.elevenlabs` | `voice`, `lines`, `speed`, `speech_end_threshold_db` | `voice`, `sample_rate`, `lines[]` with speech timing, `warnings`; files `<name>.wav` |
 | `voice.list` | `piper` → `voice.piper-voices`, `elevenlabs` → `voice.elevenlabs-voices` | `search` | `voices: [{id, name, language?, labels?}]`, `warnings?` |
+| `sfx.search` | `freesound` → `sfx.freesound-search` | `query`, `limit`, `min_seconds`, `max_seconds`, `licenses` | `sounds: [{id, name, seconds, license, author, url, license_url?, tags?, preview?}]`, `total?`, `warnings` |
+| `sfx.fetch` | `freesound` → `sfx.freesound` | `sounds` (ids, or `{id, name}`), `licenses` | `sounds: [{name, file, id, seconds, license, author, url, attribution, onset_s, loudest_s, peak_db}]`, `warnings`; files `<name>.wav`, `credits.json` |
+
+The sound-library contracts share one licence vocabulary (`cc0`, `by`, `by-nc`, `sampling+`, and `other` in
+results), so a request can keep licences it cannot use out of the search and the fetch, whichever library answers.
+`src/lib/freesound.mjs` holds the Freesound client and the licence mapping. A second library (a local sample folder,
+another catalogue) becomes a provider by implementing the same two contracts.
 
 `src/lib/speech.mjs` holds what a Node voice provider needs to match Piper exactly: `normalizeLines` (line naming) and
 `speechBounds` (the same speech-start/end rule as the Piper worker).
@@ -74,7 +81,7 @@ Example: an OpenAI or Azure text-to-speech provider for `voice.speak`.
 | Capability | Contract | Providers it would route | Shared core |
 |---|---|---|---|
 | Music | `music.song` | `strudel` → `music.render` (score), a generative model (prompt to music), MIDI with a soundfont | input `seconds`, `bpm`, `seed`, `name`; result `seconds`, `peak_db`, `markers_applied`, `warnings`; file `<name>.wav` |
-| Sound effects | `sfx.make` | `dsp` → `sfx.synth` (recipes), a text-to-SFX model, a sample library | input `sounds: [{name, ...}]`, `seed`; result `sounds: [{name, file, seconds}]`, `warnings` |
+| Sound synthesis | `sfx.make` | `dsp` → `sfx.synth` (recipes), a text-to-SFX model | input `sounds: [{name, ...}]`, `seed`; result `sounds: [{name, file, seconds}]`, `warnings` (the same core as `sfx.fetch`, so a mix job does not care where a sound came from) |
 | Cut-outs | `image.cutout` | `threshold` → `image.matte`, a segmentation model, a cloud API | input `image`, `name`; result `width`, `height`, `figure_pct`, `warnings`; file `<name>.png` |
 | Transcripts | `speech.transcribe` (new) | a local Whisper, a cloud speech-to-text | input `inputs`; result `items: [{file, text, words?}]`; used to check that each take says its line |
 

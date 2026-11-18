@@ -2,7 +2,8 @@
 
 motionex is ONE service (one Docker image) that gives AI agents bare tools to make motion-graphics videos:
 voice (Piper TTS, optional ElevenLabs, behind one `voice.speak` contract), picture (capture any HTML page that exposes `window.__motion` to video),
-music (Strudel songs rendered by the vendored Mucavex engine), SFX synthesis, a mixer, loudness/analysis, and encoding.
+music (Strudel songs rendered by the vendored Mucavex engine), SFX synthesis and sound libraries (Freesound, behind the
+`sfx.search`/`sfx.fetch` contracts), image grading, a mixer, loudness/analysis, and encoding.
 Agents drive it over HTTP (`/v1/jobs`, curl-friendly) or the `mx` CLI. Every tool is a folder under `tools/`.
 
 **Design rule above all: do not enforce.** Tools are primitives. Every opinion (ducking, loudness target, snapping,
@@ -147,10 +148,10 @@ Non-JSON stdout lines and stderr go to the job log. Exit 0 + result = success; o
 ```
 bin/mx.mjs                       CLI: serve | healthcheck | tools | contracts | run | job | jobs | cancel | put | get | pin | skill  [P3c]
 src/lib/*.mjs                    shared libs [O]; loudness [W0b], timespec [W0b], static/capture [P10], biquad [P4b],
-                                 elevenlabs [P5b], speech [O], strudel-markers [P8], voices [P9], tool-docs [P3d], dsp/kit [P7a],
+                                 elevenlabs [P5b], freesound [O], speech [O], strudel-markers [P8], voices [P9], tool-docs [P3d], dsp/kit [P7a],
                                  mix/{plan,clips,render} [P6a], mix/master [P6b], mix/dynamics [P14]
 src/registry/                    manifest + contract schemas, Ajv, registry [O]
-contracts/<name>.json            provider contracts (voice.speak, voice.list) [O]
+contracts/<name>.json            provider contracts (voice.speak, voice.list, sfx.search, sfx.fetch) [O]
 src/runner/                      types/context/protocol/node-host [O]; store, refs [W0b]; scheduler [P1a]; service [P1b];
                                  execute, kill [P2a]; command [P2b]; pins [P3a]
 src/server/                      router [W0b]; app, main [P13a]; routes/{index,health,capabilities,tools} [P13a];
