@@ -62,13 +62,16 @@ You measure; the human listens. After each audio change:
 
 Your "ears" are `audio.loudness`, `audio.levels`, `audio.speech-ratio`, `audio.stats` and `audio.silence`. The human is at `$MX/listen`, the listening room: recent jobs with players, one file with `?ref=<ref>`, A/B with `?compare=<ref>,<ref>`, and a scrubbable live preview with `?page=<workspace .html>&audio=<ref>&timeline=<ref>`. Any workspace file also opens directly at `$MX/w/<path>`. When the numbers and the human disagree, the human wins.
 
+The same holds for the look: when the human names a reference look, compare your frames with frames of it, side by side and measured, rather than with your own description of it (`references/grade.md`, "Matching a named look").
+
 ## One way to make a film (an example path, not a rule)
 Plan first, then make the sound, then make the picture to fit it: sound sets the time, and pictures can be made to any length. `references/workflow.md` explains the order.
-1. **Brief and plan**: the story, the length, the platform (shape, any size cap) and the look. Ask a few questions, then write the plan in your notes: what leads (the music or the voice), the sections in order, and per section what is seen, said and heard. Show it before rendering anything slow.
+1. **Brief and plan**: the story, the length, the platform (shape, any size cap) and the look. These are the human's to
+   set. Take them from the request; when it does not say and the work depends on it, ask. Ask a few questions, then write the plan in your notes: what leads (the music or the voice), the sections in order, and per section what is seen, said and heard. Show it before rendering anything slow.
 2. **Voice drafts** (when there are words): `voice.phonemize` names and odd words first, then `voice.speak` with provider `piper` (local, free) or `elevenlabs` (acted, paid), and `audio.process` for character (pitch, EQ, speed). The measured lengths tell the plan how much room each line needs. Changing provider keeps the file names and timing fields, so nothing downstream changes.
 3. **Music**: look sound names up with `music.sounds`, then write a Strudel song for `music.render` with a marker per section. The result's `markers_found` is the song's form; `stems` renders parts separately for balancing. Check it with `audio.levels` per bar, and settle it before cutting to it.
 4. **Timing**: `timeline.layout` turns the form or the takes into scene times and cues (`timeline.json`): scenes in `beats` or `bars` (or `until` a bar) when the music leads, scenes from `lines` when the voice leads. You may also hand-write absolute times. `references/editing.md` has the cutting craft.
-5. **Picture**: make the shots the timeline asks for, grade stills as one batch with `image.grade` (`references/grade.md`), and build HTML pages that expose `window.__motion`. Review with `picture.stills` and `image.contact-sheet` BEFORE a full render.
+5. **Picture**: make the shots the timeline asks for, grade stills as one batch with `image.grade` (`references/grade.md`), and build HTML pages that expose `window.__motion`. Review with `picture.stills` and `image.contact-sheet` BEFORE a full render, and when the human named a look, with its reference frames beside yours.
 6. **Sound effects**: recorded sounds with `sfx.search` and `sfx.fetch` (provider `freesound`; licences and credits come with each sound), or synthesized with `sfx.synth`. Take their times from the timeline's events.
 7. **Mix**: `audio.mix`. The default is a plain sum; add a preset or explicit options. Check with `audio.loudness`, `audio.speech-ratio` and the mix's `cues` report (each effect against the music at its moment).
 8. **Render**: `picture.render` with `audio` set. It encodes once, video and audio together.
@@ -93,7 +96,8 @@ Every step is replaceable. A music-only piece, a silent loop, a title card or a 
 - **Music renders take minutes**: render variants in parallel jobs, not in sequence.
 - **Read `warnings` on every result.** They carry the facts you cannot see: skipped or transcoded samples, clipping, a babbling Piper line, a clip cut by the mix length, a loudness or true-peak target that was missed.
 - **Piper can babble** on one-word lines (one voice made 3.5 s of a single "HA!"). `voice.piper` warns; try another voice.
-- **A clip is heard at its onset, not its start.** `audio.process` reports `onset_s` and `voice.piper` `speech_start_s`; place a cue early by that much when it must land on a frame.
+- **A clip is heard at its onset, not its start.** `audio.process` and `sfx.fetch` report `onset_s`, and `voice.piper` `speech_start_s`. In `audio.mix`, a clip with `land_at` and `onset_s` lands on the moment by itself.
+- **A render that succeeded is not yet a render that is right.** `music.render` returns the level of every cycle (`levels`); read it before the cue goes into a mix.
 
 ## References
 - `references/api.md`: endpoints, job lifecycle, refs, pins, files, errors, and curl and CLI recipes.

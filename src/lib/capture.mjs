@@ -125,12 +125,78 @@ export async function openCapture({
   const contexts = [];
   let closed = false;
 
-  /** Collect pageerror and console errors for one page. */
+  /** Requests that failed or answered with an error status, for the not-ready message. */
+  const badRequests = [];
+  const noteRequest = (text) => {
+    if (badRequests.length < 50) badRequests.push(text);
+  };
+  /** Requests started and not finished yet. */
+  const inFlight = new Set();
+
+  /** Collect pageerror and console errors, and failed requests, for one page. */
   function watch(page) {
     page.on('pageerror', (e) => record(e?.message ?? e));
     page.on('console', (msg) => {
       if (msg.type() === 'error') record(msg.text());
     });
+    page.on('request', (req) => inFlight.add(req));
+    page.on('requestfinished', (req) => inFlight.delete(req));
+    page.on('requestfailed', (req) => {
+      inFlight.delete(req);
+      noteRequest(`${shortUrl(req.url())} (${req.failure()?.errorText ?? 'failed'})`);
+    });
+    page.on('response', (res) => {
+      if (res.status() >= 400) noteRequest(`${shortUrl(res.url())} (HTTP ${res.status()})`);
+    });
+  }
+
+  /** A workspace-relative path for a URL on this server, or the URL itself. */
+  function shortUrl(url) {
+    return String(url).startsWith(origin) ? String(url).slice(origin.length) : String(url);
+  }
+
+  /**
+   * What the page was doing when it never became ready: whether `__motion` exists, what `ready` holds, the images
+   * still loading, failed requests and errors. A page that waits for something that never arrives otherwise reports
+   * nothing.
+   */
+  async function notReadyReason(page, timeoutMs) {
+    const parts = [`waited ${Math.round(timeoutMs / 1000)} s`];
+    const state = await page
+      .evaluate(() => ({
+        motion: typeof window.__motion,
+        ready: window.__motion ? String(window.__motion.ready) : null,
+        documentState: document.readyState,
+        fonts: document.fonts?.status ?? null,
+        loading: [...document.images]
+          .filter((im) => !im.complete)
+          .map((im) => ({ src: im.currentSrc || im.src, lazy: im.loading === 'lazy' })),
+      }))
+      .catch(() => null);
+    if (state) {
+      parts.push(
+        state.motion === 'undefined'
+          ? 'window.__motion is not defined'
+          : `window.__motion exists but ready is ${state.ready}`,
+      );
+      if (state.documentState !== 'complete') parts.push(`the document is still "${state.documentState}"`);
+      if (state.fonts && state.fonts !== 'loaded') parts.push(`fonts are "${state.fonts}"`);
+      if (state.loading.length) {
+        const list = state.loading
+          .slice(0, 5)
+          .map((im) => `${shortUrl(im.src)}${im.lazy ? ' (lazy: it loads only when shown)' : ''}`)
+          .join(', ');
+        const more = state.loading.length > 5 ? ` and ${state.loading.length - 5} more` : '';
+        parts.push(`${state.loading.length} image(s) still loading: ${list}${more}`);
+      }
+    }
+    if (inFlight.size) {
+      const urls = [...inFlight].slice(0, 5).map((req) => shortUrl(req.url()));
+      parts.push(`${inFlight.size} request(s) still in flight: ${urls.join(', ')}`);
+    }
+    if (badRequests.length) parts.push(`failed requests: ${badRequests.slice(-5).join(', ')}`);
+    parts.push(pageErrors.length ? `errors: ${pageErrors.slice(-10).join('; ')}` : 'no errors reported');
+    return parts.join('; ');
   }
 
   /** Wait for `window.__motion.ready === true`, then for the fonts the page is still loading. */
@@ -138,8 +204,8 @@ export async function openCapture({
     try {
       await page.waitForFunction(() => window.__motion?.ready === true, null, { timeout: timeoutMs });
     } catch {
-      const why = pageErrors.length ? pageErrors.slice(-10).join('; ') : '(no errors reported)';
-      throw new ToolError('invalid-input', `page never set window.__motion.ready: ${why}`);
+      const why = await notReadyReason(page, timeoutMs);
+      throw new ToolError('invalid-input', `page never set window.__motion.ready (${why})`);
     }
     // Fonts change layout, so a frame taken before they settle is wrong. A page without document.fonts is fine.
     await page

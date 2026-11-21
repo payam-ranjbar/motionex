@@ -1,6 +1,7 @@
 // audio.mix planner: turn a validated request into a plan (track_defaults applied, every clip's and
-// automation point's `at` time resolved to samples, mix length N, and cross-references checked). Pure
-// apart from reading the optional timeline JSON file.
+// automation point's `at` time resolved to samples, a clip's `land_at` turned into its real start, read
+// offset and length, mix length N, and cross-references checked). Pure apart from reading the optional
+// timeline JSON file.
 import { readFile } from 'node:fs/promises';
 import { ToolError } from '../errors.mjs';
 import { deepMerge } from '../presets.mjs';
@@ -57,18 +58,99 @@ export function applyTrackDefaults(tracks, trackDefaults = {}) {
   });
 }
 
-/** Resolve each clip's `at` (number or timespec string) to seconds and to a rounded sample index.
- * @param {object[]} tracks @param {object|null} timeline @param {number} sampleRate @returns {object[]}
- * @throws {ToolError} invalid-input for an unparseable time or a negative placement */
-export function resolveClipTimes(tracks, timeline, sampleRate) {
+const r4 = (x) => Math.round(x * 1e4) / 1e4;
+
+/**
+ * Place a clip by the moment its onset is heard (`land_at`, already resolved to seconds).
+ * The clip starts `onset_s - offset_s` before the landing, so the source sample at `onset_s` falls on it. When that
+ * start is before 0 the lead-in is trimmed (the read offset is raised) and the onset still lands. `duration_s` is
+ * counted from the onset, so the lead-in that is played is added to it. An `offset_s` after a given `onset_s` leaves
+ * no onset in the played part: the played start lands instead.
+ * @param {object} clip a normalized clip @param {number} landS @param {number} sampleRate
+ * @param {string} label how warnings name the clip @param {string[]} warnings
+ * @returns {{atSample: number, landSample: number, offset_s: number, duration_s: number|undefined}}
+ */
+function placeLanding(clip, landS, sampleRate, label, warnings) {
+  const landSample = Math.round(landS * sampleRate);
+  const offset = clip.offset_s ?? 0;
+  const onset = clip.onset_s ?? 0;
+  let lead = onset - offset;
+  if (lead < 0) {
+    if (clip.onset_s != null)
+      warnings.push(
+        `${label}: offset_s ${offset} s is after onset_s ${onset} s, so the onset is not in the part played; ` +
+          `the start of the played part lands at ${landS} s`,
+      );
+    lead = 0;
+  }
+  let leadFrames = Math.round(lead * sampleRate);
+  let offsetS = offset;
+  if (leadFrames > landSample) {
+    const trimFrames = leadFrames - landSample;
+    offsetS = offset + trimFrames / sampleRate;
+    leadFrames = landSample;
+    warnings.push(
+      `${label}: landing at ${landS} s leaves no room for the ${r4(lead)} s before the onset; the first ` +
+        `${r4(trimFrames / sampleRate)} s of it was trimmed (reading from ${r4(offsetS)} s) and the onset still ` +
+        `lands at ${landS} s`,
+    );
+  }
+  return {
+    atSample: landSample - leadFrames,
+    landSample,
+    offset_s: offsetS,
+    duration_s: clip.duration_s != null ? clip.duration_s + leadFrames / sampleRate : undefined,
+  };
+}
+
+/** Resolve each clip's `at` or `land_at` (number or timespec string) to seconds and to a rounded sample index.
+ * A clip placed with `at` keeps its fields and gets `atS`/`atSample` (plus `landSample` when it states an `onset_s`
+ * that is in the played part). A clip placed with `land_at` gets its real start in `atS`/`atSample`, the landing in
+ * `landS`/`landSample`, and `offset_s`/`duration_s` replaced by the values actually read (see placeLanding).
+ * @param {object[]} tracks @param {object|null} timeline @param {number} sampleRate
+ * @param {string[]} [warnings] gets a line for every trimmed lead-in and every onset outside the played part
+ * @returns {object[]}
+ * @throws {ToolError} invalid-input for an unparseable time, a negative placement, or a clip with both or neither
+ *   of `at` and `land_at` */
+export function resolveClipTimes(tracks, timeline, sampleRate, warnings = []) {
   return tracks.map((track, ti) => ({
     ...track,
     clips: (track.clips ?? []).map((clip, ci) => {
-      const what = `tracks[${ti}].clips[${ci}].at`;
-      const atS = resolveTime(clip.at, timeline, what);
-      const atSample = Math.round(atS * sampleRate);
-      if (atSample < 0) throw new ToolError('invalid-input', `${what}: negative time ${atS}s`);
-      return { ...clip, atS, atSample };
+      const where = `tracks[${ti}].clips[${ci}]`;
+      const hasAt = clip.at != null;
+      const hasLand = clip.land_at != null;
+      if (hasAt && hasLand) throw new ToolError('invalid-input', `${where}: give "at" or "land_at", not both`);
+      if (!hasAt && !hasLand)
+        throw new ToolError(
+          'invalid-input',
+          `${where}: needs "at" (where the clip starts) or "land_at" (where its onset is heard)`,
+        );
+      if (clip.onset_s != null && !(Number.isFinite(clip.onset_s) && clip.onset_s >= 0))
+        throw new ToolError('invalid-input', `${where}.onset_s: expected a number of seconds >= 0`);
+
+      if (hasAt) {
+        const what = `${where}.at`;
+        const atS = resolveTime(clip.at, timeline, what);
+        const atSample = Math.round(atS * sampleRate);
+        if (atSample < 0) throw new ToolError('invalid-input', `${what}: negative time ${atS}s`);
+        const lead = clip.onset_s != null ? clip.onset_s - (clip.offset_s ?? 0) : -1;
+        if (lead < 0) return { ...clip, atS, atSample };
+        return { ...clip, atS, atSample, landSample: atSample + Math.round(lead * sampleRate) };
+      }
+
+      const what = `${where}.land_at`;
+      const landS = resolveTime(clip.land_at, timeline, what);
+      if (Math.round(landS * sampleRate) < 0) throw new ToolError('invalid-input', `${what}: negative time ${landS}s`);
+      const label = `track "${track.name}" clip ${ci}`;
+      const placed = placeLanding(clip, landS, sampleRate, label, warnings);
+      const { duration_s, ...rest } = placed;
+      return {
+        ...clip,
+        ...rest,
+        ...(duration_s != null ? { duration_s } : {}),
+        atS: r4(placed.atSample / sampleRate),
+        landS,
+      };
     }),
   }));
 }
@@ -143,7 +225,7 @@ export async function buildPlan(input, { signal } = {}) {
   const timeline = input.timeline ? await loadTimeline(input.timeline, { signal }) : null;
   const warnings = [];
   const tracks = resolveAutomation(
-    resolveClipTimes(applyTrackDefaults(input.tracks, input.track_defaults ?? {}), timeline, sampleRate),
+    resolveClipTimes(applyTrackDefaults(input.tracks, input.track_defaults ?? {}), timeline, sampleRate, warnings),
     timeline,
     sampleRate,
     warnings,

@@ -27,6 +27,11 @@ $: note("<c2 g1>").s("sawtooth").lpf(500).mask(span(DARK, DROP)) // the dark par
 - Write the song so it works over a RANGE of marker values, and say which range in a comment. Then the edit can move without breaking the music.
 - `timeline.layout` can compute a marker's bar from a scene start (`markers: {DROP: {scene: "reveal"}}`, `align_to: "DROP"`). It returns `music_offset_s`, where to start the music so the drop lands on the cut. Moving the music start is easier than stretching scenes.
 - **The song's form comes back in every result**: `markers_found` lists each marker with its value, `at_s` (its time, counting cycles from 0) and `bar`, including markers computed from others (`let OUTRO = DROP + 8;`). When the music leads, lay the scenes out from these times (`timeline.layout` scenes in `beats`, `bars` or `until`), so the picture follows the song rather than the other way round.
+- **Every result says how loud each part is**: `levels` has the RMS level of each cycle, and each marker in
+  `markers_found` has the `rms_db` of its section. Read them after every render, including a re-render of a cue you
+  already accepted: a render can succeed with every marker and its peak and still be two bars of music and then one
+  stuck tone. A warning that most cycles sit within 1 dB of each other is a hint to check, not an error; a drone or an
+  unchanging loop gets it too.
 
 ## Stems: balance parts after the render
 Name the parts you may want to balance separately (`drums: s("bd*4")`, `bass: note(...)`) and ask for stems:

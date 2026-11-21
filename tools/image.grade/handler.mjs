@@ -1,6 +1,7 @@
 // image.grade: colour-grade stills with an ordered list of steps before they go into a page. The pixel math is plain
 // JS on typed arrays (grade.mjs); ffmpeg only decodes and encodes. Each step does only what its fields say, and the
-// numbers in the result (mean L*, a*, b*, subject separation) let an agent that cannot see check the grade.
+// numbers in the result (mean L*, a*, b*, the neutrals, subject separation) let an agent that cannot see check the
+// grade.
 import { mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { ToolError } from '../../src/lib/errors.mjs';
@@ -14,6 +15,7 @@ const IMAGE_EXT = /\.(png|jpe?g|webp|gif|bmp|tiff?|ppm|pgm|pnm|pam|avif)$/i;
 /** The fields each op needs and may take. */
 const OPS = {
   cast: { need: ['axis', 'amount'], may: ['protect'] },
+  balance: { need: [], may: ['amount', 'target_ab', 'shift_ab', 'min_pct', 'protect'] },
   saturation: { need: ['amount'], may: ['hue', 'rest'] },
   curve: { need: [], may: ['contrast', 'pivot', 'lift', 'shoulder', 'gamma'] },
   exposure: { need: ['ev'], may: [] },
@@ -24,11 +26,20 @@ const OPS = {
 };
 
 /** `amount` means something different per op, so its range is checked here; the schema checks the rest. */
-const AMOUNT = { cast: [0, 1], saturation: [0, 10], clarity: [-1, 4], tint: [0, 1], vignette: [-1, 1], lut: [0, 1] };
+const AMOUNT = {
+  cast: [0, 1],
+  balance: [0, 1],
+  saturation: [0, 10],
+  clarity: [-1, 4],
+  tint: [0, 1],
+  vignette: [-1, 1],
+  lut: [0, 1],
+};
 
 /** Defaults of the optional step fields (documented in the schema descriptions). */
 const STEP_DEFAULTS = {
   cast: { protect: 'none' },
+  balance: { amount: 1, target_ab: [0, 0], min_pct: 0, protect: 'none' },
   clarity: { radius: 0.02 },
   tint: { color: '#000000', where: 'everywhere', grow: 0, feather: 0, protect: 'none' },
   vignette: { softness: 0.5 },
@@ -45,6 +56,7 @@ const LIGHT_DEFAULTS = {
   write_masks: false,
 };
 const GLOW_DEFAULTS = { radii: [0.004, 0.015, 0.05], strength: 1 };
+const NEUTRAL_DEFAULTS = { max_chroma: 10, min_l: 25, max_l: 80 };
 
 const invalid = (detail) => new ToolError('invalid-input', detail);
 const round = (v, d = 2) => Math.round(v * 10 ** d) / 10 ** d;
@@ -84,6 +96,13 @@ async function prepareSteps(steps, rawSteps) {
     }
     if (s.op === 'saturation' && s.rest !== undefined && !s.hue) {
       throw invalid(`${at}.rest needs ${at}.hue: it is the multiplier for colours outside the hue range`);
+    }
+    if (s.op === 'balance' && s.shift_ab !== undefined) {
+      for (const key of ['target_ab', 'min_pct']) {
+        if (s[key] !== undefined) {
+          throw invalid(`${at}.${key} cannot go with ${at}.shift_ab: an explicit shift measures nothing`);
+        }
+      }
     }
     if (s.op === 'curve' && fields.every((k) => s[k] === undefined)) {
       warnings.push(`${at} is a curve with no fields; it does nothing`);
@@ -231,9 +250,20 @@ async function encode(buf, width, height, pixFmt, file, signal, quality = null) 
 
 const to8 = (v) => (v > 0 ? (v < 1 ? Math.round(v * 255) : 255) : 0);
 
+/** The `before` / `after` numbers of a measurement. */
+const numbers = (m) => ({
+  luma: m.luma,
+  cast_a: m.cast_a,
+  cast_b: m.cast_b,
+  greys_a: m.greys_a,
+  greys_b: m.greys_b,
+  greys_pct: m.greys_pct,
+});
+
 /**
  * @param {{images: {image: string, name?: string, mask?: string}[], steps?: object[], light_mask?: object,
- *   glow?: {radii?: number[], strength?: number}, format?: 'png'|'jpeg', quality?: number}} input
+ *   neutral?: {max_chroma?: number, min_l?: number, max_l?: number}, glow?: {radii?: number[], strength?: number},
+ *   format?: 'png'|'jpeg', quality?: number}} input
  *   refs already resolved to absolute paths
  * @param {import('../../src/runner/types.mjs').Ctx} ctx
  */
@@ -248,6 +278,10 @@ export default async function run(input, ctx) {
   const steps = prepared.steps;
   const warnings = [...prepared.warnings];
   const lm = { ...LIGHT_DEFAULTS, ...(input.light_mask ?? {}) };
+  const neutral = { ...NEUTRAL_DEFAULTS, ...(input.neutral ?? {}) };
+  if (!(neutral.min_l < neutral.max_l)) {
+    throw invalid(`neutral.min_l (${neutral.min_l}) must be below neutral.max_l (${neutral.max_l})`);
+  }
   const glow = input.glow ? { ...GLOW_DEFAULTS, ...input.glow } : null;
   const format = input.format ?? 'png';
   const quality = input.quality ?? 92;
@@ -316,17 +350,21 @@ export default async function run(input, ctx) {
     } else if (lightSum === 0 && protectsLights) {
       warnings.push(`${name}: no light pixels were found, so protect "lights" keeps nothing; check light_mask`);
     }
-    const before = measure(px, 4, n, lights.soft, alpha, mask);
+    const before = measure(px, 4, n, lights.soft, alpha, mask, neutral);
 
-    const img = { width: W, height: H, rgb, lights: lights.soft, mask };
+    const img = { width: W, height: H, rgb, lights: lights.soft, mask, alpha, neutral };
     const skipped = [];
+    const balances = [];
     for (let s = 0; s < steps.length; s++) {
       checkAbort();
       ctx.progress((i + 0.3 + (0.5 * s) / steps.length) / count, `${name}: ${steps[s].op}`);
-      const why = applyStep(img, steps[s]);
+      const info = {};
+      const why = applyStep(img, steps[s], info);
       if (why) {
         skipped.push(s);
         warnings.push(`${name}: steps[${s}] (${steps[s].op}) was skipped: ${why}`);
+      } else if (info.shift_ab) {
+        balances.push({ step: s, shift_ab: info.shift_ab.map((v) => round(v) + 0) });
       }
     }
 
@@ -351,18 +389,19 @@ export default async function run(input, ctx) {
       signal,
       format === 'jpeg' ? quality : null,
     );
-    const after = measure(out, ch, n, lights.soft, alpha, mask);
+    const after = measure(out, ch, n, lights.soft, alpha, mask, neutral);
 
     const entry = {
       name,
       file,
       width: W,
       height: H,
-      before: { luma: before.luma, cast_a: before.cast_a, cast_b: before.cast_b },
-      after: { luma: after.luma, cast_a: after.cast_a, cast_b: after.cast_b },
+      before: numbers(before),
+      after: numbers(after),
       lights_pct: lightsPct,
       skipped_steps: skipped,
     };
+    if (balances.length) entry.balance = balances;
     if (mask) {
       const sep = (m) =>
         m.luma_in === null || m.luma_out === null

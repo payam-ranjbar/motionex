@@ -1,9 +1,9 @@
 {
   "name": "music.render",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "title": "Music render (Strudel)",
   "summary": "Render a Strudel song to audio with the Mucavex engine: seeded deterministic noise, named section markers and the song's form, optional stems of named parts, a tempo override and an analysis report.",
-  "description": "Evaluates Strudel live-coding JavaScript with the same semantics as the strudel.cc REPL and renders it offline to WAV/MP3/FLAC/OGG/Opus/M4A. Named markers (lines like `let DROP = 34;`) let a build move song sections without regenerating the code, and `markers_found` reports the song's form: every numeric marker with the time it lands at (markers count cycles from 0, so at_s = value / cps). `stems` renders named parts (`drums: s(\"bd*4\")`, or `$:` lines by order) to separate files in the same job: each stem is the song again with every other part muted, so a stem costs a render of its own (`stems_only` skips the full mix). Strudel noise is seeded, so identical input gives byte-identical audio. `max_polyphony` must stay high: the engine's old default of 128 steals voices and fades sample voices in long renders. The tool renders; it applies no loudness normalisation, ducking or limiting of its own (`peak_db` is the only gain it will add, and only when asked). It always measures the render's sample peak, warns when an over-hot render would be clamped by the chosen format, and never clips silently.",
+  "description": "Evaluates Strudel live-coding JavaScript with the same semantics as the strudel.cc REPL and renders it offline to WAV/MP3/FLAC/OGG/Opus/M4A. Named markers (lines like `let DROP = 34;`) let a build move song sections without regenerating the code, and `markers_found` reports the song's form: every numeric marker with the time it lands at (markers count cycles from 0, so at_s = value / cps). `stems` renders named parts (`drums: s(\"bd*4\")`, or `$:` lines by order) to separate files in the same job: each stem is the song again with every other part muted, so a stem costs a render of its own (`stems_only` skips the full mix). Strudel noise is seeded, so identical input gives byte-identical audio. `max_polyphony` must stay high: the engine's old default of 128 steals voices and fades sample voices in long renders. The tool renders; it applies no loudness normalisation, ducking or limiting of its own (`peak_db` is the only gain it will add, and only when asked). It always measures the render's sample peak, warns when an over-hot render would be clamped by the chosen format, and never clips silently. It also measures how loud each part of the render is: `levels` has the RMS level of every cycle of the song and each entry of `markers_found` the level of its section, because a render can succeed with every marker in place and still be a few bars of music and then one stuck tone. When most cycles sit at one level a warning says so; it is a hint to check the render, never an error (a drone or an unchanging loop gets it too).",
   "kind": "node",
   "handler": "handler.mjs",
   "deterministic": true,
@@ -167,6 +167,7 @@
       "render_ms",
       "markers_applied",
       "markers_found",
+      "levels",
       "peak_db",
       "gain_db_applied",
       "analysis"
@@ -219,6 +220,37 @@
             "bar": {
               "type": "number",
               "description": "The same value read as a bar counted from 0, assuming one cycle is one bar (what beats_per_cycle means): bar 6 is the 7th bar."
+            },
+            "rms_db": {
+              "type": ["number", "null"],
+              "description": "RMS level in dBFS of the written full mix (mono sum, after any `peak_db` scaling) from this marker to the next marker in time, or to the end of the song (the tail is left out); null when that stretch is digital silence. Every numeric marker line counts as a next marker, also one that is not a section. Absent when there is nothing to measure: the marker lands outside the song (before 0, or at or after its end), its value is not a number, or stems_only skipped the full mix."
+            }
+          }
+        }
+      },
+      "levels": {
+        "type": ["array", "null"],
+        "description": "How loud each cycle of the song is in the written full mix, in order from cycle 0; the tail (`tail_s`) is left out. One row per cycle for songs of up to 256 cycles; a longer song gets rows of N whole cycles each, with the smallest N that keeps the array at 256 rows or fewer (consecutive `cycle` values then step by N). A song that ends inside a cycle has a shorter last row. Null when stems_only skipped the full mix. Read it after every render, also a re-render: a part that drops out, or a stuck note, shows here and nowhere else in the result.",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["cycle", "at_s", "to_s", "rms_db"],
+          "properties": {
+            "cycle": {
+              "type": "integer",
+              "description": "The cycle the row starts at, counted from 0 like the markers (with one cycle per bar, cycle 6 is the 7th bar)."
+            },
+            "at_s": {
+              "type": "number",
+              "description": "Seconds from the start of the render where the row starts: cycle / cps."
+            },
+            "to_s": {
+              "type": "number",
+              "description": "Seconds where the row ends: the start of the next row, or the end of the song for the last one."
+            },
+            "rms_db": {
+              "type": ["number", "null"],
+              "description": "RMS level in dBFS of the mono sum of the file as written (after any `peak_db` scaling, and clamped at full scale when the format clamps an over-hot render), over the whole row; null for digital silence."
             }
           }
         }
@@ -330,7 +362,7 @@
         "items": {
           "type": "string"
         },
-        "description": "Human-readable warnings: events the engine could not play (unknown sound names, failed sample loads), a sample file that had to be decoded through ffmpeg, a render that peaks above 0 dBFS in a format that clamps, and a silent render asked to reach `peak_db`. A stem's own warnings start with `stem \"<name>\": `, and a song that solos parts (labels starting with S) is named, because Strudel then leaves the other parts out. Empty when nothing went wrong."
+        "description": "Human-readable warnings: events the engine could not play (unknown sound names, failed sample loads), a sample file that had to be decoded through ffmpeg, a render that peaks above 0 dBFS in a format that clamps, a silent render asked to reach `peak_db`, and a flat render: when `levels` has at least 8 rows and at least three quarters of all rows are audible (-50 dBFS or louder) and within 1 dB of each other, the warning gives the count and the level, because that is what a stuck note looks like (a drone or an unchanging loop reads the same; silent rows count against the share and have the analysis warnings of their own). A stem's own warnings start with `stem \"<name>\": `, and a song that solos parts (labels starting with S) is named, because Strudel then leaves the other parts out. Empty when nothing went wrong."
       }
     }
   },

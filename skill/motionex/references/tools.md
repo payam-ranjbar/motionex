@@ -16,7 +16,7 @@ Every motionex tool takes a JSON object. Any file input is a ref: a workspace pa
 - **audio.speech-ratio** — How far a voice sits above its background inside the speech band (default 300-3400 Hz), per line or per given window, with the minimum and median ratio.
 - **audio.stats** — Peak, RMS, crest, clipping, DC offset, stereo width, band energy, silence percentage and per-cycle loudness of an audio or video file.
 - **image.contact-sheet** — Lay images out in a grid so a set of stills can be reviewed at a glance.
-- **image.grade** — Colour-grade stills before they go into a page: ordered steps (Lab cast removal, saturation, tone curve, exposure, clarity, tint inside or outside a subject mask, vignette, .cube LUT), light sources kept on request, an optional glow layer, and before/after numbers.
+- **image.grade** — Colour-grade stills before they go into a page: ordered steps (Lab cast removal, white balance, saturation, tone curve, exposure, clarity, tint inside or outside a subject mask, vignette, .cube LUT), light sources kept on request, an optional glow layer, and before/after numbers.
 - **image.matte** — Cut a figure out of an illustration whose background is a soft blurred glow or a flat colour, and return a PNG with alpha. Flood-fills the smooth background, clears glow trapped in small pockets, keeps the largest figure and softens the edge.
 - **media.concat** — Join two or more clips: stream copy for sections rendered with identical settings, or the concat filter to re-encode across differing sources.
 - **media.encode** — Encode a video with explicit quality, bitrate, size, scaling, padding, picture fx and audio controls, including fit-to-N-MB two-pass encoding and named delivery presets.
@@ -311,9 +311,9 @@ class: audio · deterministic: yes · cache: auto · version 1.0.0
 
 **Mix (tracks, buses, pan)**: Declarative track/bus mixer: places clips sample-accurately on tracks, sums them to an exact length, optional per-track fx, gain automation, level, sidechain and master stage, and an optional per-cue level table. Plain float sum by default.
 
-Sums audio clips on named tracks to an exact length. Processing order: (1) track_defaults are merged under each track with the same name; (2) every clip's `at` and every automation point's `at` is resolved (seconds or a timespec against `timeline`); (3) each distinct (src, offset_s, duration_s, fx) is decoded once; (4) optional per-clip leveling; (5) per clip gain, linear fades, the pan law, then mix at its sample position; (6) track fx; (7) track gain_db; (8) optional track `automation` (a gain curve in dB, ramped linearly between its points); (9) optional track `level` (measured after the automation); (10) optional sidechains; (11) mute; (12) bus fx and gain, then the master sum = buses + tracks without a bus; (13) optional master fx/gain/loudness; (14) fit to N samples and write; (15) optional `cues` table, measured on the stems (the tracks after steps 6-10). N = round(duration_s*sample_rate) or the latest clip end. A clip that runs past N is cut at N (a fade-out ends at the cut); a warning names it, with the seconds cut, only when the cut-off part peaks above -50 dBFS after the clip gain, so a file that runs on into silence is not reported. Defaults are neutral: no ducking, no normalisation, no limiter, no automation, no cue table; the default output is 32-bit float WAV so a sum above 0 dBFS does not clip. Pan law: mono into stereo is equal-power. Pan 0 gives 0.7071 per channel (matching ffmpeg's mono upmix); stereo into stereo at pan 0 is the identity; into mono a stereo clip becomes (L+R)/2 and pan is ignored.
+Sums audio clips on named tracks to an exact length. Processing order: (1) track_defaults are merged under each track with the same name; (2) every clip's `at` or `land_at` and every automation point's `at` is resolved (seconds or a timespec against `timeline`), and a clip placed with `land_at` gets its real start, read offset and length; (3) each distinct (src, offset_s, duration_s, fx) is decoded once; (4) optional per-clip leveling; (5) per clip gain, linear fades, the pan law, then mix at its sample position; (6) track fx; (7) track gain_db; (8) optional track `automation` (a gain curve in dB, ramped linearly between its points); (9) optional track `level` (measured after the automation); (10) optional sidechains; (11) mute; (12) bus fx and gain, then the master sum = buses + tracks without a bus; (13) optional master fx/gain/loudness; (14) fit to N samples and write; (15) optional `cues` table, measured on the stems (the tracks after steps 6-10). N = round(duration_s*sample_rate) or the latest clip end. A clip is placed by its start (`at`) or by the moment its sound is heard (`land_at` with `onset_s`: the clip starts early by the lead-in before the onset, and its `duration_s` is counted from the onset). A clip that runs past N is cut at N (a fade-out ends at the cut); a warning names it, with the seconds cut, only when the cut-off part peaks above -50 dBFS after the clip gain, so a file that runs on into silence is not reported. Defaults are neutral: no ducking, no normalisation, no limiter, no automation, no cue table; the default output is 32-bit float WAV so a sum above 0 dBFS does not clip. Pan law: mono into stereo is equal-power. Pan 0 gives 0.7071 per channel (matching ffmpeg's mono upmix); stereo into stereo at pan 0 is the identity; into mono a stereo clip becomes (L+R)/2 and pan is ignored.
 
-class: audio · deterministic: yes · cache: auto · version 1.1.0 · presets: dialogue-anchored, ducked-bed
+class: audio · deterministic: yes · cache: auto · version 1.2.0 · presets: dialogue-anchored, ducked-bed
 
 | field | type | required | default | description |
 | --- | --- | --- | --- | --- |
@@ -352,11 +352,11 @@ class: audio · deterministic: yes · cache: auto · version 1.1.0 · presets: d
 | output.format | enum |  | "wav32f" | Output WAV encoding: 32-bit float (no clipping), 24-bit or 16-bit. Default "wav32f". |
 | output.stems | boolean |  | false | Also write stems/<track>.wav (32-bit float) for every track, after its fx, gain_db, automation, level and sidechains and before the bus. Default false. |
 | output.preview_mp3 | boolean |  | false | Also write a 192 kbps preview.mp3. Default false. |
-| cues | object |  |  | Optional per-cue level table: for every clip of `tracks`, the level of its track over the clip's window next to the level of `reference` over the same window, measured on the stems (after the track fx, gain_db, automation, level and sidechains). A level is the K-weighted loudness of the window without gating (BS.1770 weighting, in LUFS); ratio_db = level_db - reference_db, so a positive ratio means the cue sits over the reference. report.json gets `cues` (one row per clip: track, clip index, name, at, end, level_db, reference_db, ratio_db; null where a window is empty or silent) and `cues_summary` (per track: clips, min, median and max ratio_db); the result gets `cues_summary`, and `cues` too when there are at most 100 rows. Omit for no table. |
+| cues | object |  |  | Optional per-cue level table: for every clip of `tracks`, the level of its track over the clip's window next to the level of `reference` over the same window, measured on the stems (after the track fx, gain_db, automation, level and sidechains). A level is the K-weighted loudness of the window without gating (BS.1770 weighting, in LUFS); ratio_db = level_db - reference_db, so a positive ratio means the cue sits over the reference. report.json gets `cues` (one row per clip: track, clip index, name, at, end, level_db, reference_db, ratio_db; null where a window is empty or silent; plus land_at, the mix time its onset is heard, for a clip placed with `land_at` or giving `onset_s`) and `cues_summary` (per track: clips, min, median and max ratio_db); the result gets `cues_summary`, and `cues` too when there are at most 100 rows. Omit for no table. |
 | cues.reference | string | yes |  | Track to compare every cue against, usually the music. Must name a track. |
 | cues.tracks | array |  |  | Tracks whose clips get one row each, in this order. Omit for every track except the reference. |
 | cues.tracks[] | string |  |  |  |
-| cues.window | enum |  | "audible" | The window measured for each clip: "audible" is the heard part of the clip (cut at the mix end) without its leading and trailing parts more than 30 dB under the clip's own peak (after its gain and fades); "clip" is the whole heard part. Rows report the window as at/end in mix seconds. Default "audible". |
+| cues.window | enum |  | "audible" | The window measured for each clip: "audible" is the heard part of the clip (cut at the mix end) without its leading and trailing parts more than 30 dB under the clip's own peak (after its gain and fades); "clip" is the whole heard part. Rows report the window as at/end in mix seconds, from the clip's real position however it was placed. Default "audible". |
 
 ### Example: Two sine clips on one track
 
@@ -480,6 +480,37 @@ class: audio · deterministic: yes · cache: auto · version 1.1.0 · presets: d
           "at": 1.2,
           "gain_db": -9,
           "name": "hit-2"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Example: Land a sound on a moment: the hit starts 0.25 s into its file and is heard at 1.0 s for 0.2 s
+
+```json
+{
+  "duration_s": 2,
+  "tracks": [
+    {
+      "name": "music",
+      "clips": [
+        {
+          "src": "bed.wav",
+          "at": 0
+        }
+      ]
+    },
+    {
+      "name": "sfx",
+      "clips": [
+        {
+          "src": "hit.wav",
+          "land_at": 1,
+          "onset_s": 0.25,
+          "duration_s": 0.2,
+          "name": "hit"
         }
       ]
     }
@@ -660,9 +691,9 @@ class: audio · deterministic: yes · cache: auto · version 1.0.0
 
 **Contact sheet**: Lay images out in a grid so a set of stills can be reviewed at a glance.
 
-Scales each image to a fixed width, pads them to the height of the first image, and lays them out with ffmpeg's xstack. Optional labels are drawn with drawtext when that filter is available. A single image is returned as one cell.
+Fits each image inside a cell of a fixed width and the first image's height (an image of another shape is shrunk to fit and centred), and lays the cells out with ffmpeg's xstack. Optional labels are drawn with drawtext when that filter is available. A single image is returned as one cell.
 
-class: audio · deterministic: yes · cache: auto · version 1.0.0
+class: audio · deterministic: yes · cache: auto · version 1.0.1
 
 | field | type | required | default | description |
 | --- | --- | --- | --- | --- |
@@ -696,11 +727,11 @@ class: audio · deterministic: yes · cache: auto · version 1.0.0
 
 ## image.grade
 
-**Grade (colour-grade stills)**: Colour-grade stills before they go into a page: ordered steps (Lab cast removal, saturation, tone curve, exposure, clarity, tint inside or outside a subject mask, vignette, .cube LUT), light sources kept on request, an optional glow layer, and before/after numbers.
+**Grade (colour-grade stills)**: Colour-grade stills before they go into a page: ordered steps (Lab cast removal, white balance, saturation, tone curve, exposure, clarity, tint inside or outside a subject mask, vignette, .cube LUT), light sources kept on request, an optional glow layer, and before/after numbers.
 
-Each image goes through `steps` in order. A step changes only what its own fields say, and a step whose strength is 0 changes nothing; the tool has no look of its own. The ops: `cast` moves a colour cast in CIE Lab (D65, sRGB in): it removes a fraction of one side of a* or b* (yellow = +b*, blue = -b*, red = +a*, green = -a*) and leaves pixels on the other side alone. `saturation` multiplies Lab chroma, everywhere or only in a hue range (`rest` sets the multiplier outside it). `curve` is a per-channel tone curve on sRGB values: an S-shaped `contrast` around `pivot`, `gamma`, a `shoulder` that rolls the highlights off softly and `lift` for the blacks. `exposure` scales linear light by 2^ev. `clarity` adds local contrast to L*: value + amount x (value - blur). `tint` blends toward a colour everywhere, inside or outside the subject mask; `grow` and `feather` hold it off the subject's edge. `vignette` darkens (or, negative, lightens) toward the corners. `lut` applies a .cube 3D LUT with trilinear lookup. `protect` on cast and tint keeps the light sources (`lights`) or the subject (`mask`) as they were. The light mask is found in each image as it entered the grade: bright, saturated pixels in a hue range (orange to yellow by default) and the near-white cores touching them, widened by `spread`; `light_mask.write_masks` writes it out to check. `glow` writes a bloom layer of the light pixels on black, for a page to draw additively (mix-blend-mode: screen or plus-lighter) and pulse. Per image the result gives mean L* and mean a*/b* outside the lights, before and after, and with a mask the mean L* inside and outside the subject and their ratio in dB. The numbers do not replace looking: put the source and the graded image side by side with image.contact-sheet.
+Each image goes through `steps` in order. A step changes only what its own fields say, and a step whose strength is 0 changes nothing; the tool has no look of its own. The ops: `cast` moves a colour cast in CIE Lab (D65, sRGB in): it removes a fraction of one side of a* or b* (yellow = +b*, blue = -b*, red = +a*, green = -a*) and leaves pixels on the other side alone. `balance` is a white balance: it adds the same shift to every pixel's a* and b*, so the greys move and saturated colours keep their chroma relative to each other, where `cast` would drain them. The shift is measured from the image's near-neutral midtones as they are when the step runs ((`target_ab` - their mean a*, b*) x `amount`), or given as `shift_ab` for a cut-out layer with no neutral ground of its own: `balance` in the result reports the shift each image got, to hand to its layers. `saturation` multiplies Lab chroma, everywhere or only in a hue range (`rest` sets the multiplier outside it). `curve` is a per-channel tone curve on sRGB values: an S-shaped `contrast` around `pivot`, `gamma`, a `shoulder` that rolls the highlights off softly and `lift` for the blacks. `exposure` scales linear light by 2^ev. `clarity` adds local contrast to L*: value + amount x (value - blur). `tint` blends toward a colour everywhere, inside or outside the subject mask; `grow` and `feather` hold it off the subject's edge. `vignette` darkens (or, negative, lightens) toward the corners. `lut` applies a .cube 3D LUT with trilinear lookup. `protect` on cast, balance and tint keeps the light sources (`lights`) or the subject (`mask`) as they were. The light mask is found in each image as it entered the grade: bright, saturated pixels in a hue range (orange to yellow by default) and the near-white cores touching them, widened by `spread`; `light_mask.write_masks` writes it out to check. `glow` writes a bloom layer of the light pixels on black, for a page to draw additively (mix-blend-mode: screen or plus-lighter) and pulse. Per image the result gives mean L* and mean a*/b* outside the lights, before and after, and beside them the neutrals: `greys_a`, `greys_b` (mean a*, b* of the near-neutral midtones, set by `neutral`) and `greys_pct` (their share of the opaque pixels). `cast_a`/`cast_b` average everything, so a frame of brick and sky reads as a cast when its greys are neutral; the greys are the white balance. With a mask it also gives the mean L* inside and outside the subject and their ratio in dB. The numbers do not replace looking: put the source and the graded image side by side with image.contact-sheet.
 
-class: encode · deterministic: yes · cache: auto · version 1.0.0
+class: encode · deterministic: yes · cache: auto · version 1.1.0
 
 | field | type | required | default | description |
 | --- | --- | --- | --- | --- |
@@ -709,10 +740,15 @@ class: encode · deterministic: yes · cache: auto · version 1.0.0
 | images[].name | string |  |  | Base name of the outputs (<name>.png, <name>-glow.png, <name>-lights.png), without folders. Default: the source file's name without its extension. Names must be unique within the call. |
 | images[].mask | ref |  |  | The subject's matte (an image.matte output works): white or opaque = subject. Its alpha is used when any pixel is not opaque, otherwise its luminance. A mask of another size is resized to the image (with a warning). |
 | steps | array |  | [] | The grade, applied in order. Each step is an object with `op` and that op's fields only; the handler names any field the op does not take. No steps: the images are only measured and re-encoded. |
-| steps[].op | enum | yes |  | What the step does. cast: axis, amount, protect. saturation: amount, hue, rest. curve: contrast, pivot, lift, shoulder, gamma. exposure: ev. clarity: amount, radius. tint: amount, color, where, grow, feather, protect. vignette: amount, softness. lut: file, amount. |
+| steps[].op | enum | yes |  | What the step does. cast: axis, amount, protect. balance: amount, target_ab, shift_ab, min_pct, protect. saturation: amount, hue, rest. curve: contrast, pivot, lift, shoulder, gamma. exposure: ev. clarity: amount, radius. tint: amount, color, where, grow, feather, protect. vignette: amount, softness. lut: file, amount. |
 | steps[].axis | enum |  |  | cast (required): the side of the cast to remove: yellow = +b*, blue = -b*, red = +a*, green = -a*. Only pixels on that side change. |
-| steps[].amount | number |  |  | Strength; its meaning and range depend on the op. cast (required, 0..1): the fraction of that side's a* or b* removed. saturation (required, 0..10): the chroma multiplier (inside the hue range when hue is set). clarity (required, -1..4): local contrast added; negative softens. tint (required, 0..1): how far to blend toward the colour. vignette (required, -1..1): darkening at the corners; negative lightens. lut (0..1, default 1): blend between the original and the LUT. |
-| steps[].protect | enum |  |  | cast and tint: what the step leaves as it was. lights: the light mask (lamps, fire, candles, glowing eyes). mask: the subject. none (default): nothing. With mask and an image without one, the step is skipped for that image with a warning. |
+| steps[].amount | number |  |  | Strength; its meaning and range depend on the op. cast (required, 0..1): the fraction of that side's a* or b* removed. balance (0..1, default 1): the fraction of the shift applied, measured or explicit; 1 puts the greys on the target. saturation (required, 0..10): the chroma multiplier (inside the hue range when hue is set). clarity (required, -1..4): local contrast added; negative softens. tint (required, 0..1): how far to blend toward the colour. vignette (required, -1..1): darkening at the corners; negative lightens. lut (0..1, default 1): blend between the original and the LUT. |
+| steps[].protect | enum |  |  | cast, balance and tint: what the step leaves as it was. lights: the light mask (lamps, fire, candles, glowing eyes). mask: the subject. none (default): nothing. With mask and an image without one, the step is skipped for that image with a warning. For balance it only limits where the shift lands; the greys are still measured over the whole image. |
+| steps[].target_ab | array |  |  | balance: [a*, b*] where the image's near-neutral midtones should land. Absent: [0, 0], neutral grey. A target off zero keeps a wanted warmth or coolness, e.g. the greys of an accepted still. Not with shift_ab. |
+| steps[].target_ab[] | number |  |  | One CIELAB a* or b* value. |
+| steps[].shift_ab | array |  |  | balance: an explicit [da, db] added to every pixel's a*, b* (times amount). Nothing is measured, so it works on a cut-out layer with no neutral ground of its own: give it the shift its plate got (`balance[].shift_ab` in that result). Absent: the shift is measured. |
+| steps[].shift_ab[] | number |  |  | The shift on a* or b*. |
+| steps[].min_pct | number |  |  | balance: the smallest share of near-neutral midtones (greys_pct, percent of the opaque pixels) at which the measured shift is trusted. An image with less skips the step: it is listed in skipped_steps, with a warning naming the image. Default 0: any grey pixel is trusted, and only an image with none skips. Not with shift_ab. |
 | steps[].hue | object |  |  | saturation: act only on this hue range of the colour wheel (0 red, 60 yellow, 120 green, 180 cyan, 240 blue, 300 magenta). Full strength within a quarter of the width of the centre, fading to nothing at half the width. |
 | steps[].hue.center_deg | number | yes |  | Centre of the range in degrees. |
 | steps[].hue.width_deg | number | yes |  | Full width of the range in degrees, edge to edge. |
@@ -738,6 +774,10 @@ class: encode · deterministic: yes · cache: auto · version 1.0.0
 | light_mask.core_value | number |  | 0.92 | Brightness a near-white pixel needs to count as a light's core (a blown lamp centre); cores count only when they touch the coloured light. |
 | light_mask.spread | number |  | 0.01 | Widening, as a fraction of the image width: the mask is full within this distance of the light pixels and fades out over the same distance again. 0 keeps only the pixels themselves. |
 | light_mask.write_masks | boolean |  | false | Also write <name>-lights.png, the light mask in grey (white = protected), to check what was found. |
+| neutral | object |  |  | Which pixels count as near-neutral midtones: what should be grey when the white balance is right. They give greys_a, greys_b and greys_pct in the result, and a balance step measures its shift from them. A cast stronger than max_chroma pushes the greys out of the limit (greys_pct falls toward 0); raise max_chroma to find them. |
+| neutral.max_chroma | number |  | 10 | A pixel is near-neutral when its CIELAB chroma, hypot(a*, b*), is below this. |
+| neutral.min_l | number |  | 25 | Lower edge of the midtone band in L* (0 black, 100 white); darker pixels are left out, as shadows carry little colour information. Must be below max_l. |
+| neutral.max_l | number |  | 80 | Upper edge of the midtone band in L*; brighter pixels are left out, as clipped highlights read neutral whatever the light was. |
 | glow | object |  |  | When present, also write <name>-glow.png: the graded colour of the light pixels in linear light, blurred at each radius, averaged, normalised so the brightest channel reaches `strength`, on black. Absent: no glow layer. |
 | glow.radii | array |  | [0.004,0.015,0.05] | Blur radii (Gaussian sigma) as fractions of the image width; a few, from tight to wide, give a hot core with a soft halo. |
 | glow.radii[] | number |  |  | One radius as a fraction of the width. |
@@ -829,6 +869,45 @@ class: encode · deterministic: yes · cache: auto · version 1.0.0
   ],
   "format": "jpeg",
   "quality": 90
+}
+```
+
+### Example: White-balance a street from its own greys: the pink leaves the road and the red car keeps its colour
+
+```json
+{
+  "images": [
+    {
+      "image": "stills/street.ppm"
+    }
+  ],
+  "steps": [
+    {
+      "op": "balance",
+      "min_pct": 5
+    }
+  ]
+}
+```
+
+### Example: Give a cut-out layer the shift its plate got (no neutral ground of its own to measure)
+
+```json
+{
+  "images": [
+    {
+      "image": "layers/car.png"
+    }
+  ],
+  "steps": [
+    {
+      "op": "balance",
+      "shift_ab": [
+        -6.43,
+        0.08
+      ]
+    }
+  ]
 }
 ```
 
@@ -1217,9 +1296,9 @@ class: light · deterministic: yes · cache: auto · version 1.0.0
 
 **Music render (Strudel)**: Render a Strudel song to audio with the Mucavex engine: seeded deterministic noise, named section markers and the song's form, optional stems of named parts, a tempo override and an analysis report.
 
-Evaluates Strudel live-coding JavaScript with the same semantics as the strudel.cc REPL and renders it offline to WAV/MP3/FLAC/OGG/Opus/M4A. Named markers (lines like `let DROP = 34;`) let a build move song sections without regenerating the code, and `markers_found` reports the song's form: every numeric marker with the time it lands at (markers count cycles from 0, so at_s = value / cps). `stems` renders named parts (`drums: s("bd*4")`, or `$:` lines by order) to separate files in the same job: each stem is the song again with every other part muted, so a stem costs a render of its own (`stems_only` skips the full mix). Strudel noise is seeded, so identical input gives byte-identical audio. `max_polyphony` must stay high: the engine's old default of 128 steals voices and fades sample voices in long renders. The tool renders; it applies no loudness normalisation, ducking or limiting of its own (`peak_db` is the only gain it will add, and only when asked). It always measures the render's sample peak, warns when an over-hot render would be clamped by the chosen format, and never clips silently.
+Evaluates Strudel live-coding JavaScript with the same semantics as the strudel.cc REPL and renders it offline to WAV/MP3/FLAC/OGG/Opus/M4A. Named markers (lines like `let DROP = 34;`) let a build move song sections without regenerating the code, and `markers_found` reports the song's form: every numeric marker with the time it lands at (markers count cycles from 0, so at_s = value / cps). `stems` renders named parts (`drums: s("bd*4")`, or `$:` lines by order) to separate files in the same job: each stem is the song again with every other part muted, so a stem costs a render of its own (`stems_only` skips the full mix). Strudel noise is seeded, so identical input gives byte-identical audio. `max_polyphony` must stay high: the engine's old default of 128 steals voices and fades sample voices in long renders. The tool renders; it applies no loudness normalisation, ducking or limiting of its own (`peak_db` is the only gain it will add, and only when asked). It always measures the render's sample peak, warns when an over-hot render would be clamped by the chosen format, and never clips silently. It also measures how loud each part of the render is: `levels` has the RMS level of every cycle of the song and each entry of `markers_found` the level of its section, because a render can succeed with every marker in place and still be a few bars of music and then one stuck tone. When most cycles sit at one level a warning says so; it is a hint to check the render, never an error (a drone or an unchanging loop gets it too).
 
-class: music · deterministic: yes · cache: auto · version 1.1.0
+class: music · deterministic: yes · cache: auto · version 1.2.0
 
 | field | type | required | default | description |
 | --- | --- | --- | --- | --- |
@@ -1453,9 +1532,9 @@ class: audio · deterministic: no · cache: reuse · version 1.0.0 · implements
 
 **Sound search (Freesound)**: The Freesound provider of sfx.search: search Freesound's recorded sound effects and ambiences, filtered by licence and length, and list candidates with their licence, author and a preview link. Needs the freesound_api_key secret file and network access.
 
-Runs a Freesound text search (API v2) and returns the candidates in the sfx.search shape, plus Freesound's own fields (downloads, rating). Licence codes map to Freesound's licence filter (cc0 = Creative Commons 0, by = Attribution, by-nc = Attribution NonCommercial, sampling+ = Sampling+); min_seconds and max_seconds become a duration range. `filter` adds any raw Freesound filter (for example `samplerate:48000` or `tag:foley`), and `sort` picks the order. Reads the freesound_api_key secret file (an API key from freesound.org/apiv2/apply); the key is sent only in the Authorization header to the API and never appears in results or logs. Retries 429, 5xx and network errors. Bring a pick into a job with sfx.fetch (provider freesound).
+Runs a Freesound text search (API v2) and returns the candidates in the sfx.search shape, plus Freesound's own fields (downloads, rating). Licence codes map to Freesound's licence filter (cc0 = Creative Commons 0, by = Attribution, by-nc = Attribution NonCommercial, sampling+ = Sampling+); min_seconds and max_seconds become a duration range. `filter` adds any raw Freesound filter (for example `samplerate:48000` or `tag:foley`), and `sort` picks the order. Reads the freesound_api_key secret file (an API key from freesound.org/apiv2/apply); the key is sent only in the Authorization header to the API and never appears in results or logs. Retries 429, 5xx and network errors. Freesound matches EVERY word of a query, so a long query can find nothing where a shorter one finds plenty: a query of several words that finds nothing returns a warning saying so. With `fewer_words: true` such a search is repeated with the last word dropped each time ("woman grunt effort short", then "woman grunt effort", "woman grunt", "woman"), with the same filter, sort, limit and page, until one finds sounds; `query_used` names the query the sounds came from, and a warning names both queries. Put the words that matter most first. Bring a pick into a job with sfx.fetch (provider freesound).
 
-class: light · deterministic: no · cache: off · version 1.0.0 · implements: sfx.search (provider freesound)
+class: light · deterministic: no · cache: off · version 1.1.0 · implements: sfx.search (provider freesound)
 
 | field | type | required | default | description |
 | --- | --- | --- | --- | --- |
@@ -1468,6 +1547,7 @@ class: light · deterministic: no · cache: off · version 1.0.0 · implements: 
 | filter | string |  |  | Extra raw Freesound filter terms, added to the licence and length filter, e.g. "tag:foley samplerate:48000". |
 | sort | enum |  |  | Result order: score (best text match, Freesound's default), rating_desc, downloads_desc, duration_asc or _desc, created_desc or _asc. Omit for score. |
 | page | integer |  |  | Which page of results (of `limit` each). Omit for the first. |
+| fewer_words | boolean |  | false | What to do when the query finds nothing. false (default): one search, exactly as written. true: search again with the last word dropped each time, down to the first word alone, until a search finds sounds; the filter, sort, limit and page stay the same. A "quoted phrase" counts as one word. At most one extra request per dropped word. The result's query_used names the query that found the sounds; ask for further pages with that query. |
 
 ### Example: Public-domain door creaks under 5 seconds
 
@@ -1489,6 +1569,16 @@ class: light · deterministic: no · cache: off · version 1.0.0 · implements: 
   "query": "room tone quiet classroom",
   "min_seconds": 10,
   "sort": "rating_desc"
+}
+```
+
+### Example: A short effort grunt, falling back to fewer words when all four find nothing
+
+```json
+{
+  "query": "woman grunt effort short",
+  "max_seconds": 3,
+  "fewer_words": true
 }
 ```
 

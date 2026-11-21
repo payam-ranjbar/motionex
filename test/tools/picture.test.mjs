@@ -356,3 +356,37 @@ test('picture.stills: two PNGs of the page size at the requested times', {
     await rmTmp(ws);
   }
 });
+
+/** A page that never becomes ready: __motion exists with ready false, and its image answers 404. */
+const NEVER_READY_PAGE = `<!doctype html>
+<html><head><link rel="icon" href="data:," /></head><body style="margin:0;background:#000">
+<img src="missing.png" alt="" />
+<script>
+window.__motion = { ready: false, duration: 0.3, size: { width: 32, height: 32 }, seek() {} };
+</script></body></html>`;
+
+test('picture.stills: a page that never becomes ready says what it was waiting for', {
+  ...GATE,
+  timeout: TEST_TIMEOUT,
+}, async () => {
+  const ws = await mkTmp();
+  try {
+    await writeFixture(ws, 'pages/never.html', { text: NEVER_READY_PAGE });
+    await assert.rejects(
+      runTool(
+        'picture.stills',
+        { page: 'pages/never.html', width: 32, height: 32, times: [0], ready_timeout_s: 1 },
+        { workspace: ws, timeoutMs: TEST_TIMEOUT },
+      ),
+      (err) => {
+        assert.equal(err.type, 'invalid-input');
+        assert.match(err.detail, /never set window\.__motion\.ready/);
+        assert.match(err.detail, /window\.__motion exists but ready is false/);
+        assert.match(err.detail, /missing\.png \(HTTP 404\)/);
+        return true;
+      },
+    );
+  } finally {
+    await rmTmp(ws);
+  }
+});

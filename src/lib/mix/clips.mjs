@@ -11,7 +11,8 @@ import { clipWindow } from './cues.mjs';
 import { levelClips } from './dynamics.mjs';
 import { computeN } from './plan.mjs';
 
-/** Identity of a decode task: two clips with the same key can share one decoded buffer. */
+/** Identity of a decode task: two clips with the same key can share one decoded buffer. The planner has already
+ * turned a `land_at` placement into the `offset_s` and `duration_s` actually read, so those are what is compared. */
 export function clipKey(clip) {
   return `${clip.src}\u0000${clip.offset_s ?? 0}\u0000${clip.duration_s ?? ''}\u0000${clip.fx ?? ''}`;
 }
@@ -206,10 +207,12 @@ export function truncationWarning(track, ci, clip, audio, audibleLen, gainDb) {
 /**
  * Place every clip into its track buffer (post gain/fades/pan, before track fx). Also computes N.
  * When `track.clip_leveling` is set, clips are measured and levelled first. When `plan.cues` is set, the
- * measured window of every clip of a cue track is returned in `spans` (absolute samples, end exclusive).
+ * measured window of every clip of a cue track is returned in `spans` (absolute samples, end exclusive), with
+ * `land` (the sample its onset falls on) for a clip that states one. Every position comes from `clip.atSample`,
+ * the clip's real start, whether it was placed with `at` or with `land_at`.
  * @param {object} plan @param {Map<string, import('../wav.mjs').Audio>} decoded
  * @returns {{buffers: Map<string, import('../wav.mjs').Audio>, n: number, warnings: string[],
- *   spans: Map<string, {clip: number, name: string|null, from: number, to: number}[]>}}
+ *   spans: Map<string, {clip: number, name: string|null, from: number, to: number, land?: number}[]>}}
  */
 export function buildTrackBuffers(plan, decoded) {
   const warnings = [];
@@ -245,7 +248,9 @@ export function buildTrackBuffers(plan, decoded) {
       if (trackSpans) {
         const { start, end } = clipWindow(processed, audibleLen, plan.cues.window);
         const from = clip.atSample + start;
-        trackSpans.push({ clip: ci, name: clip.name ?? null, from, to: from + (end - start) });
+        const span = { clip: ci, name: clip.name ?? null, from, to: from + (end - start) };
+        if (clip.landSample != null) span.land = clip.landSample;
+        trackSpans.push(span);
       }
       mixInto(trackCh, processed, clip.atSample);
     });

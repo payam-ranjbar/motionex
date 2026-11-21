@@ -63,7 +63,14 @@ Two contracts with library providers (today `freesound`, which needs the `freeso
   the others out.
 - **Search like a sound editor**: name the source and the action ("rope creak under tension"), not the feeling. Try a
   few phrasings and listen to the previews (`preview` links) or measure the candidates before choosing.
+- **Freesound matches every word of a query**, so a long query can find nothing where a shorter one finds plenty
+  ("woman grunt effort short": none; "woman grunt": six). Put the words that matter most first. A search that finds
+  nothing says so in `warnings`. `fewer_words: true` searches again with the last word dropped each time and reports
+  the query that worked in `query_used`; use that query for further pages.
 - **Place by the measurements**: a hit's onset on its cut; a texture or an ambience from its loudest stretch.
+- **To put a sound on a moment**, give the clip `land_at` (the moment) and `onset_s` (as `sfx.fetch` or
+  `audio.process` reports it) instead of `at`; the mixer starts the clip early by the lead-in. `duration_s` then counts
+  from the moment the sound is heard. Read the warnings: a landing too close to 0 trims the lead-in.
 - **Tame ambience beds before levelling them.** Recordings of fire, rain or crowds carry pops and peaks; levelling
   them by loudness can make those peaks jump out. A gentle compressor and a limiter in the clip's `fx` first help.
 - **J- and L-cuts** are clip placement: let a scene's ambience start before its picture and run on after it

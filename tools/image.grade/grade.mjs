@@ -111,6 +111,14 @@ export function hueOf(r, g, b) {
 
 const inHueRange = (h, lo, hi) => (lo <= hi ? h >= lo && h <= hi : h >= lo || h <= hi);
 
+/**
+ * The limits of a near-neutral midtone: what should be grey when the white balance is right.
+ * @typedef {{max_chroma: number, min_l: number, max_l: number}} NeutralLimits
+ */
+
+/** Whether the Lab colour in T is a near-neutral midtone: chroma under the limit and L* inside the band. */
+const isNeutral = (T, lim) => T[0] >= lim.min_l && T[0] <= lim.max_l && Math.hypot(T[1], T[2]) < lim.max_chroma;
+
 // ---------------------------------------------------------------------------------------------------------------------
 // Blur and distance
 
@@ -350,7 +358,8 @@ export function lightMask(rgb, w, h, o) {
 
 /**
  * @typedef {{width: number, height: number, rgb: Float32Array, lights: Float32Array, mask: Float32Array|null,
- *   subjectDistance?: Float32Array}} GradeImage
+ *   alpha?: Float32Array|null, neutral?: NeutralLimits, subjectDistance?: Float32Array}} GradeImage
+ *   alpha and neutral are read by the balance step only.
  */
 
 const NO_MASK = (what) => `${what} but this image has no mask`;
@@ -380,6 +389,74 @@ function cast(img, s) {
     if (k <= 0) continue;
     T[ci] = v * (1 - k);
     setLab(rgb, i, T[0], T[1], T[2], U);
+  }
+  return null;
+}
+
+/**
+ * Mean a*, b* of the near-neutral midtones of a working image and their share of its opaque pixels. Transparent
+ * pixels count by their alpha.
+ * @param {Float32Array} rgb encoded @param {Float32Array|null} alpha 0..1 @param {NeutralLimits} lim
+ * @returns {{a: number|null, b: number|null, pct: number}} a and b are null when no pixel qualifies
+ */
+export function neutrals(rgb, alpha, lim) {
+  const n = rgb.length / 3;
+  const T = new Float64Array(3);
+  let sw = 0;
+  let gw = 0;
+  let ga = 0;
+  let gb = 0;
+  for (let i = 0; i < n; i++) {
+    const w = alpha ? alpha[i] : 1;
+    if (w <= 0) continue;
+    sw += w;
+    labAt(rgb, i, T);
+    if (!isNeutral(T, lim)) continue;
+    gw += w;
+    ga += w * T[1];
+    gb += w * T[2];
+  }
+  return gw > 0 ? { a: ga / gw, b: gb / gw, pct: (100 * gw) / sw } : { a: null, b: null, pct: 0 };
+}
+
+/**
+ * White balance: add the same (da, db) to every pixel's a*, b*. The shift is `shift_ab` when given, else
+ * (target_ab - the neutrals of the image as it is now); `amount` scales it. The shift before protect is left in
+ * info.shift_ab.
+ */
+function balance(img, s, info) {
+  const keep = protection(img, s.protect);
+  if (typeof keep === 'string') return keep;
+  if (s.amount === 0) return null;
+  let da;
+  let db;
+  if (s.shift_ab) {
+    [da, db] = s.shift_ab;
+  } else {
+    const g = neutrals(img.rgb, img.alpha ?? null, img.neutral);
+    if (g.a === null) {
+      return 'the image has no near-neutral midtone to measure (widen `neutral`, or give the step a shift_ab)';
+    }
+    if (g.pct < s.min_pct) {
+      const pct = Math.round(g.pct * 100) / 100;
+      return `near-neutral midtones are ${pct}% of the image, under min_pct ${s.min_pct}`;
+    }
+    da = s.target_ab[0] - g.a;
+    db = s.target_ab[1] - g.b;
+  }
+  da *= s.amount;
+  db *= s.amount;
+  info.shift_ab = [da, db];
+  if (da === 0 && db === 0) return null;
+  const { rgb } = img;
+  const n = rgb.length / 3;
+  const T = new Float64Array(3);
+  const U = new Float64Array(3);
+  for (let i = 0; i < n; i++) {
+    const k = keep ? 1 - keep[i] : 1;
+    if (k <= 0) continue;
+    labAt(rgb, i, T);
+    setLab(rgb, i, T[0], T[1] + k * da, T[2] + k * db, U);
   }
   return null;
 }
@@ -590,15 +667,17 @@ function lut(img, s) {
   return null;
 }
 
-const STEPS = { cast, saturation, curve, exposure, clarity, tint, vignette, lut };
+const STEPS = { cast, balance, saturation, curve, exposure, clarity, tint, vignette, lut };
 
 /**
  * Apply one validated step to an image in place.
  * @param {GradeImage} img @param {object} step
+ * @param {{shift_ab?: number[]}} [info] receives what the step measured: a balance step writes the a*, b* shift it
+ *   applied
  * @returns {string|null} a reason when the step was skipped for this image
  */
-export function applyStep(img, step) {
-  return STEPS[step.op](img, step);
+export function applyStep(img, step, info = {}) {
+  return STEPS[step.op](img, step, info);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -701,13 +780,16 @@ export function parseCube(text) {
 }
 
 /**
- * Mean L* of the frame, mean a* and b* outside the light mask, and (with a mask) mean L* inside and outside the
- * subject. Transparent pixels count by their alpha.
+ * Mean L* of the frame, mean a* and b* outside the light mask, mean a* and b* of the near-neutral midtones with their
+ * share of the opaque pixels, and (with a mask) mean L* inside and outside the subject. Transparent pixels count by
+ * their alpha.
  * @param {Uint8Array} buf 8-bit RGB or RGBA @param {number} stride 3 or 4 @param {number} n pixels
  * @param {Float32Array} lights soft light mask @param {Float32Array|null} alpha 0..1 @param {Float32Array|null} mask
- * @returns {{luma: number, cast_a: number, cast_b: number, luma_in: number|null, luma_out: number|null}}
+ * @param {NeutralLimits} neutral
+ * @returns {{luma: number, cast_a: number, cast_b: number, greys_a: number|null, greys_b: number|null,
+ *   greys_pct: number, luma_in: number|null, luma_out: number|null}}
  */
-export function measure(buf, stride, n, lights, alpha, mask) {
+export function measure(buf, stride, n, lights, alpha, mask, neutral) {
   const T = new Float64Array(3);
   let sw = 0;
   let sl = 0;
@@ -716,6 +798,9 @@ export function measure(buf, stride, n, lights, alpha, mask) {
   let cw = 0;
   let ca = 0;
   let cb = 0;
+  let gw = 0;
+  let ga = 0;
+  let gb = 0;
   let mi = 0;
   let li = 0;
   let mo = 0;
@@ -732,6 +817,11 @@ export function measure(buf, stride, n, lights, alpha, mask) {
     cw += wc;
     ca += wc * T[1];
     cb += wc * T[2];
+    if (a > 0 && isNeutral(T, neutral)) {
+      gw += a;
+      ga += a * T[1];
+      gb += a * T[2];
+    }
     if (mask) {
       const m = a * mask[i];
       mi += m;
@@ -746,6 +836,9 @@ export function measure(buf, stride, n, lights, alpha, mask) {
     luma: sw > 0 ? r2(sl / sw) : 0,
     cast_a: outside ? r2(ca / cw) : sw > 0 ? r2(sa / sw) : 0,
     cast_b: outside ? r2(cb / cw) : sw > 0 ? r2(sb / sw) : 0,
+    greys_a: gw > 0 ? r2(ga / gw) : null,
+    greys_b: gw > 0 ? r2(gb / gw) : null,
+    greys_pct: gw > 0 ? r2((100 * gw) / sw) : 0,
     luma_in: mask && mi > 0 ? r2(li / mi) : null,
     luma_out: mask && mo > 0 ? r2(lo / mo) : null,
   };

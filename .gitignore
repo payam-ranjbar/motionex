@@ -1,6 +1,6 @@
 node_modules/
 .venv/
-workspace/
+/workspace/
 extensions/
 voices/*.onnx
 voices/*.onnx.json

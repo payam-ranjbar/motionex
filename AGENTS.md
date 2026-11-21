@@ -10,6 +10,12 @@ Agents drive it over HTTP (`/v1/jobs`, curl-friendly) or the `mx` CLI. Every too
 fps, size, codec) is an explicit parameter or a named preset. Defaults are NEUTRAL: no ducking, no normalisation, no
 limiter, no required voice/BPM/song/size, nothing snapped. A mixer with no options is a plain sum.
 
+**The engine and the workspaces.** motionex is the engine: this service and its tools. Videos are made in workspaces:
+separate folders and repositories that hold a user's settings, the skills an agent follows there, its own helpers and
+its projects. The engine gives a workspace its first skills as a template (`skill/workspace/template/`). Neither the
+tools, the skill nor the template says how a film should look, sound or be shaped, and none of them rules an option
+out; a prohibition is a direction too. A warning may point at something to check; it never decides.
+
 ## 1. Ground rules for coding agents
 - Edit/create ONLY the files your prompt lists. If you need a change elsewhere, say so in your Result instead.
 - NEVER run `npm install`, `npm ci`, `pip install` or anything that downloads. No network. Add no dependencies.
@@ -164,6 +170,8 @@ lib/sfx/recipes/generic.mjs      built-in SFX recipes [P7b]
 vendor/mucavex/                  vendored Mucavex renderer (AGPL), do not edit
 py/requirements.txt              hashed Python deps (piper-tts, pillow)
 skill/motionex/                  the agent skill (SKILL.md + references) [O]
+skill/workspace/                 minting a workspace: SKILL.md, template/ (copied by `mx workspace init`; it sets nothing
+                                 about the films), experience.md (options, not rules) [O]; src/lib/workspace-template [O]
 test/{unit,tools,contract,integration,docker,e2e,live}/   test markers; test/helpers [O]; test/fixtures/tools = fake tools
 ```
 

@@ -1,9 +1,9 @@
 {
   "name": "sfx.freesound-search",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "title": "Sound search (Freesound)",
   "summary": "The Freesound provider of sfx.search: search Freesound's recorded sound effects and ambiences, filtered by licence and length, and list candidates with their licence, author and a preview link. Needs the freesound_api_key secret file and network access.",
-  "description": "Runs a Freesound text search (API v2) and returns the candidates in the sfx.search shape, plus Freesound's own fields (downloads, rating). Licence codes map to Freesound's licence filter (cc0 = Creative Commons 0, by = Attribution, by-nc = Attribution NonCommercial, sampling+ = Sampling+); min_seconds and max_seconds become a duration range. `filter` adds any raw Freesound filter (for example `samplerate:48000` or `tag:foley`), and `sort` picks the order. Reads the freesound_api_key secret file (an API key from freesound.org/apiv2/apply); the key is sent only in the Authorization header to the API and never appears in results or logs. Retries 429, 5xx and network errors. Bring a pick into a job with sfx.fetch (provider freesound).",
+  "description": "Runs a Freesound text search (API v2) and returns the candidates in the sfx.search shape, plus Freesound's own fields (downloads, rating). Licence codes map to Freesound's licence filter (cc0 = Creative Commons 0, by = Attribution, by-nc = Attribution NonCommercial, sampling+ = Sampling+); min_seconds and max_seconds become a duration range. `filter` adds any raw Freesound filter (for example `samplerate:48000` or `tag:foley`), and `sort` picks the order. Reads the freesound_api_key secret file (an API key from freesound.org/apiv2/apply); the key is sent only in the Authorization header to the API and never appears in results or logs. Retries 429, 5xx and network errors. Freesound matches EVERY word of a query, so a long query can find nothing where a shorter one finds plenty: a query of several words that finds nothing returns a warning saying so. With `fewer_words: true` such a search is repeated with the last word dropped each time (\"woman grunt effort short\", then \"woman grunt effort\", \"woman grunt\", \"woman\"), with the same filter, sort, limit and page, until one finds sounds; `query_used` names the query the sounds came from, and a warning names both queries. Put the words that matter most first. Bring a pick into a job with sfx.fetch (provider freesound).",
   "kind": "node",
   "handler": "handler.mjs",
   "deterministic": false,
@@ -61,13 +61,18 @@
         "type": "integer",
         "minimum": 1,
         "description": "Which page of results (of `limit` each). Omit for the first."
+      },
+      "fewer_words": {
+        "type": "boolean",
+        "default": false,
+        "description": "What to do when the query finds nothing. false (default): one search, exactly as written. true: search again with the last word dropped each time, down to the first word alone, until a search finds sounds; the filter, sort, limit and page stay the same. A \"quoted phrase\" counts as one word. At most one extra request per dropped word. The result's query_used names the query that found the sounds; ask for further pages with that query."
       }
     }
   },
   "output_schema": {
     "type": "object",
     "additionalProperties": false,
-    "required": ["sounds", "total", "warnings"],
+    "required": ["sounds", "total", "query_used", "warnings"],
     "properties": {
       "sounds": {
         "type": "array",
@@ -94,11 +99,15 @@
           }
         }
       },
-      "total": { "type": "integer", "description": "How many sounds match in all of Freesound." },
+      "total": { "type": "integer", "description": "How many sounds match query_used in all of Freesound." },
+      "query_used": {
+        "type": "string",
+        "description": "The query these sounds are for: the query as written, or the shorter one that found sounds when fewer_words searched again. Still the query as written when no search found anything."
+      },
       "warnings": {
         "type": "array",
         "items": { "type": "string" },
-        "description": "Anything worth knowing about the search."
+        "description": "Anything worth knowing about the search: that nothing matched (and, for a query of several words, that fewer words may), or that a shorter query was used."
       }
     }
   },
@@ -112,6 +121,11 @@
       "title": "A calm room tone, best rated first",
       "run": false,
       "input": { "query": "room tone quiet classroom", "min_seconds": 10, "sort": "rating_desc" }
+    },
+    {
+      "title": "A short effort grunt, falling back to fewer words when all four find nothing",
+      "run": false,
+      "input": { "query": "woman grunt effort short", "max_seconds": 3, "fewer_words": true }
     }
   ]
 }

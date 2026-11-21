@@ -1,9 +1,9 @@
 {
   "name": "audio.mix",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "title": "Mix (tracks, buses, pan)",
   "summary": "Declarative track/bus mixer: places clips sample-accurately on tracks, sums them to an exact length, optional per-track fx, gain automation, level, sidechain and master stage, and an optional per-cue level table. Plain float sum by default.",
-  "description": "Sums audio clips on named tracks to an exact length. Processing order: (1) track_defaults are merged under each track with the same name; (2) every clip's `at` and every automation point's `at` is resolved (seconds or a timespec against `timeline`); (3) each distinct (src, offset_s, duration_s, fx) is decoded once; (4) optional per-clip leveling; (5) per clip gain, linear fades, the pan law, then mix at its sample position; (6) track fx; (7) track gain_db; (8) optional track `automation` (a gain curve in dB, ramped linearly between its points); (9) optional track `level` (measured after the automation); (10) optional sidechains; (11) mute; (12) bus fx and gain, then the master sum = buses + tracks without a bus; (13) optional master fx/gain/loudness; (14) fit to N samples and write; (15) optional `cues` table, measured on the stems (the tracks after steps 6-10). N = round(duration_s*sample_rate) or the latest clip end. A clip that runs past N is cut at N (a fade-out ends at the cut); a warning names it, with the seconds cut, only when the cut-off part peaks above -50 dBFS after the clip gain, so a file that runs on into silence is not reported. Defaults are neutral: no ducking, no normalisation, no limiter, no automation, no cue table; the default output is 32-bit float WAV so a sum above 0 dBFS does not clip. Pan law: mono into stereo is equal-power. Pan 0 gives 0.7071 per channel (matching ffmpeg's mono upmix); stereo into stereo at pan 0 is the identity; into mono a stereo clip becomes (L+R)/2 and pan is ignored.",
+  "description": "Sums audio clips on named tracks to an exact length. Processing order: (1) track_defaults are merged under each track with the same name; (2) every clip's `at` or `land_at` and every automation point's `at` is resolved (seconds or a timespec against `timeline`), and a clip placed with `land_at` gets its real start, read offset and length; (3) each distinct (src, offset_s, duration_s, fx) is decoded once; (4) optional per-clip leveling; (5) per clip gain, linear fades, the pan law, then mix at its sample position; (6) track fx; (7) track gain_db; (8) optional track `automation` (a gain curve in dB, ramped linearly between its points); (9) optional track `level` (measured after the automation); (10) optional sidechains; (11) mute; (12) bus fx and gain, then the master sum = buses + tracks without a bus; (13) optional master fx/gain/loudness; (14) fit to N samples and write; (15) optional `cues` table, measured on the stems (the tracks after steps 6-10). N = round(duration_s*sample_rate) or the latest clip end. A clip is placed by its start (`at`) or by the moment its sound is heard (`land_at` with `onset_s`: the clip starts early by the lead-in before the onset, and its `duration_s` is counted from the onset). A clip that runs past N is cut at N (a fade-out ends at the cut); a warning names it, with the seconds cut, only when the cut-off part peaks above -50 dBFS after the clip gain, so a file that runs on into silence is not reported. Defaults are neutral: no ducking, no normalisation, no limiter, no automation, no cue table; the default output is 32-bit float WAV so a sum above 0 dBFS does not clip. Pan law: mono into stereo is equal-power. Pan 0 gives 0.7071 per channel (matching ffmpeg's mono upmix); stereo into stereo at pan 0 is the identity; into mono a stereo clip becomes (L+R)/2 and pan is ignored.",
   "kind": "node",
   "handler": "handler.mjs",
   "deterministic": true,
@@ -173,7 +173,7 @@
         "type": "object",
         "additionalProperties": false,
         "required": ["reference"],
-        "description": "Optional per-cue level table: for every clip of `tracks`, the level of its track over the clip's window next to the level of `reference` over the same window, measured on the stems (after the track fx, gain_db, automation, level and sidechains). A level is the K-weighted loudness of the window without gating (BS.1770 weighting, in LUFS); ratio_db = level_db - reference_db, so a positive ratio means the cue sits over the reference. report.json gets `cues` (one row per clip: track, clip index, name, at, end, level_db, reference_db, ratio_db; null where a window is empty or silent) and `cues_summary` (per track: clips, min, median and max ratio_db); the result gets `cues_summary`, and `cues` too when there are at most 100 rows. Omit for no table.",
+        "description": "Optional per-cue level table: for every clip of `tracks`, the level of its track over the clip's window next to the level of `reference` over the same window, measured on the stems (after the track fx, gain_db, automation, level and sidechains). A level is the K-weighted loudness of the window without gating (BS.1770 weighting, in LUFS); ratio_db = level_db - reference_db, so a positive ratio means the cue sits over the reference. report.json gets `cues` (one row per clip: track, clip index, name, at, end, level_db, reference_db, ratio_db; null where a window is empty or silent; plus land_at, the mix time its onset is heard, for a clip placed with `land_at` or giving `onset_s`) and `cues_summary` (per track: clips, min, median and max ratio_db); the result gets `cues_summary`, and `cues` too when there are at most 100 rows. Omit for no table.",
         "properties": {
           "reference": {
             "type": "string",
@@ -188,7 +188,7 @@
           "window": {
             "enum": ["audible", "clip"],
             "default": "audible",
-            "description": "The window measured for each clip: \"audible\" is the heard part of the clip (cut at the mix end) without its leading and trailing parts more than 30 dB under the clip's own peak (after its gain and fades); \"clip\" is the whole heard part. Rows report the window as at/end in mix seconds. Default \"audible\"."
+            "description": "The window measured for each clip: \"audible\" is the heard part of the clip (cut at the mix end) without its leading and trailing parts more than 30 dB under the clip's own peak (after its gain and fades); \"clip\" is the whole heard part. Rows report the window as at/end in mix seconds, from the clip's real position however it was placed. Default \"audible\"."
           }
         }
       }
@@ -256,7 +256,8 @@
       "clip": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["src", "at"],
+        "required": ["src"],
+        "oneOf": [{ "required": ["at"] }, { "required": ["land_at"] }],
         "properties": {
           "src": {
             "type": "string",
@@ -265,7 +266,16 @@
           },
           "at": {
             "type": ["number", "string"],
-            "description": "Where the clip starts: seconds (number) or a timespec string (\"scene\", \"scene#cue.end\", \"bar:4\") resolved against `timeline`."
+            "description": "Where the clip starts (its first played sample): seconds (number) or a timespec string (\"scene\", \"scene#cue.end\", \"bar:4\") resolved against `timeline`. A clip gives `at` or `land_at`, never both and never neither."
+          },
+          "land_at": {
+            "type": ["number", "string"],
+            "description": "Where the clip's onset is heard, given instead of `at`: seconds (number) or a timespec string resolved against `timeline` exactly like `at`. The clip starts at land_at - (onset_s - offset_s), so the source sample at `onset_s` falls on this time; without `onset_s` it behaves as `at`. `duration_s` is then counted from the onset. If that start would be before 0, the lead-in is trimmed (reading starts later in the source) so the onset still lands here, and a warning says so. If `offset_s` is after `onset_s`, the onset is not in the part played: the start of the played part lands here, and a warning says so. Fades keep their meaning: the fade-in starts at the clip's first played sample (before the onset), the fade-out ends at its last. A clip `fx` that changes timing (atempo, adelay) moves the onset and is not corrected for."
+          },
+          "onset_s": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Where the sound begins inside the source, in seconds from the start of the source file (not from `offset_s`): the `onset_s` that sfx.fetch and audio.process report. With `land_at` it is the sample that lands on that time. With `at` the clip is not moved; the onset time is only reported as `land_at` in the `cues` rows. Absent counts as 0."
           },
           "offset_s": {
             "type": "number",
@@ -274,7 +284,7 @@
           },
           "duration_s": {
             "type": "number",
-            "description": "Seconds of source to use. Omit to use the rest of the source."
+            "description": "Seconds of source to use. With `at` they are counted from the first played sample (`offset_s`). With `land_at` they are counted from the onset (how long the sound is heard from the moment it lands), and the lead-in played before the onset is added. Omit to use the rest of the source."
           },
           "gain_db": {
             "type": "number",
@@ -424,7 +434,8 @@
             "end": { "type": "number" },
             "level_db": { "type": ["number", "null"] },
             "reference_db": { "type": ["number", "null"] },
-            "ratio_db": { "type": ["number", "null"] }
+            "ratio_db": { "type": ["number", "null"] },
+            "land_at": { "type": "number" }
           }
         }
       }
@@ -508,6 +519,28 @@
       "fixtures": {
         "bed.wav": { "noise": { "seconds": 2, "amplitude_db": -24 } },
         "hit.wav": { "sine": { "freq": 1000, "seconds": 0.3, "amplitude_db": -14 } }
+      }
+    },
+    {
+      "title": "Land a sound on a moment: the hit starts 0.25 s into its file and is heard at 1.0 s for 0.2 s",
+      "input": {
+        "duration_s": 2,
+        "tracks": [
+          { "name": "music", "clips": [{ "src": "bed.wav", "at": 0 }] },
+          {
+            "name": "sfx",
+            "clips": [{ "src": "hit.wav", "land_at": 1, "onset_s": 0.25, "duration_s": 0.2, "name": "hit" }]
+          }
+        ]
+      },
+      "fixtures": {
+        "bed.wav": { "sine": { "freq": 120, "seconds": 2, "amplitude_db": -24 } },
+        "hit.wav": {
+          "concat": [
+            { "silence": { "seconds": 0.25 } },
+            { "sine": { "freq": 1000, "seconds": 0.3, "amplitude_db": -14 } }
+          ]
+        }
       }
     }
   ]

@@ -1,9 +1,9 @@
 {
   "name": "image.grade",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "title": "Grade (colour-grade stills)",
-  "summary": "Colour-grade stills before they go into a page: ordered steps (Lab cast removal, saturation, tone curve, exposure, clarity, tint inside or outside a subject mask, vignette, .cube LUT), light sources kept on request, an optional glow layer, and before/after numbers.",
-  "description": "Each image goes through `steps` in order. A step changes only what its own fields say, and a step whose strength is 0 changes nothing; the tool has no look of its own. The ops: `cast` moves a colour cast in CIE Lab (D65, sRGB in): it removes a fraction of one side of a* or b* (yellow = +b*, blue = -b*, red = +a*, green = -a*) and leaves pixels on the other side alone. `saturation` multiplies Lab chroma, everywhere or only in a hue range (`rest` sets the multiplier outside it). `curve` is a per-channel tone curve on sRGB values: an S-shaped `contrast` around `pivot`, `gamma`, a `shoulder` that rolls the highlights off softly and `lift` for the blacks. `exposure` scales linear light by 2^ev. `clarity` adds local contrast to L*: value + amount x (value - blur). `tint` blends toward a colour everywhere, inside or outside the subject mask; `grow` and `feather` hold it off the subject's edge. `vignette` darkens (or, negative, lightens) toward the corners. `lut` applies a .cube 3D LUT with trilinear lookup. `protect` on cast and tint keeps the light sources (`lights`) or the subject (`mask`) as they were. The light mask is found in each image as it entered the grade: bright, saturated pixels in a hue range (orange to yellow by default) and the near-white cores touching them, widened by `spread`; `light_mask.write_masks` writes it out to check. `glow` writes a bloom layer of the light pixels on black, for a page to draw additively (mix-blend-mode: screen or plus-lighter) and pulse. Per image the result gives mean L* and mean a*/b* outside the lights, before and after, and with a mask the mean L* inside and outside the subject and their ratio in dB. The numbers do not replace looking: put the source and the graded image side by side with image.contact-sheet.",
+  "summary": "Colour-grade stills before they go into a page: ordered steps (Lab cast removal, white balance, saturation, tone curve, exposure, clarity, tint inside or outside a subject mask, vignette, .cube LUT), light sources kept on request, an optional glow layer, and before/after numbers.",
+  "description": "Each image goes through `steps` in order. A step changes only what its own fields say, and a step whose strength is 0 changes nothing; the tool has no look of its own. The ops: `cast` moves a colour cast in CIE Lab (D65, sRGB in): it removes a fraction of one side of a* or b* (yellow = +b*, blue = -b*, red = +a*, green = -a*) and leaves pixels on the other side alone. `balance` is a white balance: it adds the same shift to every pixel's a* and b*, so the greys move and saturated colours keep their chroma relative to each other, where `cast` would drain them. The shift is measured from the image's near-neutral midtones as they are when the step runs ((`target_ab` - their mean a*, b*) x `amount`), or given as `shift_ab` for a cut-out layer with no neutral ground of its own: `balance` in the result reports the shift each image got, to hand to its layers. `saturation` multiplies Lab chroma, everywhere or only in a hue range (`rest` sets the multiplier outside it). `curve` is a per-channel tone curve on sRGB values: an S-shaped `contrast` around `pivot`, `gamma`, a `shoulder` that rolls the highlights off softly and `lift` for the blacks. `exposure` scales linear light by 2^ev. `clarity` adds local contrast to L*: value + amount x (value - blur). `tint` blends toward a colour everywhere, inside or outside the subject mask; `grow` and `feather` hold it off the subject's edge. `vignette` darkens (or, negative, lightens) toward the corners. `lut` applies a .cube 3D LUT with trilinear lookup. `protect` on cast, balance and tint keeps the light sources (`lights`) or the subject (`mask`) as they were. The light mask is found in each image as it entered the grade: bright, saturated pixels in a hue range (orange to yellow by default) and the near-white cores touching them, widened by `spread`; `light_mask.write_masks` writes it out to check. `glow` writes a bloom layer of the light pixels on black, for a page to draw additively (mix-blend-mode: screen or plus-lighter) and pulse. Per image the result gives mean L* and mean a*/b* outside the lights, before and after, and beside them the neutrals: `greys_a`, `greys_b` (mean a*, b* of the near-neutral midtones, set by `neutral`) and `greys_pct` (their share of the opaque pixels). `cast_a`/`cast_b` average everything, so a frame of brick and sky reads as a cast when its greys are neutral; the greys are the white balance. With a mask it also gives the mean L* inside and outside the subject and their ratio in dB. The numbers do not replace looking: put the source and the graded image side by side with image.contact-sheet.",
   "kind": "node",
   "handler": "handler.mjs",
   "deterministic": true,
@@ -56,8 +56,8 @@
           "required": ["op"],
           "properties": {
             "op": {
-              "enum": ["cast", "saturation", "curve", "exposure", "clarity", "tint", "vignette", "lut"],
-              "description": "What the step does. cast: axis, amount, protect. saturation: amount, hue, rest. curve: contrast, pivot, lift, shoulder, gamma. exposure: ev. clarity: amount, radius. tint: amount, color, where, grow, feather, protect. vignette: amount, softness. lut: file, amount."
+              "enum": ["cast", "balance", "saturation", "curve", "exposure", "clarity", "tint", "vignette", "lut"],
+              "description": "What the step does. cast: axis, amount, protect. balance: amount, target_ab, shift_ab, min_pct, protect. saturation: amount, hue, rest. curve: contrast, pivot, lift, shoulder, gamma. exposure: ev. clarity: amount, radius. tint: amount, color, where, grow, feather, protect. vignette: amount, softness. lut: file, amount."
             },
             "axis": {
               "enum": ["yellow", "blue", "red", "green"],
@@ -67,11 +67,36 @@
               "type": "number",
               "minimum": -1,
               "maximum": 10,
-              "description": "Strength; its meaning and range depend on the op. cast (required, 0..1): the fraction of that side's a* or b* removed. saturation (required, 0..10): the chroma multiplier (inside the hue range when hue is set). clarity (required, -1..4): local contrast added; negative softens. tint (required, 0..1): how far to blend toward the colour. vignette (required, -1..1): darkening at the corners; negative lightens. lut (0..1, default 1): blend between the original and the LUT."
+              "description": "Strength; its meaning and range depend on the op. cast (required, 0..1): the fraction of that side's a* or b* removed. balance (0..1, default 1): the fraction of the shift applied, measured or explicit; 1 puts the greys on the target. saturation (required, 0..10): the chroma multiplier (inside the hue range when hue is set). clarity (required, -1..4): local contrast added; negative softens. tint (required, 0..1): how far to blend toward the colour. vignette (required, -1..1): darkening at the corners; negative lightens. lut (0..1, default 1): blend between the original and the LUT."
             },
             "protect": {
               "enum": ["lights", "mask", "none"],
-              "description": "cast and tint: what the step leaves as it was. lights: the light mask (lamps, fire, candles, glowing eyes). mask: the subject. none (default): nothing. With mask and an image without one, the step is skipped for that image with a warning."
+              "description": "cast, balance and tint: what the step leaves as it was. lights: the light mask (lamps, fire, candles, glowing eyes). mask: the subject. none (default): nothing. With mask and an image without one, the step is skipped for that image with a warning. For balance it only limits where the shift lands; the greys are still measured over the whole image."
+            },
+            "target_ab": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "description": "balance: [a*, b*] where the image's near-neutral midtones should land. Absent: [0, 0], neutral grey. A target off zero keeps a wanted warmth or coolness, e.g. the greys of an accepted still. Not with shift_ab.",
+              "items": {
+                "type": "number",
+                "minimum": -128,
+                "maximum": 128,
+                "description": "One CIELAB a* or b* value."
+              }
+            },
+            "shift_ab": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "description": "balance: an explicit [da, db] added to every pixel's a*, b* (times amount). Nothing is measured, so it works on a cut-out layer with no neutral ground of its own: give it the shift its plate got (`balance[].shift_ab` in that result). Absent: the shift is measured.",
+              "items": { "type": "number", "minimum": -128, "maximum": 128, "description": "The shift on a* or b*." }
+            },
+            "min_pct": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "description": "balance: the smallest share of near-neutral midtones (greys_pct, percent of the opaque pixels) at which the measured shift is trusted. An image with less skips the step: it is listed in skipped_steps, with a warning naming the image. Default 0: any grey pixel is trusted, and only an image with none skips. Not with shift_ab."
             },
             "hue": {
               "type": "object",
@@ -230,6 +255,34 @@
           }
         }
       },
+      "neutral": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Which pixels count as near-neutral midtones: what should be grey when the white balance is right. They give greys_a, greys_b and greys_pct in the result, and a balance step measures its shift from them. A cast stronger than max_chroma pushes the greys out of the limit (greys_pct falls toward 0); raise max_chroma to find them.",
+        "properties": {
+          "max_chroma": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 200,
+            "default": 10,
+            "description": "A pixel is near-neutral when its CIELAB chroma, hypot(a*, b*), is below this."
+          },
+          "min_l": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100,
+            "default": 25,
+            "description": "Lower edge of the midtone band in L* (0 black, 100 white); darker pixels are left out, as shadows carry little colour information. Must be below max_l."
+          },
+          "max_l": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100,
+            "default": 80,
+            "description": "Upper edge of the midtone band in L*; brighter pixels are left out, as clipped highlights read neutral whatever the light was."
+          }
+        }
+      },
       "glow": {
         "type": "object",
         "additionalProperties": false,
@@ -287,24 +340,64 @@
             "height": { "type": "integer" },
             "before": {
               "type": "object",
-              "required": ["luma", "cast_a", "cast_b"],
+              "required": ["luma", "cast_a", "cast_b", "greys_a", "greys_b", "greys_pct"],
               "properties": {
                 "luma": { "type": "number" },
                 "cast_a": { "type": "number" },
-                "cast_b": { "type": "number" }
+                "cast_b": { "type": "number" },
+                "greys_a": {
+                  "type": ["number", "null"],
+                  "description": "Mean a* of the near-neutral midtones (see `neutral`) before the grade; null when no pixel qualifies."
+                },
+                "greys_b": {
+                  "type": ["number", "null"],
+                  "description": "Mean b* of the near-neutral midtones before the grade; null when no pixel qualifies."
+                },
+                "greys_pct": {
+                  "type": "number",
+                  "description": "Share of the opaque pixels that are near-neutral midtones before the grade, in percent."
+                }
               }
             },
             "after": {
               "type": "object",
-              "required": ["luma", "cast_a", "cast_b"],
+              "required": ["luma", "cast_a", "cast_b", "greys_a", "greys_b", "greys_pct"],
               "properties": {
                 "luma": { "type": "number" },
                 "cast_a": { "type": "number" },
-                "cast_b": { "type": "number" }
+                "cast_b": { "type": "number" },
+                "greys_a": {
+                  "type": ["number", "null"],
+                  "description": "Mean a* of the near-neutral midtones (see `neutral`) after the grade; null when no pixel qualifies."
+                },
+                "greys_b": {
+                  "type": ["number", "null"],
+                  "description": "Mean b* of the near-neutral midtones after the grade; null when no pixel qualifies."
+                },
+                "greys_pct": {
+                  "type": "number",
+                  "description": "Share of the opaque pixels that are near-neutral midtones after the grade, in percent."
+                }
               }
             },
             "lights_pct": { "type": "number" },
             "skipped_steps": { "type": "array", "items": { "type": "integer" } },
+            "balance": {
+              "type": "array",
+              "description": "One entry per balance step that ran on this image (absent when none did): the shift it applied.",
+              "items": {
+                "type": "object",
+                "required": ["step", "shift_ab"],
+                "properties": {
+                  "step": { "type": "integer", "description": "Index of the step in `steps`." },
+                  "shift_ab": {
+                    "type": "array",
+                    "items": { "type": "number" },
+                    "description": "[da, db] added to a*, b*, after amount. Give it as shift_ab to balance a layer cut from this image the same way."
+                  }
+                }
+              }
+            },
             "subject": {
               "type": "object",
               "required": ["mask_pct", "luma_in", "luma_out", "separation_db", "separation_db_before"],
@@ -368,6 +461,26 @@
           "text": "TITLE \"identity\"\nLUT_3D_SIZE 2\n0 0 0\n1 0 0\n0 1 0\n1 1 0\n0 0 1\n1 0 1\n0 1 1\n1 1 1\n"
         }
       }
+    },
+    {
+      "title": "White-balance a street from its own greys: the pink leaves the road and the red car keeps its colour",
+      "input": {
+        "images": [{ "image": "stills/street.ppm" }],
+        "steps": [{ "op": "balance", "min_pct": 5 }]
+      },
+      "fixtures": {
+        "stills/street.ppm": {
+          "text": "P3\n8 6\n255\n236 240 248 236 240 248 236 240 248 236 240 248 236 240 248 236 240 248 236 240 248 236 240 248\n164 148 152 164 148 152 164 148 152 164 148 152 164 148 152 164 148 152 164 148 152 164 148 152\n164 148 152 164 148 152 214 72 40 214 72 40 214 72 40 214 72 40 164 148 152 164 148 152\n164 148 152 164 148 152 214 72 40 214 72 40 214 72 40 214 72 40 164 148 152 164 148 152\n122 108 112 122 108 112 122 108 112 122 108 112 122 108 112 122 108 112 122 108 112 122 108 112\n122 108 112 122 108 112 122 108 112 122 108 112 122 108 112 122 108 112 122 108 112 122 108 112\n"
+        }
+      }
+    },
+    {
+      "title": "Give a cut-out layer the shift its plate got (no neutral ground of its own to measure)",
+      "input": {
+        "images": [{ "image": "layers/car.png" }],
+        "steps": [{ "op": "balance", "shift_ab": [-6.43, 0.08] }]
+      },
+      "run": false
     },
     {
       "title": "A batch of generated stills with their mattes, the same grade on each",

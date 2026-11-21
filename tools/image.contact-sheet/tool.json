@@ -1,9 +1,9 @@
 {
   "name": "image.contact-sheet",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "title": "Contact sheet",
   "summary": "Lay images out in a grid so a set of stills can be reviewed at a glance.",
-  "description": "Scales each image to a fixed width, pads them to the height of the first image, and lays them out with ffmpeg's xstack. Optional labels are drawn with drawtext when that filter is available. A single image is returned as one cell.",
+  "description": "Fits each image inside a cell of a fixed width and the first image's height (an image of another shape is shrunk to fit and centred), and lays the cells out with ffmpeg's xstack. Optional labels are drawn with drawtext when that filter is available. A single image is returned as one cell.",
   "kind": "node",
   "handler": "handler.mjs",
   "deterministic": true,

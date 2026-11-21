@@ -383,3 +383,332 @@ test('image.grade: the same input gives the same result and the same files', FEA
     await rmTmp(ws);
   }
 });
+
+// ---------------------------------------------------------------------------------------------------------------------
+// White balance: the neutrals and the balance op
+
+/** CIELAB (D65) of an 8-bit sRGB colour, written out here so the tool's numbers are checked against the formulas. */
+function labOf([r, g, b]) {
+  const lin = (c) => (c / 255 <= 0.04045 ? c / 255 / 12.92 : ((c / 255 + 0.055) / 1.055) ** 2.4);
+  const [R, G, B] = [lin(r), lin(g), lin(b)];
+  const f = (t) => (t > 216 / 24389 ? Math.cbrt(t) : ((24389 / 27) * t + 16) / 116);
+  const fx = f((0.4124564 * R + 0.3575761 * G + 0.1804375 * B) / 0.95047);
+  const fy = f(0.2126729 * R + 0.7151522 * G + 0.072175 * B);
+  const fz = f((0.0193339 * R + 0.119192 * G + 0.9503041 * B) / 1.08883);
+  return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
+}
+const chromaOf = (rgb) => Math.hypot(...labOf(rgb).slice(1));
+const near = (got, want, tol, what) =>
+  assert.ok(Math.abs(got - want) <= tol, `${what}: ${got}, expected ${want} within ${tol}`);
+
+/**
+ * A street under a pink cast: two greys of road (the neutrals), a white sky and a black shadow (outside the midtone
+ * band), a red car and a blue sign (saturated, so not neutrals). Half of the grey is each road colour.
+ */
+const STREET = { w: 96, h: 64 };
+const ROAD = [164, 148, 152];
+const ROAD_DARK = [122, 108, 112];
+const CAR = [200, 40, 60];
+const SIGN = [40, 70, 190];
+const SKY = [250, 250, 250];
+const SHADOW = [12, 12, 12];
+const inCar = (x, y) => x >= 16 && x < 40 && y >= 24 && y < 40;
+function street(x, y) {
+  if (y < 8) return SKY;
+  if (y >= 56) return SHADOW;
+  if (inCar(x, y)) return CAR;
+  if (x >= 60 && x < 76 && y >= 24 && y < 40) return SIGN;
+  return y < 32 ? ROAD : ROAD_DARK;
+}
+const STREET_GREYS = [0, 1, 2].map((k) => (labOf(ROAD)[k] + labOf(ROAD_DARK)[k]) / 2);
+const STREET_GREY_PCT = (100 * 3968) / (STREET.w * STREET.h);
+
+test('image.grade: the neutrals are the near-neutral midtones, not the whole frame', FEATURES, async () => {
+  const ws = await mkTmp();
+  try {
+    await writePng(ws, 'street.png', STREET.w, STREET.h, street);
+    const run = (extra) => runTool('image.grade', { images: [{ image: 'street.png' }], ...extra }, { workspace: ws });
+    const plain = await run({});
+    const [img] = plain.result.images;
+    near(img.before.greys_a, STREET_GREYS[1], 0.02, 'greys_a');
+    near(img.before.greys_b, STREET_GREYS[2], 0.02, 'greys_b');
+    near(img.before.greys_pct, STREET_GREY_PCT, 0.01, 'greys_pct');
+    assert.ok(img.before.greys_a > 5, `the road carries a pink cast (greys_a ${img.before.greys_a})`);
+    assert.ok(
+      img.before.cast_a > img.before.greys_a + 2,
+      `the whole-frame number follows the car and the sign: cast_a ${img.before.cast_a}, greys_a ${img.before.greys_a}`,
+    );
+    assert.deepEqual(img.after, img.before, 'no steps: the numbers stay');
+    assert.equal(img.balance, undefined, 'no balance step, no balance report');
+
+    // A chroma limit under the cast finds no neutral; the whole L* range takes the sky and the shadow in.
+    const tight = await run({ neutral: { max_chroma: 3, min_l: 30 } });
+    const none = tight.result.images[0].before;
+    assert.deepEqual([none.greys_a, none.greys_b, none.greys_pct], [null, null, 0]);
+    const wide = await run({ neutral: { min_l: 0, max_l: 100 } });
+    const all = wide.result.images[0].before;
+    near(all.greys_pct, (100 * (3968 + 2 * 768)) / (STREET.w * STREET.h), 0.01, 'greys_pct over every L*');
+    assert.ok(all.greys_a < img.before.greys_a - 1, `neutral sky and shadow pull the mean down: ${all.greys_a}`);
+
+    const err = await invalidOf({ images: [{ image: 'street.png' }], neutral: { min_l: 60, max_l: 50 } }, ws);
+    assert.equal(err.type, 'invalid-input');
+    assert.match(err.message, /neutral\.min_l \(60\) must be below neutral\.max_l \(50\)/);
+  } finally {
+    await rmTmp(ws);
+  }
+});
+
+test('image.grade: balance puts the greys on the target and keeps the colour that cast drains', FEATURES, async () => {
+  const ws = await mkTmp();
+  try {
+    await writePng(ws, 'street.png', STREET.w, STREET.h, street);
+    await writePng(ws, 'car-mask.png', STREET.w, STREET.h, (x, y) => [inCar(x, y) ? 255 : 0], 'gray');
+    const run = (steps, extra = {}) =>
+      runTool(
+        'image.grade',
+        { images: [{ image: 'street.png', ...extra.image }], steps, ...extra.input },
+        { workspace: ws },
+      );
+    const carAt = [20, 30];
+    const signAt = [64, 30];
+    const labAt = async (r, [x, y]) => labOf(pixel(await decode(outAbs(r.outputs, 'street.png')), STREET.w, x, y));
+
+    const balanced = await run([{ op: 'balance' }]);
+    const [img] = balanced.result.images;
+    near(img.after.greys_a, 0, 0.6, 'greys_a after');
+    near(img.after.greys_b, 0, 0.6, 'greys_b after');
+    near(img.after.greys_pct, STREET_GREY_PCT, 0.01, 'the same pixels are still the greys');
+    near(img.after.luma, img.before.luma, 0.5, 'luma');
+    assert.deepEqual(img.skipped_steps, []);
+    assert.equal(img.balance.length, 1);
+    assert.equal(img.balance[0].step, 0);
+    const [da, db] = img.balance[0].shift_ab;
+    near(da, -STREET_GREYS[1], 0.02, 'reported shift on a*');
+    near(db, -STREET_GREYS[2], 0.02, 'reported shift on b*');
+    // Every colour moves by the same (da, db), saturated or not.
+    for (const [what, at, src] of [
+      ['car', carAt, CAR],
+      ['sign', signAt, SIGN],
+    ]) {
+      const [l0, a0, b0] = labOf(src);
+      const [l1, a1, b1] = await labAt(balanced, at);
+      near(l1, l0, 1, `${what} L*`);
+      near(a1 - a0, da, 1, `${what} a* shift`);
+      near(b1 - b0, db, 1, `${what} b* shift`);
+    }
+    const carChroma = chromaOf(CAR);
+    const kept = Math.hypot(...(await labAt(balanced, carAt)).slice(1));
+    assert.ok(kept > 0.85 * carChroma, `balance keeps the car's chroma: ${carChroma} -> ${kept}`);
+
+    // The old way to take the pink out: it neutralises the road too, and takes the red out of the car with it.
+    const drained = await run([{ op: 'cast', axis: 'red', amount: 1 }]);
+    near(drained.result.images[0].after.greys_a, 0, 0.6, 'greys_a after cast');
+    const left = Math.hypot(...(await labAt(drained, carAt)).slice(1));
+    assert.ok(left < 0.6 * carChroma, `cast drains the car: ${carChroma} -> ${left}`);
+
+    // Half-way to a warm target.
+    const half = await run([{ op: 'balance', target_ab: [2, 6], amount: 0.5 }]);
+    const h = half.result.images[0];
+    near(h.after.greys_a, (h.before.greys_a + 2) / 2, 0.6, 'greys_a half-way to the target');
+    near(h.after.greys_b, (h.before.greys_b + 6) / 2, 0.6, 'greys_b half-way to the target');
+
+    // The shift is measured on the image as it is when the step runs: after an earlier shift, it undoes that too.
+    const twice = await run([{ op: 'balance', shift_ab: [4, 4] }, { op: 'balance' }], {
+      input: { neutral: { max_chroma: 20 } },
+    });
+    const t = twice.result.images[0];
+    assert.deepEqual(t.balance[0], { step: 0, shift_ab: [4, 4] });
+    near(t.balance[1].shift_ab[0], -(t.before.greys_a + 4), 0.05, 'second shift on a*');
+    near(t.balance[1].shift_ab[1], -(t.before.greys_b + 4), 0.05, 'second shift on b*');
+    near(t.after.greys_a, 0, 0.6, 'greys_a after both');
+    near(t.after.greys_b, 0, 0.6, 'greys_b after both');
+
+    // protect: mask keeps the subject as it was; the greys are still measured over the whole image.
+    const guarded = await run([{ op: 'balance', protect: 'mask' }], { image: { mask: 'car-mask.png' } });
+    const out = await decode(outAbs(guarded.outputs, 'street.png'));
+    assert.deepEqual(pixel(out, STREET.w, ...carAt), CAR, 'the protected car keeps its colour');
+    near(guarded.result.images[0].after.greys_a, 0, 0.6, 'greys_a with the car protected');
+    const noMask = await run([{ op: 'balance', protect: 'mask' }]);
+    assert.deepEqual(noMask.result.images[0].skipped_steps, [0]);
+    assert.match(noMask.result.warnings.join(' '), /steps\[0\] \(balance\) was skipped: protect is "mask"/);
+  } finally {
+    await rmTmp(ws);
+  }
+});
+
+test('image.grade: balance with shift_ab shifts a cut-out without measuring it', FEATURES, async () => {
+  const ws = await mkTmp();
+  try {
+    // A cut-out car: opaque red, a soft edge, nothing around it. No neutral ground of its own.
+    const cutout = (x, y) => (inCar(x, y) ? [...CAR, x === 16 || x === 39 ? 128 : 255] : [0, 0, 0, 0]);
+    await writePng(ws, 'car.png', STREET.w, STREET.h, cutout, 'rgba');
+    const run = (steps) => runTool('image.grade', { images: [{ image: 'car.png' }], steps }, { workspace: ws });
+    const src = await decode(path.join(ws, 'car.png'), 'rgba');
+
+    const measured = await run([{ op: 'balance' }]);
+    const [m] = measured.result.images;
+    assert.deepEqual([m.before.greys_a, m.before.greys_b, m.before.greys_pct], [null, null, 0]);
+    assert.deepEqual(m.skipped_steps, [0]);
+    assert.equal(m.balance, undefined);
+    assert.match(
+      measured.result.warnings.join('\n'),
+      /^car: steps\[0\] \(balance\) was skipped: the image has no near-neutral midtone to measure/m,
+    );
+    assert.ok(
+      src.equals(await decode(outAbs(measured.outputs, 'car.png'), 'rgba')),
+      'a skipped balance changes nothing',
+    );
+
+    const shifted = await run([{ op: 'balance', shift_ab: [-6, 2] }]);
+    const [s] = shifted.result.images;
+    assert.deepEqual(s.skipped_steps, []);
+    assert.deepEqual(s.balance, [{ step: 0, shift_ab: [-6, 2] }]);
+    assert.deepEqual(shifted.result.warnings, []);
+    const out = await decode(outAbs(shifted.outputs, 'car.png'), 'rgba');
+    const [l0, a0, b0] = labOf(CAR);
+    const [l1, a1, b1] = labOf(pixel(out, STREET.w, 20, 30, 4));
+    near(l1, l0, 1, 'L*');
+    near(a1 - a0, -6, 1, 'a* shift');
+    near(b1 - b0, 2, 1, 'b* shift');
+    for (let i = 3; i < src.length; i += 4) assert.equal(out[i], src[i], `alpha of pixel ${(i - 3) / 4}`);
+
+    const half = await run([{ op: 'balance', shift_ab: [-6, 2], amount: 0.5 }]);
+    assert.deepEqual(half.result.images[0].balance, [{ step: 0, shift_ab: [-3, 1] }]);
+  } finally {
+    await rmTmp(ws);
+  }
+});
+
+test('image.grade: balance skips an image with too little grey, with a warning naming it', FEATURES, async () => {
+  const ws = await mkTmp();
+  try {
+    await writePng(ws, 'street.png', STREET.w, STREET.h, street);
+    // A wall of red with one small grey plate: 48 of 6144 pixels, 0.78%.
+    const wall = (x, y) => (x < 8 && y < 6 ? ROAD : CAR);
+    await writePng(ws, 'wall.png', STREET.w, STREET.h, wall);
+    const images = [{ image: 'street.png' }, { image: 'wall.png' }];
+    const { result, outputs } = await runTool(
+      'image.grade',
+      {
+        images,
+        steps: [
+          { op: 'curve', gamma: 1 },
+          { op: 'balance', min_pct: 5 },
+        ],
+      },
+      { workspace: ws },
+    );
+    const [st, wl] = result.images;
+    assert.deepEqual(st.skipped_steps, []);
+    near(st.after.greys_a, 0, 0.6, 'the street has grey enough and is balanced');
+    near(wl.before.greys_pct, 0.78, 0.005, 'greys_pct of the wall');
+    assert.deepEqual(wl.skipped_steps, [1]);
+    assert.equal(wl.balance, undefined);
+    assert.deepEqual(wl.after, wl.before);
+    assert.deepEqual(result.warnings, [
+      'wall: steps[1] (balance) was skipped: near-neutral midtones are 0.78% of the image, under min_pct 5',
+    ]);
+    const src = await decode(path.join(ws, 'wall.png'));
+    assert.ok(src.equals(await decode(outAbs(outputs, 'wall.png'))), 'the skipped image is unchanged');
+
+    // Without min_pct any grey is trusted.
+    const trusted = await runTool(
+      'image.grade',
+      { images: [{ image: 'wall.png' }], steps: [{ op: 'balance' }] },
+      { workspace: ws },
+    );
+    assert.deepEqual(trusted.result.images[0].skipped_steps, []);
+    near(trusted.result.images[0].after.greys_a, 0, 0.6, 'greys_a of the wall');
+  } finally {
+    await rmTmp(ws);
+  }
+});
+
+test('image.grade: balance keeps the alpha and measures only what is opaque', FEATURES, async () => {
+  const ws = await mkTmp();
+  try {
+    // Opaque pink-cast grey on the left, a half-transparent column of it, and fully transparent green-cast grey.
+    const GREEN_GREY = [146, 156, 146];
+    assert.ok(chromaOf(GREEN_GREY) < 10, 'the hidden grey would count as a neutral if it were opaque');
+    const layer = (x) => (x < 40 ? [...ROAD, 255] : x < 48 ? [...ROAD, 128] : [...GREEN_GREY, 0]);
+    await writePng(ws, 'layer.png', STREET.w, STREET.h, layer, 'rgba');
+    const { result, outputs } = await runTool(
+      'image.grade',
+      { images: [{ image: 'layer.png' }], steps: [{ op: 'balance' }] },
+      { workspace: ws },
+    );
+    const [img] = result.images;
+    const [, a, b] = labOf(ROAD);
+    near(img.before.greys_a, a, 0.02, 'greys_a is the opaque grey alone');
+    near(img.before.greys_b, b, 0.02, 'greys_b is the opaque grey alone');
+    assert.equal(img.before.greys_pct, 100, 'every opaque pixel is a neutral');
+    near(img.after.greys_a, 0, 0.6, 'greys_a after');
+    near(img.after.greys_b, 0, 0.6, 'greys_b after');
+    assert.deepEqual(img.skipped_steps, []);
+
+    const src = await decode(path.join(ws, 'layer.png'), 'rgba');
+    const out = await decode(outAbs(outputs, 'layer.png'), 'rgba');
+    assert.equal(out.length, src.length);
+    for (let i = 3; i < src.length; i += 4) assert.equal(out[i], src[i], `alpha of pixel ${(i - 3) / 4}`);
+    assert.notDeepEqual(pixel(out, STREET.w, 10, 10, 4), [...ROAD, 255], 'the colour did move');
+  } finally {
+    await rmTmp(ws);
+  }
+});
+
+test('image.grade: with no balance step, or one of no strength, the pixels stay', FEATURES, async () => {
+  const ws = await mkTmp();
+  try {
+    await writePng(ws, 'noise.png', 48, 32, noisy(23), 'rgba');
+    const src = await decode(path.join(ws, 'noise.png'), 'rgba');
+    for (const steps of [
+      [],
+      [{ op: 'balance', amount: 0 }],
+      [{ op: 'balance', shift_ab: [0, 0] }],
+      [{ op: 'balance', amount: 0, target_ab: [5, -5], min_pct: 100, protect: 'lights' }],
+    ]) {
+      const { result, outputs } = await runTool(
+        'image.grade',
+        { images: [{ image: 'noise.png' }], steps },
+        { workspace: ws },
+      );
+      const what = JSON.stringify(steps);
+      assert.ok(src.equals(await decode(outAbs(outputs, 'noise.png'), 'rgba')), `${what}: the pixels differ`);
+      const [img] = result.images;
+      assert.deepEqual(img.after, img.before, what);
+      assert.deepEqual(img.skipped_steps, [], what);
+      assert.deepEqual(result.warnings, [], what);
+      for (const k of ['greys_a', 'greys_b', 'greys_pct'])
+        assert.ok(k in img.before && k in img.after, `${what}: ${k}`);
+    }
+  } finally {
+    await rmTmp(ws);
+  }
+});
+
+test('image.grade: balance validation names the bad field', FEATURES, async () => {
+  const ws = await mkTmp();
+  try {
+    await writePng(ws, 'street.png', STREET.w, STREET.h, street);
+    const images = [{ image: 'street.png' }];
+    const cases = [
+      [[{ op: 'balance', amount: 1.5 }], /steps\[0\]\.amount must be from 0 to 1 for op "balance"/],
+      [[{ op: 'balance', axis: 'red' }], /steps\[0\]\.axis is not a field of op "balance"/],
+      [
+        [{ op: 'balance', shift_ab: [1, 2], target_ab: [0, 0] }],
+        /steps\[0\]\.target_ab cannot go with steps\[0\]\.shift_ab/,
+      ],
+      [[{ op: 'balance', shift_ab: [1, 2], min_pct: 3 }], /steps\[0\]\.min_pct cannot go with steps\[0\]\.shift_ab/],
+      [[{ op: 'cast', axis: 'red', amount: 1, shift_ab: [1, 2] }], /steps\[0\]\.shift_ab is not a field of op "cast"/],
+      [[{ op: 'balance', shift_ab: [1] }], /steps\/0\/shift_ab/],
+      [[{ op: 'balance', min_pct: 101 }], /steps\/0\/min_pct/],
+    ];
+    for (const [steps, re] of cases) {
+      const err = await invalidOf({ images, steps }, ws);
+      assert.equal(err.type, 'invalid-input', `${JSON.stringify(steps)}: ${err.message}`);
+      assert.match(err.message, re);
+    }
+  } finally {
+    await rmTmp(ws);
+  }
+});

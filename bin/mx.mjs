@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // mx: the motionex command-line client. A thin HTTP client of the service (bin/mx.mjs),
-// plus two offline commands (validate-tools) and one that starts the service in-process (serve).
+// plus offline commands (validate-tools, workspace init) and one that starts the service in-process (serve).
 // Node built-ins only; uses the global fetch.
+import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
@@ -46,6 +47,8 @@ Commands:
   unpin <name>                            remove a pin
   pins [name] [--history] [--json]        list pins, or show one pin
   skill install <dir>                     install the agent skill into <dir>/motionex
+  workspace init <folder> [--name N] [--engine URL] [--add] [--dry] [--no-git]
+                                          offline: create a workspace from the template (skill/workspace/SKILL.md)
   validate-tools [dir...]                 offline: validate tool manifests in the given folders
   help                                    this text
 
@@ -709,6 +712,54 @@ async function cmdValidateTools(args) {
   return invalid.length ? EXIT.failed : EXIT.ok;
 }
 
+/** `mx workspace init <folder>`: offline; copies the workspace template and starts a git repository. */
+async function cmdWorkspace(args) {
+  const a = parseArgs(args, { name: 'value', engine: 'value', add: 'flag', dry: 'flag', 'no-git': 'flag' });
+  if (a._[0] !== 'init' || a._.length !== 2) {
+    throw new UsageError(
+      'workspace needs: workspace init <folder> [--name N] [--engine URL] [--add] [--dry] [--no-git]',
+    );
+  }
+  const { initWorkspace } = await import('../src/lib/workspace-template.mjs');
+  const target = path.resolve(a._[1]);
+  const templateDir = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    '..',
+    'skill',
+    'workspace',
+    'template',
+  );
+  let done;
+  try {
+    done = await initWorkspace({
+      templateDir,
+      target,
+      name: a.name ?? path.basename(target),
+      engineUrl: a.engine ?? baseUrl(),
+      date: new Date().toISOString().slice(0, 10),
+      add: Boolean(a.add),
+      dry: Boolean(a.dry),
+    });
+  } catch (e) {
+    if (e?.code === 'not-empty') throw new UsageError(e.message);
+    throw e;
+  }
+  for (const rel of done.created) out(`${a.dry ? 'would write' : 'wrote'} ${rel}`);
+  for (const rel of done.kept) out(`kept  ${rel} (already there)`);
+  if (a.dry) return EXIT.ok;
+  if (a['no-git']) {
+    out('git: not started (--no-git)');
+  } else if (await stat(path.join(target, '.git')).catch(() => null)) {
+    out('git: the folder is already a repository');
+  } else {
+    const git = spawnSync('git', ['init', '--quiet'], { cwd: target, encoding: 'utf8' });
+    out(git.status === 0 ? 'git: started a repository (nothing is committed)' : 'git: could not start a repository');
+  }
+  out(`workspace ready: ${target}`);
+  out('next: write what the user said into WORKSPACE.md (skill/workspace/SKILL.md, step 3)');
+  return EXIT.ok;
+}
+
 // --------------------------------------------------------------------------------------------- main
 
 /**
@@ -747,6 +798,8 @@ export async function main(argv) {
       return cmdGet(rest);
     case 'pin':
       return cmdPin(rest);
+    case 'workspace':
+      return cmdWorkspace(rest);
     case 'unpin':
       return cmdUnpin(rest);
     case 'pins':

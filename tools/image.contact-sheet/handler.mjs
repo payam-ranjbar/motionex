@@ -1,5 +1,5 @@
-// image.contact-sheet: scale stills to a common width, pad them to the first image's height,
-// and lay them out with xstack. Labels are drawn with drawtext when the build has it.
+// image.contact-sheet: fit each still inside a cell shaped like the first image (common width, the first image's
+// height), centre it, and lay the cells out with xstack. Labels are drawn with drawtext when the build has it.
 import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import { ToolError } from '../../src/lib/errors.mjs';
@@ -99,7 +99,9 @@ export default async function run(input, ctx) {
 
   const chains = [];
   for (let i = 0; i < images.length; i++) {
-    let chain = `[${i}:v]scale=${cell_width}:-2,pad=${cell_width}:${cellHeight}:0:(oh-ih)/2:color=${background}`;
+    // Fit each image inside the cell (the first image sets its shape), then centre it: an image taller or wider
+    // than the first is shrunk to fit instead of overflowing the pad, which ffmpeg refuses.
+    let chain = `[${i}:v]scale=${cell_width}:${cellHeight}:force_original_aspect_ratio=decrease,pad=${cell_width}:${cellHeight}:(ow-iw)/2:(oh-ih)/2:color=${background}`;
     if (captions?.[i] !== undefined) {
       chain += `,drawtext=text='${escapeText(captions[i])}':x=4:y=h-th-4:fontsize=16:fontcolor=white:box=1:boxcolor=black@0.5:boxborderw=2:expansion=none`;
     }

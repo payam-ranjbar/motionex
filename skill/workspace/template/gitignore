@@ -1,0 +1,7 @@
+# what the engine and the tools produce; the sources stay in the repository
+out/
+jobs/
+.mx/
+.secrets/
+.venv/
+node_modules/

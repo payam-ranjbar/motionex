@@ -25,22 +25,23 @@ suggested fix. Items fixed since are removed from this list; `docs/retro-2026-11
    `media.frames` stops at 200 frames. Suggested fix: a `media.motion` tool taking `{video, grid?: {bpm, beats_per_bar},
    still_threshold?}` and returning per-frame change, the still stretches, and per-beat and per-bar rows.
 
-4. **Nothing tells what a voice line says.** A Farsi line was pronounced wrongly and went out, because no tool returns
+4. **No measure of how pictures look.** An image generator filled a style written from memory with its own default
+   look, and every check compared the film with that same description, so the wrong look passed until the author saw
+   it. Measuring the film's frames against frames of the author's references (near-black share, contrast, colour
+   strength, hue families, flat fills against soft ramps, line density) showed the gap at once; it took a host script
+   with OpenCV. Suggested fix: an `image.look` tool taking `{images: [{image, group}], width?}` and returning those
+   measures per image and the median per group, numbers only, measured at the smallest width by default.
+
+5. **Nothing tells what a voice line says.** A Farsi line was pronounced wrongly and went out, because no tool returns
    text or phonemes from audio, and an agent cannot listen. Suggested fix: a `voice.transcribe` tool (speech to text with
    a language hint, per-word times); `voice.piper` could also return the phonemes it spoke.
 
 ## music.render
 
-5. **Always renders from the start.** `picture.render` takes `from_s`/`to_s`; `music.render` takes only `seconds` or
+6. **Always renders from the start.** `picture.render` takes `from_s`/`to_s`; `music.render` takes only `seconds` or
    `cycles`, so changing one bar renders the whole song again (20 full renders, 49 minutes of machine time, in one
    two-day production; a dense score in a later one took over 13 minutes per render). Stems multiply this, since each
    stem is a full render. Suggested fix: `from_cycle`/`to_cycle`, with the same seamless-join guarantee as the picture.
-
-## picture.stills
-
-6. **The readiness timeout explains nothing.** A page that never set `window.__motion.ready` failed after about 61 s
-   with "page never set window.__motion.ready: (no errors reported)". Suggested fix: report what the page was still
-   waiting for: requests in flight, `document.fonts.status`, and the last console lines.
 
 ## Cut-outs
 
@@ -62,6 +63,18 @@ suggested fix. Items fixed since are removed from this list; `docs/retro-2026-11
    lines need more time than the scene has; a `duration_s` scene does not, to keep voice-first results unchanged.
    Suggested fix: the same warning for `duration_s` scenes.
 
+## Workspaces
+
+10. **A workspace outside the mounted folder works through the file API.** Several workspaces can share the engine by
+    mounting the folder that contains them, and a workspace that is not under the mount can upload, run and download
+    (`CLAUDE.md`, "The mounted folder"). What is still missing: `picture.render` and `picture.stills` capture pages
+    from the mounted folder only, so a page that lives elsewhere is rendered on the host or copied in, and uploaded
+    inputs stay until the caller deletes them. Suggested fix: a scratch area for uploads that a job cleans up when it
+    ends, or a second read-only mount.
+
 ## Left open on purpose (owner's decision)
+- Image generation is outside motionex. Studios that use an image model (a local CLI on the host, with the
+  user's own login) wrap it themselves: attachments with named roles, the saved path, refusals and retries. A
+  contract would give one result shape, but the provider runs on the host, not in the container.
 - The Docker image is about 2.3 GB.
 - A Windows file-rename race in the agent dispatcher (outside this repo).

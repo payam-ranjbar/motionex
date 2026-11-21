@@ -41,6 +41,9 @@ MX_WORKSPACE_HOST=/path/to/project docker compose up -d   # share a project fold
 curl -s http://127.0.0.1:8095/readyz
 ```
 - **Workspace**: the host folder `./workspace` (or `MX_WORKSPACE_HOST`) is mounted at `/workspace`. Tool inputs are paths relative to it.
+- **Workspaces**: a workspace is a folder of its own that holds a user's settings, the skills an agent follows there and its
+  projects. `mx workspace init <folder>` creates one from the template in `skill/workspace/template/`; the
+  steps are in `skill/workspace/SKILL.md`. The template decides nothing about the films.
 - **Listening room**: open http://127.0.0.1:8095/listen. It shows recent jobs with players, A/B (`?compare=ref,ref`), and live page previews.
 - **Secrets** are files: copy `compose.local.example.yaml` to `compose.local.yaml` and put the ElevenLabs key in `secrets/elevenlabs_api_key`.
 - **Samples**: Strudel sample banks download into the `motionex-cache` volume on first use (`offline: true` uses only the cache).

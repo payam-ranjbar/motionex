@@ -19,6 +19,16 @@ ways to get there and to check it.
 Fixing before shaping keeps a curve from exaggerating a cast; separating the subject last keeps it based on the final
 colours.
 
+## White balance
+- **Read it from the greys.** `cast_a`/`cast_b` average the whole frame, so a street of brick and sky reads as a cast
+  when its greys are neutral. `greys_a`/`greys_b` are the near-neutral midtones (asphalt, concrete, walls in shade);
+  `greys_pct` says how much of the frame they are, and `neutral` sets what counts as near-neutral.
+- **Correct it with `balance`**, which shifts every pixel's a*, b* by the same amount, so saturated colours keep their
+  chroma. `cast` scales one side of an axis and drains them along with the cast.
+- **A cut-out layer has no neutral ground of its own**: its greys are its clothes or its paint. Give it the shift of
+  the plate it sits on (`balance[].shift_ab` in the plate's result) as `shift_ab`.
+- A frame with little grey gives a weak number: `min_pct` skips the step for such a frame and says so in a warning.
+
 ## Protect what should stay
 - **Light sources lose their warmth when a warm cast is removed everywhere.** Protect them (`protect: "lights"`) and
   look at what was protected (`light_mask.write_masks`) before trusting it.
@@ -34,6 +44,22 @@ colours.
 - Generated images vary. Compare the measured values across the batch (`before`/`after` cast and luma, the subject's
   separation) and look for outliers, rather than tuning each image by eye.
 - Change one thing per round and keep the earlier version, so the human can compare.
+
+## Matching a named look
+- When the human names a reference ("like that 90s animated series"), look at frames of it before you write the look
+  down. A description written from memory gets filled with whatever an image generator, or your own habit, does by
+  default, and every later check then compares the work with that same description, so the gap is never caught. In one
+  film the look passed every check and the human still rejected it as "the wrong tone".
+- Write the look as traits seen in the frames: how much of the frame is black, hard or soft shadows, the line and how
+  many interior lines, how much surface detail, faces and eyes, local colour per object or one tint over everything,
+  the light.
+- Put the reference frames and yours side by side (`image.contact-sheet`). Simple numbers on both groups help where
+  the eye adapts: the share of near-black pixels, contrast, colour strength, how many hue families, flat fills against
+  soft ramps, line density. The references set the range; there are no fixed targets. The numbers say how far apart
+  two looks are and the frames say how.
+- Compare at one size. Small frames scaled up look flatter than they are, so scale everything to the smallest width.
+- Reference frames are other people's work: keep them for study and comparison, and do not publish them or feed them
+  to a generator.
 
 ## Review
 - Put before and after side by side (`image.contact-sheet`), then look at full-size crops of the edges, the lights and

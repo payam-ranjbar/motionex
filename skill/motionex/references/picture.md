@@ -17,6 +17,7 @@ So **every frame must be a pure function of t**:
 - No `Math.random()`: use a seeded PRNG such as `Motion.random(seed)`.
 - No `Date.now()`, no `setTimeout` choreography, no free-running CSS animations or videos. CSS animations are fine through the WAAPI adapter below.
 - Load fonts before `ready = true` (`await document.fonts.ready`). Non-Latin scripts need their font loaded. Persian Aref Ruqaa is compact, so size it up.
+- Wait for the images the frames show, but not for lazy ones (`loading="lazy"`, for example inside a closed `<details>`): they load only when shown, so a page that waits for them never becomes ready. When a page never becomes ready, the error names what it was still waiting for (images, requests, fonts, errors).
 - Pages are served over http from the workspace (`/w/...`), so relative paths for images, fonts, JSON and modules work. With `offline: true`, the network outside the service is blocked and reported in `page_errors`; use it for hermetic renders.
 
 ## Three ways to build a page (pick any)

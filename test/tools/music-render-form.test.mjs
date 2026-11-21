@@ -248,28 +248,33 @@ test('music.render: stems_only needs stems, and cannot take peak_db', needs('ffm
   }
 });
 
-test('music.render: without stems the result is what it was, plus markers_found', needs('ffmpeg'), async () => {
-  const ws = await mkTmp();
-  try {
-    const run = await runTool('music.render', { code: TWO_PARTS, cycles: 2, offline: true }, { workspace: ws });
-    assert.deepEqual(Object.keys(run.result).sort(), [
-      'analysis',
-      'cps',
-      'events',
-      'gain_db_applied',
-      'markers_applied',
-      'markers_found',
-      'peak_db',
-      'render_ms',
-      'seconds',
-      'warnings',
-    ]);
-    assert.deepEqual(run.result.markers_found, []);
-    assert.deepEqual(run.outputs.map((o) => o.name).sort(), ['analysis.json', 'music.wav', 'song.strudel']);
-  } finally {
-    await rmTmp(ws);
-  }
-});
+test(
+  'music.render: without stems the result is what it was, plus markers_found and levels',
+  needs('ffmpeg'),
+  async () => {
+    const ws = await mkTmp();
+    try {
+      const run = await runTool('music.render', { code: TWO_PARTS, cycles: 2, offline: true }, { workspace: ws });
+      assert.deepEqual(Object.keys(run.result).sort(), [
+        'analysis',
+        'cps',
+        'events',
+        'gain_db_applied',
+        'levels',
+        'markers_applied',
+        'markers_found',
+        'peak_db',
+        'render_ms',
+        'seconds',
+        'warnings',
+      ]);
+      assert.deepEqual(run.result.markers_found, []);
+      assert.deepEqual(run.outputs.map((o) => o.name).sort(), ['analysis.json', 'music.wav', 'song.strudel']);
+    } finally {
+      await rmTmp(ws);
+    }
+  },
+);
 
 test('stems parser: labels on expressions, .p() names, solo, and what is not a part', () => {
   const code = [

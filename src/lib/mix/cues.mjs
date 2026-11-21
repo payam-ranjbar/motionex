@@ -3,7 +3,8 @@
 // the track fx, gain_db, automation, level and sidechains. A level is the K-weighted loudness of the window
 // (BS.1770 weighting, no gating) in LUFS: -0.691 + 10*log10(sum over channels of the mean square), so ratio_db is a
 // difference in LU (= dB). The window comes from the clip itself (its placement, gain and fades), not from the
-// track's fx.
+// track's fx. Its times are the clip's real position in the mix; a clip that states an onset (`land_at`, or `at`
+// with `onset_s`) also gets `land_at`, the time that onset is heard.
 import { ToolError } from '../errors.mjs';
 import { kWeight } from '../loudness.mjs';
 import { fromDb } from '../signal.mjs';
@@ -90,8 +91,8 @@ function median(values) {
  * Build the cue rows and their per-track summary.
  * @param {{sampleRate: number, cues: {reference: string, tracks: string[], window: string}}} plan
  * @param {Map<string, import('../wav.mjs').Audio>} stems
- * @param {Map<string, {clip: number, name: string|null, from: number, to: number}[]>} spans absolute sample windows
- *   per cue track (from clips.mjs buildTrackBuffers)
+ * @param {Map<string, {clip: number, name: string|null, from: number, to: number, land?: number}[]>} spans absolute
+ *   sample windows per cue track (from clips.mjs buildTrackBuffers); `land` is the sample a stated onset falls on
  * @returns {{rows: object[], summary: {reference: string, window: string, rows: number, tracks: Record<string, object>}}}
  */
 export function cueTable(plan, stems, spans) {
@@ -110,7 +111,7 @@ export function cueTable(plan, stems, spans) {
       const ref = windowLoudness(referenceKw, span.from, span.to);
       const ratio = level != null && ref != null ? level - ref : null;
       if (ratio != null) ratios.push(ratio);
-      rows.push({
+      const row = {
         track,
         clip: span.clip,
         name: span.name,
@@ -119,7 +120,10 @@ export function cueTable(plan, stems, spans) {
         level_db: r2(level),
         reference_db: r2(ref),
         ratio_db: r2(ratio),
-      });
+      };
+      // Only clips that state an onset carry the key, so the rows of a mix placed with `at` alone do not change.
+      if (span.land != null) row.land_at = r4(span.land / sr);
+      rows.push(row);
     }
     summary[track] = {
       clips: trackSpans.length,
